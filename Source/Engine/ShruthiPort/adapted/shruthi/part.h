@@ -131,6 +131,7 @@ class Part {
   inline bool running() const { return arp_seq_running_; }
   inline bool has_held_notes() { return pressed_keys_.size() != 0; }
   inline uint8_t step() const { return arp_seq_step_; }
+  inline uint8_t prescaler_for_tests() const { return arp_seq_prescaler_; }
   // Last sequence element read by the clock; 0xff means no playback step.
   inline uint8_t playback_step() const { return running() ? playback_step_ : 0xff; }
 

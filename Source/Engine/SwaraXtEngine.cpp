@@ -22,6 +22,71 @@ namespace {
 
 constexpr double kLfoBeatsPerCycle[] { 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 };
 
+// Signed Shruthi groove LUTs (resources.cc, shruthi-1 56bfe78). Each entry is
+// the interval that begins when the clock leaves that step. The pre-clock
+// sentinel 0xff selects entry 15 for the first step.
+constexpr int kGrooveLut[6][16] = {
+    { 127, 127, -127, -127, 127, 127, -127, -127, 127, 127, -127, -127, 127, 127, -127, -127 },
+    { 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127 },
+    { -63, -63, 127, 0, -127, 0, 0, 88, 0, 0, 88, -50, -88, 0, 88, 0 },
+    { 19, 44, 93, -4, 32, -53, -90, -127, 117, 32, -102, -53, 105, -53, 93, -53 },
+    { 88, -101, 107, -95, 88, -88, 50, -38, 65, -88, 101, -95, 101, -127, 63, -31 },
+    { 70, -84, 84, -112, 84, -98, 112, -98, 54, -70, 127, -84, 127, -112, 84, -84 }
+};
+
+int grooveSwing(int groove, int index, int amount) noexcept
+{
+    const int product = kGrooveLut[groove][index] * amount;
+    // floor(product / 512), matching S8U8MulShift8 followed by an arithmetic >> 1.
+    if (product >= 0)
+        return product / 512;
+    return -((-product + 511) / 512);
+}
+
+int grooveScaleNum(int groove, int index, int amount) noexcept
+{
+    return 128 + grooveSwing(groove, index, amount);
+}
+
+int hostPatternLength(const shruthi::SequencerSettings& settings) noexcept
+{
+    const int length = settings.pattern_size;
+    return length >= 1 && length <= 16 ? length : 16;
+}
+
+int hostGrooveTemplate(const shruthi::SequencerSettings& settings) noexcept
+{
+    const int groove = settings.seq_groove_template;
+    return groove >= 0 && groove <= 5 ? groove : 0;
+}
+
+int stepGrooveIndex(uint64_t step, int length) noexcept
+{
+    if (step == 0)
+        return 15;
+    return static_cast<int>((step - 1) % static_cast<uint64_t>(length));
+}
+
+int64_t grooveScaleSum(uint64_t stepCount, int length, int groove, int amount) noexcept
+{
+    if (stepCount == 0)
+        return 0;
+    int64_t sum = grooveScaleNum(groove, 15, amount);
+    const uint64_t periodic = stepCount - 1;
+    const uint64_t cycles = periodic / static_cast<uint64_t>(length);
+    const int remainder = static_cast<int>(periodic % static_cast<uint64_t>(length));
+    int64_t cycle = 0;
+    int prefix = 0;
+    for (int index = 0; index < length; ++index)
+    {
+        const int scale = grooveScaleNum(groove, index, amount);
+        cycle += scale;
+        if (index < remainder)
+            prefix += scale;
+    }
+    return sum + static_cast<int64_t>(cycles) * cycle + prefix;
+}
+
 bool sameSequencePayload(const SequenceSnapshot& a, const SequenceSnapshot& b) noexcept
 {
     // ARP pattern is an independent live control, applied separately below.
@@ -393,6 +458,7 @@ void SwaraXtEngine::resetHostState() noexcept
     blockPpqPerSample_ = 0.0;
     hostClockEventCount_ = 0;
     lastHostClockOffset_ = -1;
+    hostTimingKey_ = 0xffffffffu;
 }
 
 void SwaraXtEngine::updateHostLfoRates(double bpm) noexcept
@@ -412,17 +478,65 @@ void SwaraXtEngine::updateHostLfoRates(double bpm) noexcept
 
 double SwaraXtEngine::hostTickPpq(uint64_t tick) const noexcept
 {
+    // Past the host PPQ contract the mapping stays finite and strictly after
+    // every in-range position, so the inverse search cannot walk tick by tick.
+    if (tick > (uint64_t{1} << 42))
+        return std::numeric_limits<double>::max();
+
+    const auto& settings = part_.sequencer_settings();
     const uint64_t stepTicks = juce::jmax<uint64_t>(1, part_.clock_ticks_per_step());
-    const uint64_t pairTicks = stepTicks * 2;
-    const uint64_t pair = tick / pairTicks;
-    const uint64_t position = tick % pairTicks;
-    const double stepBeats = static_cast<double>(stepTicks) / 24.0;
-    const double swing = static_cast<double>(sequencerSwing_) / 127.0 * 0.45;
-    const double pairStart = static_cast<double>(pair) * stepBeats * 2.0;
-    if (position < stepTicks)
-        return pairStart + static_cast<double>(position) / 24.0 * (1.0 + swing);
-    return pairStart + stepBeats * (1.0 + swing)
-        + static_cast<double>(position - stepTicks) / 24.0 * (1.0 - swing);
+    const int length = hostPatternLength(settings);
+    const int groove = hostGrooveTemplate(settings);
+    const int amount = juce::jlimit(0, 127, sequencerSwing_);
+    const uint64_t step = tick / stepTicks;
+    const uint64_t position = tick % stepTicks;
+    const int64_t units = grooveScaleSum(step, length, groove, amount) * static_cast<int64_t>(stepTicks)
+        + static_cast<int64_t>(position) * grooveScaleNum(groove, stepGrooveIndex(step, length), amount);
+    return static_cast<double>(units) / 3072.0;
+}
+
+uint64_t SwaraXtEngine::hostClockTickAtPpq(double ppq) const noexcept
+{
+    if (!(ppq > 0.0))
+        return 0;
+
+    // Every groove scale is in [96, 159] / 128. The widened constants keep the
+    // bracket valid if a division rounds, and the search is at most 64 probes.
+    constexpr double kMinScale = 0.74;
+    constexpr double kMaxScale = 1.25;
+    const double straightTicks = ppq * 24.0;
+    uint64_t low = 0;
+    const double lowEstimate = straightTicks / kMaxScale;
+    if (lowEstimate > 4.0 && std::isfinite(lowEstimate))
+        low = static_cast<uint64_t>(lowEstimate) - 4;
+
+    double highEstimate = straightTicks / kMinScale + 4.0;
+    constexpr double kMaxTick = static_cast<double>(uint64_t{1} << 42);
+    if (! std::isfinite(highEstimate) || highEstimate > kMaxTick)
+        highEstimate = kMaxTick;
+    uint64_t high = static_cast<uint64_t>(std::ceil(highEstimate));
+    if (high < low)
+        high = low;
+
+    for (int iteration = 0; iteration < 64 && low < high; ++iteration)
+    {
+        const uint64_t mid = low + (high - low) / 2;
+        if (hostTickPpq(mid) < ppq)
+            low = mid + 1;
+        else
+            high = mid;
+    }
+    return low;
+}
+
+uint32_t SwaraXtEngine::currentHostTimingKey() const noexcept
+{
+    const auto& settings = part_.sequencer_settings();
+    const uint32_t amount = static_cast<uint32_t>(sequencerSwing_) & 0xffu;
+    const uint32_t groove = static_cast<uint32_t>(settings.seq_groove_template) & 0xffu;
+    const uint32_t length = static_cast<uint32_t>(settings.pattern_size) & 0xffu;
+    const uint32_t division = static_cast<uint32_t>(part_.clock_ticks_per_step()) & 0xffu;
+    return amount | (groove << 8) | (length << 16) | (division << 24);
 }
 
 void SwaraXtEngine::prepareHostClock(const HostTransportSnapshot& transport, int numSamples) noexcept
@@ -460,16 +574,24 @@ void SwaraXtEngine::prepareHostClock(const HostTransportSnapshot& transport, int
         return;
     }
 
+    const uint32_t timingKey = currentHostTimingKey();
+    const bool timingChanged = timingKey != hostTimingKey_;
+    if (timingChanged)
+    {
+        // A groove, amount, length, or division edit remaps absolute tick
+        // times. Realign to the current PPQ instead of emitting the backlog.
+        hostTimingKey_ = timingKey;
+        hostClockNeedsAlignment_ = true;
+    }
+
     if (! hostTransportWasPlaying_ || discontinuity || hostClockNeedsAlignment_)
     {
         // Alignment clears firmware-generated identities. Retire their external
-        // notes first so a seek cannot orphan the previous step's release.
-        if (discontinuity)
+        // notes first so a seek or a groove remap cannot orphan the previous
+        // step's release. The opening start has no held sequencer notes.
+        if (discontinuity || (timingChanged && hostTransportWasPlaying_))
             forceFlushSequencerMidiRelease(hostBlockOrigin_);
-        nextHostClockTick_ = static_cast<uint64_t>(
-            juce::jmax(0.0, std::floor(blockStartPpq_ * 24.0)));
-        while (hostTickPpq(nextHostClockTick_) < blockStartPpq_ - tolerance)
-            ++nextHostClockTick_;
+        nextHostClockTick_ = hostClockTickAtPpq(blockStartPpq_ - tolerance);
         part_.AlignExternalClock(nextHostClockTick_);
         hostClockNeedsAlignment_ = false;
     }
@@ -1349,12 +1471,23 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         if (sequencerHostSync_ && transport.isPlaying)
         {
             const double samplePpq = blockStartPpq_ + blockPpqPerSample_ * static_cast<double>(i);
-            while (hostTickPpq(nextHostClockTick_) <= samplePpq + blockPpqPerSample_ * 0.5)
+            const double duePpq = samplePpq + blockPpqPerSample_ * 0.5;
+            int dispatched = 0;
+            while (dispatched < 2 && hostTickPpq(nextHostClockTick_) <= duePpq)
             {
                 part_.Clock(false);
                 ++hostClockEventCount_;
                 lastHostClockOffset_ = i;
                 ++nextHostClockTick_;
+                ++dispatched;
+            }
+            // Valid tempos cannot place a third clock inside one sample.
+            // If the mapping is nevertheless still behind, jump to the tick
+            // that belongs at this position instead of catching up one by one.
+            if (hostTickPpq(nextHostClockTick_) <= duePpq)
+            {
+                nextHostClockTick_ = hostClockTickAtPpq(duePpq);
+                part_.AlignExternalClock(nextHostClockTick_);
             }
             updateDormantWakeState();
         }

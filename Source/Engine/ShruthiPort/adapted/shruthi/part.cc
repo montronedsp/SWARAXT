@@ -480,7 +480,14 @@ void Part::AlignExternalClock(uint64_t ticksBeforeNextClock) {
     arp_seq_step_ = 0xff;
     arp_seq_prescaler_ = 0;
   } else {
-    arp_seq_step_ = static_cast<uint8_t>(((ticksBeforeNextClock - 1) / duration) & 0x0f);
+    // NextStep() wraps on pattern_size. A 16-step mask leaves lengths 1–15
+    // one or more steps away from uninterrupted playback once the cycle repeats.
+    // Length 16 keeps the original mask: stepIndex % 16 == stepIndex & 0x0f.
+    const uint64_t stepIndex = (ticksBeforeNextClock - 1) / duration;
+    const uint8_t length = sequencer_settings_.pattern_size;
+    arp_seq_step_ = length >= 1 && length < 16
+        ? static_cast<uint8_t>(stepIndex % length)
+        : static_cast<uint8_t>(stepIndex & 0x0f);
     arp_seq_prescaler_ = static_cast<uint8_t>(ticksBeforeNextClock % duration);
   }
   lfo_step_[0] = static_cast<uint16_t>(ticksBeforeNextClock % 1536);
