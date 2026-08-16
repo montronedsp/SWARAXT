@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="22.9723" height="15.0348" viewBox="36.8571 53.3788 22.9723 15.0348">
+  <g id="asset">
+    <rect x="508" y="417" width="263" height="158" rx="5" ry="5" style="fill:none;stroke:#00c9ff;stroke-width:1.2" id="mod-matrix-list-placeholder" />
+    <path d="M 518,436.5 H 761" style="fill:none;stroke:#ffffff;stroke-width:0.55;stroke-opacity:0.30" id="mod-matrix-rule-1" />
+    <path d="M 518,456.0 H 761" style="fill:none;stroke:#ffffff;stroke-width:0.55;stroke-opacity:0.30" id="mod-matrix-rule-2" />
+    <path d="M 518,475.5 H 761" style="fill:none;stroke:#ffffff;stroke-width:0.55;stroke-opacity:0.30" id="mod-matrix-rule-3" />
+    <path d="M 518,495.0 H 761" style="fill:none;stroke:#ffffff;stroke-width:0.55;stroke-opacity:0.30" id="mod-matrix-rule-4" />
+    <path d="M 518,514.5 H 761" style="fill:none;stroke:#ffffff;stroke-width:0.55;stroke-opacity:0.30" id="mod-matrix-rule-5" />
+    <path d="M 518,534.0 H 761" style="fill:none;stroke:#ffffff;stroke-width:0.55;stroke-opacity:0.30" id="mod-matrix-rule-6" />
+    <path d="M 518,553.5 H 761" style="fill:none;stroke:#ffffff;stroke-width:0.55;stroke-opacity:0.30" id="mod-matrix-rule-7" />
+  </g>
+</svg>

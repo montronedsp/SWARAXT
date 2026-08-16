@@ -1,0 +1,20 @@
+# Four-stage OTA VCF working netlist
+
+# Generated from circuit transcription and AS3109 priors.
+# Unresolved values are marked null.
+
+ic14: IR3109
+ic15: BA662A
+stages:
+  - { id: 1, load: passive, C: 240e-12, R_prior: 68e3 }
+  - { id: 2, load: active,  C: 240e-12, R_prior: 68e3 }
+  - { id: 3, load: passive, C: 240e-12, R_prior: 68e3 }
+  - { id: 4, load: active,  C: 240e-12, R_prior: 68e3 }
+resonance:
+  phase_splitter: true
+  diodes: [D31, D32]
+  output_contribution: true
+  input_q_boost: false
+calibration:
+  vcf_width_trim: VR8
+unresolved_external_resistors: true

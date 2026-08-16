@@ -1,0 +1,58 @@
+# Build trees and generated files
+build/
+build-*/
+cmake-build-*/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.sln
+*.vcxproj*
+*.xcodeproj/
+*.xcworkspace/
+
+# Local dependencies and validation artifacts
+.cache/
+artifacts/
+
+# Binary outputs
+*.vst3/
+*.component/
+*.appex/
+*.dll
+*.exe
+*.so
+*.dylib
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.obj
+*.o
+*.o.d
+
+# Editors and operating systems
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+.DS_Store
+Thumbs.db
+
+# Temporary files and secrets
+__pycache__/
+*.pyc
+.venv/
+venv/
+_tmp_*
+*.log
+.env
+.env.*
+*.pem
+*.key
+secrets/
