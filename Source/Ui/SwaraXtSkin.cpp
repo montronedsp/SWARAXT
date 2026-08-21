@@ -433,4 +433,23 @@ void UiPreferences::save(SkinId skin, DecorationId decoration, GuiSize size)
     properties->saveIfNeeded();
 }
 
+swaraxt::FilterQuality UiPreferences::loadFilterQuality()
+{
+    const auto properties = open();
+    const auto value = properties->getValue("filter_quality", "high");
+    if (value == "normal") return swaraxt::FilterQuality::normal;
+    if (value == "eco") return swaraxt::FilterQuality::eco;
+    return swaraxt::FilterQuality::high;
+}
+
+void UiPreferences::saveFilterQuality(swaraxt::FilterQuality quality)
+{
+    auto properties = open();
+    const char* value = "high";
+    if (quality == swaraxt::FilterQuality::normal) value = "normal";
+    else if (quality == swaraxt::FilterQuality::eco) value = "eco";
+    properties->setValue("filter_quality", value);
+    properties->saveIfNeeded();
+}
+
 }  // namespace swaraxt::ui

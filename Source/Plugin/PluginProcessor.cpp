@@ -4,6 +4,7 @@
 #include "Plugin/PluginProcessor.h"
 
 #include "Plugin/PluginEditor.h"
+#include "Ui/SwaraXtSkin.h"
 
 #include <cmath>
 #include <algorithm>
@@ -14,6 +15,7 @@ SwaraXtAudioProcessor::SwaraXtAudioProcessor()
 {
     parameterCache_.bind(apvts_);
     engine_.bindParameters(parameterCache_);
+    engine_.setFilterQuality(swaraxt::ui::UiPreferences::loadFilterQuality());
     // Preset values only — engine reset happens in prepareToPlay().
     loadFactoryPreset(0);
 }
@@ -110,7 +112,13 @@ juce::AudioProcessorEditor* SwaraXtAudioProcessor::createEditor()
 
 void SwaraXtAudioProcessor::setCurrentProgram(int index)
 {
-    currentProgram_ = juce::jlimit(0, getNumPrograms() - 1, index);
+    const int clamped = juce::jlimit(0, getNumPrograms() - 1, index);
+    // Hosts commonly re-assert the current program when an editor opens.
+    // Do not reload or clear a user preset when the index is unchanged.
+    if (clamped == currentProgram_)
+        return;
+
+    currentProgram_ = clamped;
     currentUserPresetName_.clear();
     loadFactoryPreset(currentProgram_);
 }
@@ -337,7 +345,11 @@ bool SwaraXtAudioProcessor::loadPresetEntry(const PresetEntry& entry, juce::Stri
     error.clear();
     if (entry.isFactory)
     {
-        setCurrentProgram(entry.factoryIndex);
+        // Explicit UI/host-adjacent load must apply even if the factory index
+        // already matches (reload factory defaults after edits).
+        currentUserPresetName_.clear();
+        currentProgram_ = juce::jlimit(0, getNumPrograms() - 1, entry.factoryIndex);
+        loadFactoryPreset(currentProgram_);
         return true;
     }
 

@@ -23,6 +23,12 @@ class Ir3109Pole {
         double output = 0.0;
     };
 
+    struct State
+    {
+        double integrator = 0.0;
+        double output = 0.0;
+    };
+
     explicit Ir3109Pole(Ir3109StageTraits traits) noexcept
         : traits_(traits)
     {
@@ -38,6 +44,7 @@ class Ir3109Pole {
     {
         sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
         updateTptGain();
+        updateSlewLimit();
     }
 
     // gm/C = 2*pi*f, with the 240 pF capacitor retained as provenance for the
@@ -72,11 +79,20 @@ class Ir3109Pole {
 
     double process(double inputVolts) noexcept
     {
-        const Evaluation e = evaluate(inputVolts);
-        state_ = clampFinite(e.nextState, -8.0, 8.0);
-        const double slewed = applySlew(e.output);
-        bufferOut_ = clampFinite(slewed, -8.0, 8.0);
+        const State next = preview(inputVolts, snapshot());
+        state_ = next.integrator;
+        bufferOut_ = next.output;
         return bufferOut_;
+    }
+
+    State snapshot() const noexcept { return { state_, bufferOut_ }; }
+
+    State preview(double inputVolts, State s) const noexcept
+    {
+        const Evaluation e = evaluateFromState(inputVolts, s.integrator);
+        s.integrator = clampFinite(e.nextState, -8.0, 8.0);
+        s.output = clampFinite(applySlewTo(e.output, s.output), -8.0, 8.0);
+        return s;
     }
 
     double output() const noexcept { return bufferOut_; }
@@ -116,14 +132,23 @@ class Ir3109Pole {
         return clampFinite(y, -8.0, 8.0);
     }
 
-    double applySlew(double target) noexcept
+    void updateSlewLimit() noexcept
     {
-        const double maxDelta = traits_.slewRateVoltsPerSecond / sampleRate_;
-        const double delta = target - bufferOut_;
-        if (delta > maxDelta)
-            return bufferOut_ + maxDelta;
-        if (delta < -maxDelta)
-            return bufferOut_ - maxDelta;
+        maxSlewDelta_ = traits_.slewRateVoltsPerSecond / sampleRate_;
+        // Stage voltages are clamped to +/-8 V, so a per-sample slew larger
+        // than the full swing cannot affect the output.
+        slewInactive_ = ! std::isfinite(maxSlewDelta_) || maxSlewDelta_ >= 16.0;
+    }
+
+    double applySlewTo(double target, double previous) const noexcept
+    {
+        if (slewInactive_)
+            return target;
+        const double delta = target - previous;
+        if (delta > maxSlewDelta_)
+            return previous + maxSlewDelta_;
+        if (delta < -maxSlewDelta_)
+            return previous - maxSlewDelta_;
         return target;
     }
 
@@ -133,6 +158,8 @@ class Ir3109Pole {
     double tptG_ = 0.01;
     double state_ = 0.0;
     double bufferOut_ = 0.0;
+    double maxSlewDelta_ = 16.0;
+    bool slewInactive_ = true;
 };
 
 }  // namespace swaraxt

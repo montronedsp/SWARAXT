@@ -8,6 +8,8 @@
 #include <array>
 #include <memory>
 
+#include "Engine/Filter/FilterQuality.h"
+
 namespace swaraxt::ui {
 
 enum class SkinId { midnightGold, neonCobalt, pastel, jungle, rossocorsa };
@@ -145,7 +147,9 @@ class UiPreferences {
     static SkinId loadSkin();
     static DecorationId loadDecoration();
     static GuiSize loadGuiSize();
+    static swaraxt::FilterQuality loadFilterQuality();
     static void save(SkinId skin, DecorationId decoration, GuiSize size);
+    static void saveFilterQuality(swaraxt::FilterQuality quality);
 
  private:
     static std::unique_ptr<juce::PropertiesFile> open();

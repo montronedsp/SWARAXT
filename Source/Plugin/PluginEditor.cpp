@@ -136,9 +136,12 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     swaraxt::ui::SkinRegistry::setActive(skinId_);
     lookAndFeel_.applySkin();
     guiSize_ = swaraxt::ui::UiPreferences::loadGuiSize();
+    filterQuality_ = swaraxt::ui::UiPreferences::loadFilterQuality();
+    processor_.setFilterQuality(filterQuality_);
     addAndMakeVisible(designSurface_);
     designSurface_.addMouseListener(this, true);
     presetSelector_.setJustificationType(juce::Justification::centred);
+    presetSelector_.setScrollWheelEnabled(false);
     presetSelector_.addListener(this);
     designSurface_.addAndMakeVisible(presetSelector_);
 
@@ -268,10 +271,16 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     sizeMenu.addItem(202, "Medium", true, guiSize_ == GuiSize::medium);
     sizeMenu.addItem(203, "Large", true, guiSize_ == GuiSize::large);
 
+    juce::PopupMenu qualityMenu;
+    qualityMenu.addItem(301, "High", true, filterQuality_ == swaraxt::FilterQuality::high);
+    qualityMenu.addItem(302, "Normal", true, filterQuality_ == swaraxt::FilterQuality::normal);
+    qualityMenu.addItem(303, "Eco", true, filterQuality_ == swaraxt::FilterQuality::eco);
+
     juce::PopupMenu menu;
     menu.addSubMenu("Skin", skinMenu);
     menu.addSubMenu("Decoration", decorationMenu);
     menu.addSubMenu("GUI Size", sizeMenu);
+    menu.addSubMenu("Filter Quality", qualityMenu);
     juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
                        [safeThis](int result) {
@@ -286,6 +295,9 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
         if (result == 201) safeThis->applyGuiSize(GuiSize::small, true);
         if (result == 202) safeThis->applyGuiSize(GuiSize::medium, true);
         if (result == 203) safeThis->applyGuiSize(GuiSize::large, true);
+        if (result == 301) safeThis->applyFilterQuality(swaraxt::FilterQuality::high, true);
+        if (result == 302) safeThis->applyFilterQuality(swaraxt::FilterQuality::normal, true);
+        if (result == 303) safeThis->applyFilterQuality(swaraxt::FilterQuality::eco, true);
     });
 }
 
@@ -328,6 +340,14 @@ void SwaraXtAudioProcessorEditor::applyGuiSize(swaraxt::ui::GuiSize size, bool p
         swaraxt::ui::UiPreferences::save(skinId_, decorationId_, guiSize_);
 }
 
+void SwaraXtAudioProcessorEditor::applyFilterQuality(swaraxt::FilterQuality quality, bool persist)
+{
+    filterQuality_ = quality;
+    processor_.setFilterQuality(quality);
+    if (persist)
+        swaraxt::ui::UiPreferences::saveFilterQuality(quality);
+}
+
 void SwaraXtAudioProcessorEditor::showAboutPopup()
 {
     auto panel = std::make_unique<AboutPanel>(lookAndFeel_);
@@ -362,7 +382,10 @@ void SwaraXtAudioProcessorEditor::refreshPresetList()
     const auto currentName = processor_.currentPresetName();
     const bool currentIsUser = processor_.currentPresetIsUser();
     presetEntries_ = processor_.getPresetEntries();
-    refreshingPresets_ = true;
+
+    // Detach while rebuilding so population cannot load a preset.
+    const juce::ScopedValueSetter<bool> guard(refreshingPresets_, true);
+    presetSelector_.removeListener(this);
     presetSelector_.clear(juce::dontSendNotification);
     presetSelector_.addSectionHeading("FACTORY");
     int firstUser = -1;
@@ -382,10 +405,14 @@ void SwaraXtAudioProcessorEditor::refreshPresetList()
         if (presetEntries_[index].name == currentName
             && presetEntries_[index].isFactory != currentIsUser)
             selected = static_cast<int>(index) + 1;
-    if (selected == 0 && ! presetEntries_.empty())
-        selected = 1;
-    presetSelector_.setSelectedId(selected, juce::dontSendNotification);
-    refreshingPresets_ = false;
+
+    if (selected > 0)
+        presetSelector_.setSelectedId(selected, juce::dontSendNotification);
+    else
+        // Keep the authoritative processor name visible without selecting another entry.
+        presetSelector_.setText(currentName, juce::dontSendNotification);
+
+    presetSelector_.addListener(this);
 }
 
 void SwaraXtAudioProcessorEditor::comboBoxChanged(juce::ComboBox* combo)
@@ -395,8 +422,14 @@ void SwaraXtAudioProcessorEditor::comboBoxChanged(juce::ComboBox* combo)
     const int index = presetSelector_.getSelectedId() - 1;
     if (index < 0 || index >= static_cast<int>(presetEntries_.size()))
         return;
+
+    const auto& entry = presetEntries_[static_cast<size_t>(index)];
+    if (entry.name == processor_.currentPresetName()
+        && entry.isFactory == ! processor_.currentPresetIsUser())
+        return;
+
     juce::String error;
-    if (! processor_.loadPresetEntry(presetEntries_[static_cast<size_t>(index)], error))
+    if (! processor_.loadPresetEntry(entry, error))
         showPresetError(error);
 }
 

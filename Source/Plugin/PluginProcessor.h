@@ -58,6 +58,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor {
     bool currentPresetIsUser() const noexcept { return currentUserPresetName_.isNotEmpty(); }
     juce::File userPresetDirectory() const;
     void setUserPresetDirectoryForTests(const juce::File& directory);
+    void setFilterQuality(swaraxt::FilterQuality quality) noexcept { engine_.setFilterQuality(quality); }
+    swaraxt::FilterQuality filterQuality() const noexcept { return engine_.filterQuality(); }
 
     static constexpr int kStateVersion = 2;
     static constexpr const char* kStateRoot = "SWARAXT_STATE";

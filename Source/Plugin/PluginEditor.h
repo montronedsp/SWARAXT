@@ -78,12 +78,14 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void applySkin(swaraxt::ui::SkinId skin, bool persist);
     void applyDecoration(swaraxt::ui::DecorationId decoration, bool persist);
     void applyGuiSize(swaraxt::ui::GuiSize size, bool persist);
+    void applyFilterQuality(swaraxt::FilterQuality quality, bool persist);
 
     SwaraXtAudioProcessor& processor_;
     swaraxt::ui::SwaraXtLookAndFeel lookAndFeel_;
     swaraxt::ui::SkinId skinId_ = swaraxt::ui::SkinId::pastel;
     swaraxt::ui::DecorationId decorationId_ = swaraxt::ui::DecorationId::legacy;
     swaraxt::ui::GuiSize guiSize_ = swaraxt::ui::GuiSize::medium;
+    swaraxt::FilterQuality filterQuality_ = swaraxt::FilterQuality::high;
     swaraxt::ui::SkinAssetCache assets_ { swaraxt::ui::SkinRegistry::pastel() };
     swaraxt::ui::DecorationAssetCache decorationAssets_ {
         swaraxt::ui::DecorationId::legacy, swaraxt::ui::SkinRegistry::pastel().palette

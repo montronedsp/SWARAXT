@@ -1,8 +1,8 @@
 param(
     [ValidateSet("Release", "Debug")]
     [string]$Config = "Release",
-    [string[]]$Target = @("SwaraXT_VST3", "SwaraXT_Standalone"),
-    [string]$BuildDirectory = ""
+    [string]$BuildDirectory = "",
+    [string[]]$Target = @("SwaraXT_VST3", "SwaraXT_Standalone")
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,5 +11,9 @@ if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path $repoRoot ("build-" + $Config.ToLowerInvariant())
 }
 
-cmake --build $BuildDirectory --config $Config --target @Target
-if ($LASTEXITCODE -ne 0) { throw "Build failed." }
+$cmakeArgs = @("--build", $BuildDirectory, "--config", $Config)
+foreach ($t in $Target) {
+    $cmakeArgs += @("--target", $t)
+}
+& cmake @cmakeArgs
+if ($LASTEXITCODE -ne 0) { throw "CMake build failed." }

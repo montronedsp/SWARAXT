@@ -105,25 +105,10 @@ class MidiDispatcher : public midi::MidiDevice {
 
     void ProgramChange(uint8_t channel, uint8_t program)
     {
+        // MIDI Program Change is not part of the SWARA XT preset model.
+        // Plugin programs are owned by the processor/host program API and GUI.
         (void) channel;
-        const uint16_t n = static_cast<uint16_t>(program + (current_bank_ << 7));
-        if (current_bank_ >= 0x40)
-        {
-            const uint16_t seqIndex = static_cast<uint16_t>(program + ((current_bank_ - 0x40) << 7));
-            if (storage_ != nullptr && part_ != nullptr
-                && seqIndex < storage_->size<SequencerSettings>())
-            {
-                storage_->LoadSequence(seqIndex);
-                part_->Touch(false);
-            }
-        }
-        else if (storage_ != nullptr && part_ != nullptr && n < storage_->size<Patch>())
-        {
-            Editor::set_current_patch_number(n);
-            storage_->LoadPatch(n);
-            storage_->LoadSequence(n);
-            part_->Touch(false);
-        }
+        (void) program;
     }
 
     void Reset()

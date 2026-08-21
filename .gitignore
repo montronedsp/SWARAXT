@@ -3,20 +3,33 @@ build/
 build-*/
 cmake-build-*/
 out/
+bin/
+obj/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
+CMakeUserPresets.json
 *.sln
 *.vcxproj*
 *.xcodeproj/
 *.xcworkspace/
+*.ninja
+.ninja_deps
+.ninja_log
 
 # Local dependencies and validation artifacts
 .cache/
 artifacts/
+package/
+_tmp_*
+*.log
+*.dmp
+*.wav
+*.aiff
+*.flac
 
-# Binary outputs
+# Binary outputs / packages
 *.vst3/
 *.component/
 *.appex/
@@ -32,6 +45,9 @@ artifacts/
 *.obj
 *.o
 *.o.d
+*.zip
+*.tar.gz
+*.7z
 
 # Editors and operating systems
 .vs/
@@ -41,6 +57,7 @@ artifacts/
 *.suo
 *.VC.db
 *.VC.opendb
+*.opendb
 .DS_Store
 Thumbs.db
 
@@ -49,8 +66,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-_tmp_*
-*.log
 .env
 .env.*
 *.pem

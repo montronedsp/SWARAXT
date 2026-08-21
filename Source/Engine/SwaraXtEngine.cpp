@@ -34,6 +34,7 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
 
     // Filter always runs at the Shruthi internal rate (pre-SRC).
     filter_.prepare(kInternalSampleRate);
+    applyPendingFilterQuality();
     prepared_ = true;
 }
 
@@ -196,6 +197,14 @@ void SwaraXtEngine::prepareHostClock(const HostTransportSnapshot& transport, int
     fallbackPpq_ = expectedNextPpq_;
 }
 
+void SwaraXtEngine::applyPendingFilterQuality() noexcept
+{
+    const auto quality = static_cast<FilterQuality>(
+        requestedFilterQuality_.load(std::memory_order_relaxed));
+    if (filter_.quality() != quality)
+        filter_.setQuality(quality);
+}
+
 void SwaraXtEngine::updateFilterFromShruthi()
 {
     // Envelope 1 is the conventional Shruthi filter-envelope source (0..255).
@@ -328,6 +337,7 @@ void SwaraXtEngine::renderInternalBlock()
     cpuProfile_.nativeVoiceNanoseconds += static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(ProfileClock::now() - voiceStart).count());
 #endif
+    applyPendingFilterQuality();
     updateFilterFromShruthi();
 
     const uint8_t vca = part_.voice().vca();

@@ -1,7 +1,8 @@
 param(
     [ValidateSet("Release", "Debug")]
     [string]$Config = "Release",
-    [string]$BuildDirectory = ""
+    [string]$BuildDirectory = "",
+    [switch]$EnableTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,5 +11,6 @@ if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path $repoRoot ("build-" + $Config.ToLowerInvariant())
 }
 
-cmake -S $repoRoot -B $BuildDirectory "-DCMAKE_BUILD_TYPE=$Config"
+$tests = if ($EnableTests) { "ON" } else { "OFF" }
+cmake -S $repoRoot -B $BuildDirectory "-DCMAKE_BUILD_TYPE=$Config" "-DSWARA_BUILD_TESTS=$tests"
 if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed." }

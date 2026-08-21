@@ -1,6 +1,6 @@
 Swara XT
 MontroneDSP
-Version 1.0.0
+Version 1.1.0
 
 VST3 — per-user installation:
 

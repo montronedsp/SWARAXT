@@ -394,6 +394,7 @@ void runSampleRateChecks()
     for (double hostRate : kHostRates)
     {
         SwaraXtAudioProcessor processor;
+        processor.setFilterQuality(swaraxt::FilterQuality::high);
         processor.prepareToPlay(hostRate, 128);
         expect(processor.engineForTests().filter().oversamplingFactor() == 4,
                "cutoff_sample_rate_consistency");

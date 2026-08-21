@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 
 namespace juce {
@@ -123,6 +124,14 @@ class SwaraXtEngine {
 
     SwaraXtFilter& filter() noexcept { return filter_; }
     const SwaraXtFilter& filter() const noexcept { return filter_; }
+    void setFilterQuality(FilterQuality quality) noexcept
+    {
+        requestedFilterQuality_.store(static_cast<uint8_t>(quality), std::memory_order_relaxed);
+    }
+    FilterQuality filterQuality() const noexcept
+    {
+        return static_cast<FilterQuality>(requestedFilterQuality_.load(std::memory_order_relaxed));
+    }
     shruthi::Part& shruthiPart() noexcept { return part_; }
     const shruthi::Part& shruthiPart() const noexcept { return part_; }
     uint16_t randomStateForTests() const noexcept { return random_.state(); }
@@ -167,6 +176,7 @@ class SwaraXtEngine {
     void dispatchMidi(const PendingMidi& event);
     void collectMidiEvents(const juce::MidiBuffer& midi, int startSample, int numSamples);
     void updateFilterFromShruthi();
+    void applyPendingFilterQuality() noexcept;
     void updateHostLfoRates(double bpm) noexcept;
     void prepareHostClock(const HostTransportSnapshot& transport, int numSamples) noexcept;
     void resetHostState() noexcept;
@@ -182,6 +192,9 @@ class SwaraXtEngine {
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
+    std::atomic<uint8_t> requestedFilterQuality_ {
+        static_cast<uint8_t>(FilterQuality::high)
+    };
     ParameterCache* parameterCache_ = nullptr;
 
     // Fixed capacity — never allocate on the audio thread.
