@@ -1,0 +1,115 @@
+// Copyright 2009 Emilie Gillet.
+//
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+// Host adaptation for Swara XT by MontroneDSP; based on Shruthi commit 56bfe78.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+// -----------------------------------------------------------------------------
+
+#ifndef SHRUTHI_TRANSIENT_GENERATOR_H_
+#define SHRUTHI_TRANSIENT_GENERATOR_H_
+
+#include "avrlib/base.h"
+#include "shruthi/shruthi.h"
+
+#include "shruthi/patch.h"
+#include "shruthi/resources.h"
+#include "avrlib/random.h"
+#include "avrlib/op.h"
+
+namespace shruthi {
+
+class TransientGenerator {
+ public:
+  TransientGenerator() { }
+
+  inline void Render(uint8_t shape, uint8_t* buffer, uint8_t amount) {
+    if (shape < WAVEFORM_SUB_OSC_CLICK)  {
+      return;
+    }
+    if (shape > WAVEFORM_SUB_OSC_POP) {
+      shape = WAVEFORM_SUB_OSC_POP;
+    }
+    uint8_t size = kAudioBlockSize;
+    while (counter_ && size--) {
+      uint8_t value = RenderOne(shape);
+      uint8_t amplitude = U8U8MulShift8(gain_, amount);
+      *buffer++ = U8Mix(*buffer, value, amplitude);
+    }
+  }
+
+  inline void Trigger() {
+    counter_ = 255;
+  }
+
+ private:
+  uint8_t RenderOne(uint8_t shape) {
+    switch (shape) {
+      case WAVEFORM_SUB_OSC_CLICK:
+        return RenderClick();
+      case WAVEFORM_SUB_OSC_GLITCH:
+        return RenderGlitch();
+      case WAVEFORM_SUB_OSC_BLOW:
+        return RenderBlow();
+      case WAVEFORM_SUB_OSC_METALLIC:
+        return RenderMetallic();
+      default:
+        return RenderPop();
+    }
+  }
+
+  uint8_t RenderClick() {
+    gain_ = counter_;
+    --counter_;
+    return counter_ < 32 ? 255 : 0;
+  }
+  uint8_t RenderGlitch() {
+    gain_ = counter_;
+    --counter_;
+    rng_state_ = rng_state_ * 73 + counter_;
+    return rng_state_;
+  }
+  uint8_t RenderBlow() {
+    decimate_ += 2;
+    if (decimate_ >= 16) {
+      decimate_ -= 17;
+      rng_state_ = rng_state_ * 73 + counter_;
+      if (decimate_ == 0) {
+        --counter_;
+        gain_ = (counter_ & 0x80) ? ~counter_ : counter_;
+      }
+    }
+    return rng_state_;
+  }
+  uint8_t RenderMetallic() {
+    --counter_;
+    gain_ = counter_ >= 64 ? 255 : counter_ << 2;
+    return counter_ * 57;
+  }
+  uint8_t RenderPop() {
+    --counter_;
+    gain_ = counter_ > 0 ? 255 : 0;
+    return 0;
+  }
+
+  uint8_t rng_state_ = 0;
+  uint8_t decimate_ = 0;
+  uint8_t gain_ = 0;
+  uint8_t counter_ = 0;
+
+  DISALLOW_COPY_AND_ASSIGN(TransientGenerator);
+};
+
+}  // namespace shruthi
+
+#endif // SHRUTHI_OSCILLATOR_H_

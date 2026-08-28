@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1113" height="521" viewBox="93.5 74.5 1113 521">
+  <defs><pattern id="techTexture" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M0,24 L24,0 M-12,24 L12,0 M12,24 L36,0" fill="none" stroke="#7bc7ff" stroke-width="0.45" stroke-opacity="0.028"/><circle cx="4" cy="4" r="0.7" fill="#43bbff" fill-opacity="0.055"/><circle cx="18" cy="8" r="0.45" fill="#43bbff" fill-opacity="0.055"/><circle cx="10" cy="19" r="0.55" fill="#43bbff" fill-opacity="0.055"/></pattern></defs>
+  <rect x="93.5" y="74.5" width="1113" height="521" fill="url(#techTexture)"/>
+  <ellipse cx="210" cy="245" rx="260" ry="300" fill="#008cff" fill-opacity="0.10"/>
+  <ellipse cx="1120" cy="185" rx="250" ry="250" fill="#7a32ff" fill-opacity="0.12"/>
+  <ellipse cx="655" cy="520" rx="420" ry="160" fill="#005ecb" fill-opacity="0.05"/>
+  <path d="M102,530 L380,252" fill="none" stroke="#1fc8ff" stroke-width="1" stroke-opacity="0.07"/>
+  <path d="M945,590 L1195,340" fill="none" stroke="#1fc8ff" stroke-width="1" stroke-opacity="0.08"/>
+  <path d="M1000,120 L1185,120" fill="none" stroke="#1fc8ff" stroke-width="1" stroke-opacity="0.10"/>
+</svg>
