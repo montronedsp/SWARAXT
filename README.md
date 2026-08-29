@@ -22,7 +22,7 @@ It combines a digital dual-oscillator voice with a resonant four-pole low-pass f
 Install the latest official Linux x86_64 release (per-user, no root):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/montronedsp/swara-xt/main/scripts/install-linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/montronedsp/SWARAXT/main/scripts/install-linux.sh | bash
 ```
 
 This installs:
@@ -30,13 +30,13 @@ This installs:
 - VST3 → `~/.vst3/Swara XT.vst3`
 - Standalone → `~/.local/bin/swara-xt`
 
-Manual archives remain available from [GitHub Releases](https://github.com/montronedsp/swara-xt/releases).
+Manual archives remain available from [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases).
 
 ## Downloads
 
 ### Linux
 
-The official Linux build is available free from the [GitHub Releases](https://github.com/montronedsp/swara-xt/releases) page.
+The official Linux build is available free from the [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases) page.
 
 ### Windows & macOS
 

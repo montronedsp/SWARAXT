@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo="montronedsp/swara-xt"
+repo="montronedsp/SWARAXT"
 github="https://github.com/${repo}"
 
 echo "SWARA XT Linux Installer"
