@@ -337,6 +337,81 @@ void testInvalidRestoredState()
         expect(std::isfinite(buffer.getSample(0, i)), "malformed-state output is finite");
 }
 
+void testJuce9ParameterMetadataCompatibility()
+{
+    SwaraXtAudioProcessor proc;
+    const auto& parameters = proc.getParameters();
+    expect(parameters.size() == 88, "JUCE 9 preserves the host-visible parameter count");
+
+    std::set<std::string> parameterIds;
+    for (const auto* parameter : parameters)
+    {
+        expect(parameter != nullptr, "parameter list contains no null entries");
+        if (parameter != nullptr)
+        {
+            expect(parameter->getVersionHint() == 1,
+                   "all existing parameters preserve version hint 1");
+            const auto* withId = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameter);
+            expect(withId != nullptr, "all existing parameters retain stable string IDs");
+            if (withId != nullptr)
+                parameterIds.insert(withId->paramID.toStdString());
+        }
+    }
+    expect(parameterIds.size() == parameters.size(), "parameter IDs remain unique");
+
+    auto checkInt = [&](const char* id,
+                        const char* name,
+                        int minimum,
+                        int maximum,
+                        int defaultValue) {
+        const auto* parameter = dynamic_cast<const juce::AudioParameterInt*>(
+            proc.getApvts().getParameter(id));
+        expect(parameter != nullptr, "expected integer parameter type is preserved");
+        if (parameter == nullptr)
+            return;
+        expect(parameter->getParameterID() == id, "integer parameter ID is preserved");
+        expect(parameter->getName(128) == name, "integer parameter name is preserved");
+        expect(std::lround(parameter->convertFrom0to1(0.0f)) == minimum,
+               "integer parameter minimum is preserved");
+        expect(std::lround(parameter->convertFrom0to1(1.0f)) == maximum,
+               "integer parameter maximum is preserved");
+        const auto* base = static_cast<const juce::AudioProcessorParameter*>(parameter);
+        expect(std::lround(parameter->convertFrom0to1(base->getDefaultValue()))
+                   == defaultValue,
+               "integer parameter default is preserved");
+        expect(base->getNumSteps() == maximum - minimum + 1,
+               "integer parameter step count is preserved");
+        expect(parameter->isAutomatable(), "integer parameter remains automatable");
+        expect(! parameter->isDiscrete(),
+               "integer parameter preserves the JUCE 7 discrete flag contract");
+        expect(! parameter->isBoolean(), "integer parameter does not become boolean");
+    };
+
+    checkInt(swaraxt::IDs::osc1Range, "Osc 1 Range", -48, 48, 0);
+    checkInt(swaraxt::IDs::osc2Range, "Osc 2 Range", -48, 48, -12);
+    checkInt(swaraxt::IDs::osc1Option, "Mixer Operator", 0, 13, 0);
+    checkInt(swaraxt::IDs::lfo1Wave, "LFO1 Wave", 0, 20, 1);
+    checkInt(swaraxt::IDs::lfo2Wave, "LFO2 Wave", 0, 20, 1);
+    checkInt("mod.row1.source", "Mod Source 1", 0, 31, 0);
+    checkInt("mod.row1.destination", "Mod Dest 1", 0, 26, 4);
+    checkInt("mod.row1.amount", "Mod Amount 1", -63, 63, 0);
+
+    const auto* cutoff = dynamic_cast<const juce::AudioParameterFloat*>(
+        proc.getApvts().getParameter(swaraxt::IDs::filterCutoff));
+    expect(cutoff != nullptr, "cutoff remains an AudioParameterFloat");
+    if (cutoff != nullptr)
+    {
+        const auto* base = static_cast<const juce::AudioProcessorParameter*>(cutoff);
+        expect(cutoff->getParameterID() == swaraxt::IDs::filterCutoff,
+               "cutoff parameter ID is preserved");
+        expect(std::abs(cutoff->convertFrom0to1(base->getDefaultValue()) - 8000.0f) < 0.01f,
+               "cutoff physical default is preserved");
+        expect(std::abs(cutoff->convertFrom0to1(base->getValueForText("1 kHz")) - 1000.0f)
+                   < 0.01f,
+               "cutoff text parser is preserved");
+    }
+}
+
 void testPwmDutyAndParity()
 {
     constexpr double kRate = swaraxt::SwaraXtEngine::kInternalSampleRate;
@@ -967,6 +1042,7 @@ int main()
     juce::ScopedJuceInitialiser_GUI juce;
     testGuiEngineRanges();
     testInvalidRestoredState();
+    testJuce9ParameterMetadataCompatibility();
     testPwmDutyAndParity();
     testNonSquareUnchangedPath();
     testLfoTimbreRoute();

@@ -12,8 +12,8 @@ Portions are modified from the Mutable Instruments Shruthi firmware:
 The avrlib support tree is from pichenettes/avril at commit
 af7266e5b48ae20c0f83d4352c75c1068545cffc.
 
-JUCE 7.0.12 is used under its GPLv3 option at commit
-4f43011b96eb0636104cb3e433894cda98243626.
+JUCE 9.0.1 is used under its GPLv3 option at commit
+e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8.
 
 The embedded Alte DIN 1451 Mittelschrift font is distributed under the SIL Open
 Font License 1.1; the resource directory contains the applicable notice.

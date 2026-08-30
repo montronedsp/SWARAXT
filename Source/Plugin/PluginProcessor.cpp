@@ -7,12 +7,26 @@
 #include "Plugin/ApvtsFactoryPresets.h"
 #include "Plugin/ShruthiFactoryPresetData.h"
 #include "Plugin/ShruthiFactoryPresets.h"
-#include "Ui/SwaraXtSkin.h"
 
 #include "shruthi/patch.h"
 
 #include <cmath>
 #include <algorithm>
+
+namespace {
+
+constexpr const char* kFilterQualityProperty = "filterQuality";
+
+swaraxt::FilterQuality decodeFilterQuality(const juce::var& value)
+{
+    const int encoded = static_cast<int>(value);
+    if (encoded < static_cast<int>(swaraxt::FilterQuality::high)
+        || encoded > static_cast<int>(swaraxt::FilterQuality::eco))
+        return swaraxt::FilterQuality::normal;
+    return static_cast<swaraxt::FilterQuality>(encoded);
+}
+
+}  // namespace
 
 SwaraXtAudioProcessor::SwaraXtAudioProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
@@ -20,7 +34,6 @@ SwaraXtAudioProcessor::SwaraXtAudioProcessor()
 {
     parameterCache_.bind(apvts_);
     engine_.bindParameters(parameterCache_);
-    engine_.setFilterQuality(swaraxt::ui::UiPreferences::loadFilterQuality());
     // Preset values only — engine reset happens in prepareToPlay().
     loadFactoryPreset(0);
 }
@@ -482,6 +495,7 @@ void SwaraXtAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("currentProgram", currentProgram_, nullptr);
     state.setProperty("presetKind", currentUserPresetName_.isEmpty() ? "factory" : "user", nullptr);
     state.setProperty("presetName", currentPresetName(), nullptr);
+    state.setProperty(kFilterQualityProperty, static_cast<int>(filterQuality()), nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
   #endif
@@ -499,6 +513,9 @@ void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInByte
                 return;
 
             apvts_.replaceState(tree);
+            setFilterQuality(decodeFilterQuality(
+                tree.getProperty(kFilterQualityProperty,
+                                 static_cast<int>(swaraxt::FilterQuality::normal))));
             currentProgram_ = juce::jlimit(0,
                                            getNumPrograms() - 1,
                                            static_cast<int>(tree.getProperty("currentProgram", 0)));

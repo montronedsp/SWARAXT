@@ -8,13 +8,8 @@ if(NOT EXISTS "${SWARAXT_JUCE_DIR}/CMakeLists.txt")
         "JUCE not found at ${SWARAXT_JUCE_DIR}. Set SWARAXT_JUCE_DIR to a supported checkout")
 endif()
 
-if(APPLE)
-    set(swaraxt_juce_version_regex "project\\(JUCE VERSION 9\\.0\\.1")
-    set(swaraxt_juce_version_name "9.0.1")
-else()
-    set(swaraxt_juce_version_regex "project\\(JUCE VERSION 7\\.0\\.12")
-    set(swaraxt_juce_version_name "7.0.12")
-endif()
+set(swaraxt_juce_version_regex "project\\(JUCE VERSION 9\\.0\\.1")
+set(swaraxt_juce_version_name "9.0.1")
 
 file(STRINGS "${SWARAXT_JUCE_DIR}/CMakeLists.txt" swaraxt_juce_project_line
      REGEX "${swaraxt_juce_version_regex}")

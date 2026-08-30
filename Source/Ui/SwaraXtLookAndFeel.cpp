@@ -38,7 +38,7 @@ SwaraXtLookAndFeel::SwaraXtLookAndFeel()
 
 juce::Font SwaraXtLookAndFeel::regularFont(float height) const
 {
-    return juce::Font(regular_).withHeight(height);
+    return juce::Font(juce::FontOptions { regular_ }.withHeight(height));
 }
 
 void SwaraXtLookAndFeel::applySkin()

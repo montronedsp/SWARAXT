@@ -247,6 +247,71 @@ void testAudioEquivalence()
            "restored processor renders equivalent deterministic output");
 }
 
+void testFilterQualityDefaultAndStateLifecycle()
+{
+    SwaraXtAudioProcessor fresh;
+    expect(fresh.filterQuality() == swaraxt::FilterQuality::normal,
+           "fresh processor defaults to Normal filter quality");
+    fresh.prepareToPlay(48000.0, 128);
+    expect(fresh.engineForTests().filter().quality() == swaraxt::FilterQuality::normal,
+           "prepareToPlay applies the Normal filter path");
+
+    auto legacyState = captureState(fresh);
+    auto legacyXml = juce::AudioProcessor::getXmlFromBinary(
+        legacyState.getData(), static_cast<int>(legacyState.getSize()));
+    expect(legacyXml != nullptr, "captured quality state is valid XML");
+    if (legacyXml != nullptr)
+    {
+        auto tree = juce::ValueTree::fromXml(*legacyXml);
+        expect(tree.isValid(), "captured quality state is a valid ValueTree");
+        tree.removeProperty("filterQuality", nullptr);
+        if (auto withoutQuality = tree.createXml())
+            juce::AudioProcessor::copyXmlToBinary(*withoutQuality, legacyState);
+    }
+    SwaraXtAudioProcessor legacyRestored;
+    legacyRestored.setFilterQuality(swaraxt::FilterQuality::high);
+    restoreState(legacyRestored, legacyState);
+    expect(legacyRestored.filterQuality() == swaraxt::FilterQuality::normal,
+           "state without a quality property uses the new Normal default");
+
+    const std::array qualities {
+        swaraxt::FilterQuality::eco,
+        swaraxt::FilterQuality::normal,
+        swaraxt::FilterQuality::high
+    };
+
+    for (const auto quality : qualities)
+    {
+        SwaraXtAudioProcessor source;
+        source.setFilterQuality(quality);
+        source.setCurrentProgram(1);
+        expect(source.filterQuality() == quality,
+               "factory preset selection preserves explicit filter quality");
+        const auto saved = captureState(source);
+
+        SwaraXtAudioProcessor restored;
+        restoreState(restored, saved);
+        expect(restored.filterQuality() == quality,
+               "state restore preserves explicit filter quality");
+        restored.setCurrentProgram(0);
+        expect(restored.filterQuality() == quality,
+               "host program callback preserves restored filter quality");
+        restored.prepareToPlay(96000.0, 257);
+        expect(restored.filterQuality() == quality,
+               "prepareToPlay preserves restored filter quality");
+        expect(restored.engineForTests().filter().quality() == quality,
+               "restored quality reaches the live filter");
+
+        for (int editorPass = 0; editorPass < 2; ++editorPass)
+        {
+            auto editor = std::make_unique<SwaraXtAudioProcessorEditor>(restored);
+            editor.reset();
+            expect(restored.filterQuality() == quality,
+                   "editor recreation preserves processor filter quality");
+        }
+    }
+}
+
 void testLfoPresetSwitchAndMatrixRoundtrip()
 {
     SwaraXtAudioProcessor processor;
@@ -351,6 +416,7 @@ int main(int argc, char* argv[])
     testMultiplePresetRoundtrips();
     testCustomizedFactoryPresetRestore();
     testAudioEquivalence();
+    testFilterQualityDefaultAndStateLifecycle();
     testLfoPresetSwitchAndMatrixRoundtrip();
 
     if (failures == 0)

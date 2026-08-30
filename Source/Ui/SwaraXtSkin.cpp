@@ -436,10 +436,10 @@ void UiPreferences::save(SkinId skin, DecorationId decoration, GuiSize size)
 swaraxt::FilterQuality UiPreferences::loadFilterQuality()
 {
     const auto properties = open();
-    const auto value = properties->getValue("filter_quality", "high");
-    if (value == "normal") return swaraxt::FilterQuality::normal;
+    const auto value = properties->getValue("filter_quality", "normal");
     if (value == "eco") return swaraxt::FilterQuality::eco;
-    return swaraxt::FilterQuality::high;
+    if (value == "high") return swaraxt::FilterQuality::high;
+    return swaraxt::FilterQuality::normal;
 }
 
 void UiPreferences::saveFilterQuality(swaraxt::FilterQuality quality)

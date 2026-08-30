@@ -427,8 +427,8 @@ class SwaraXtFilter {
     Trace trace_ {};
     double hostSampleRate_ = 44100.0;
     int oversampleFactor_ = 4;
-    int solverIterationLimit_ = 8;
-    FilterQuality quality_ = FilterQuality::high;
+    int solverIterationLimit_ = 4;
+    FilterQuality quality_ = FilterQuality::normal;
     float previousInput_ = 0.0f;
     float selfOscMetric_ = 0.0f;
 };

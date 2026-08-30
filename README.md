@@ -63,7 +63,7 @@ Platform-specific compatibility may depend on the operating system, host, and lo
 
 ## Building
 
-Building SWARA XT requires CMake 3.22 or newer, a C++17-compatible compiler, JUCE 7.0.12, Git, and the pinned Shruthi source used by the project.
+Building SWARA XT requires CMake 3.22 or newer, a C++17-compatible compiler, JUCE 9.0.1, Git, and the pinned Shruthi source used by the project.
 
 See [BUILDING.md](BUILDING.md) for build instructions.
 

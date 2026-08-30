@@ -34,8 +34,8 @@ under GPL-3.0-or-later.
 ## JUCE
 
 - Upstream: https://github.com/juce-framework/JUCE
-- Version: 7.0.12
-- Revision: `4f43011b96eb0636104cb3e433894cda98243626`
+- Version: 9.0.1
+- Revision: `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8`
 - License mode: GPLv3 application option
 
 JUCE's own license and bundled third-party notices apply to its source and VST3

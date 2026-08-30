@@ -5,13 +5,13 @@
 - CMake 3.22 or newer
 - A C++17 compiler (Visual Studio 2022 on Windows; GCC/Clang on Linux/macOS)
 - Git
-- JUCE 7.0.12 at `.cache/JUCE` (or set `SWARAXT_JUCE_DIR`)
+- JUCE 9.0.1 at `.cache/JUCE` (or set `SWARAXT_JUCE_DIR`)
 - The pinned Shruthi and avrlib submodules
 
 ```bash
 git submodule update --init third_party/shruthi-1
 git -C third_party/shruthi-1 -c submodule.avrlib.url=https://github.com/pichenettes/avril.git submodule update --init avrlib
-git clone --branch 7.0.12 --depth 1 https://github.com/juce-framework/JUCE.git .cache/JUCE
+git clone --branch 9.0.1 --depth 1 https://github.com/juce-framework/JUCE.git .cache/JUCE
 ```
 
 The obsolete `git://` URL in the pinned Shruthi revision is overridden only for

@@ -203,10 +203,10 @@ class SwaraXtEngine {
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
     std::atomic<uint8_t> requestedFilterQuality_ {
-        static_cast<uint8_t>(FilterQuality::high)
+        static_cast<uint8_t>(FilterQuality::normal)
     };
-    FilterQuality appliedFilterQuality_ { FilterQuality::high };
-    FilterQuality pendingFilterQuality_ { FilterQuality::high };
+    FilterQuality appliedFilterQuality_ { FilterQuality::normal };
+    FilterQuality pendingFilterQuality_ { FilterQuality::normal };
     enum class QualityFadePhase : uint8_t { stable, fadeOut, fadeIn };
     QualityFadePhase qualityFadePhase_ { QualityFadePhase::stable };
     float qualityGain_ = 1.0f;

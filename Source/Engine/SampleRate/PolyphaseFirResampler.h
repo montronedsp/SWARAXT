@@ -118,7 +118,7 @@ double PolyphaseFirResampler<T, P, I>::besselI0(double x) noexcept
 template <int T, int P, bool I>
 void PolyphaseFirResampler<T, P, I>::design(double stopbandDb, double cutoffNyquist)
 {
-    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kResamplerPi = 3.14159265358979323846;
 
     double beta = 0.0;
     if (stopbandDb > 50.0)
@@ -144,7 +144,7 @@ void PolyphaseFirResampler<T, P, I>::design(double stopbandDb, double cutoffNyqu
             const double scaled = cutoffNyquist * x;
             const double sinc = std::abs(scaled) < 1.0e-12
                 ? 1.0
-                : std::sin(kPi * scaled) / (kPi * scaled);
+                : std::sin(kResamplerPi * scaled) / (kResamplerPi * scaled);
 
             const double ratio = x / halfWidth;
             const double window = std::abs(ratio) >= 1.0

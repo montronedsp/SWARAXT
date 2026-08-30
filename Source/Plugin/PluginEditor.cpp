@@ -136,8 +136,7 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     swaraxt::ui::SkinRegistry::setActive(skinId_);
     lookAndFeel_.applySkin();
     guiSize_ = swaraxt::ui::UiPreferences::loadGuiSize();
-    filterQuality_ = swaraxt::ui::UiPreferences::loadFilterQuality();
-    processor_.setFilterQuality(filterQuality_);
+    filterQuality_ = processor_.filterQuality();
     addAndMakeVisible(designSurface_);
     designSurface_.addMouseListener(this, true);
     presetSelector_.setJustificationType(juce::Justification::centred);

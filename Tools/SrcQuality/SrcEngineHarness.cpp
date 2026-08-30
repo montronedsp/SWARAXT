@@ -27,6 +27,33 @@ namespace {
 
 int failures = 0;
 
+std::string environmentValue(const char* name)
+{
+#if defined(_MSC_VER)
+    char* value = nullptr;
+    size_t size = 0;
+    if (_dupenv_s(&value, &size, name) != 0 || value == nullptr)
+        return {};
+    const std::string result(value);
+    std::free(value);
+    return result;
+#else
+    if (const char* value = std::getenv(name))
+        return value;
+    return {};
+#endif
+}
+
+FILE* openWritableFile(const std::string& path)
+{
+#if defined(_MSC_VER)
+    FILE* file = nullptr;
+    return fopen_s(&file, path.c_str(), "w") == 0 ? file : nullptr;
+#else
+    return std::fopen(path.c_str(), "w");
+#endif
+}
+
 void expect(bool condition, const std::string& message)
 {
     if (! condition)
@@ -47,8 +74,8 @@ std::string converterName()
 
 std::string artifactRoot()
 {
-    if (const char* configured = std::getenv("SWARAXT_SRC_ARTIFACT_DIR");
-        configured != nullptr && *configured != '\0')
+    if (const auto configured = environmentValue("SWARAXT_SRC_ARTIFACT_DIR");
+        ! configured.empty())
         return configured;
 
     return (std::filesystem::current_path() / "artifacts" / "src-quality").string();
@@ -133,14 +160,16 @@ bool writeWavFloat32(const std::string& path, const std::vector<float>& mono, do
     file.getParentDirectory().createDirectory();
     file.deleteFile();
     juce::WavAudioFormat format;
-    std::unique_ptr<juce::FileOutputStream> stream(file.createOutputStream());
+    std::unique_ptr<juce::OutputStream> stream(file.createOutputStream());
     if (stream == nullptr)
         return false;
-    std::unique_ptr<juce::AudioFormatWriter> writer(
-        format.createWriterFor(stream.get(), sampleRate, 1, 32, {}, 0));
+    const auto options = juce::AudioFormatWriterOptions {}
+                             .withSampleRate(sampleRate)
+                             .withNumChannels(1)
+                             .withBitsPerSample(32);
+    auto writer = format.createWriterFor(stream, options);
     if (writer == nullptr)
         return false;
-    stream.release();
     const float* channels[1] { mono.data() };
     writer->writeFromFloatArrays(channels, 1, static_cast<int>(mono.size()));
     return true;
@@ -252,7 +281,7 @@ void runEngineCpu()
 {
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     const std::string csvPath = artifactRoot() + "/measurements/engine-cpu-" + converterName() + ".csv";
-    FILE* csv = std::fopen(csvPath.c_str(), "w");
+    FILE* csv = openWritableFile(csvPath);
     std::fprintf(csv, "converter,host_rate,block_size,total_ms,voice_ms,filter_ms,midi_ms,"
                       "src_output_ms,voice_pct,filter_pct,src_output_pct,"
                       "ns_per_host_sample,realtime_percent,native_blocks,filter_samples,peak\n");
@@ -315,7 +344,7 @@ void runDormancy()
 {
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     const std::string csvPath = artifactRoot() + "/measurements/dormancy-" + converterName() + ".csv";
-    FILE* csv = std::fopen(csvPath.c_str(), "w");
+    FILE* csv = openWritableFile(csvPath);
     std::fprintf(csv, "converter,host_rate,block_size,scenario,native_blocks,filter_samples,"
                       "skipped_host_samples,peak,exact_zero_or_onset_step,dormant\n");
 
@@ -439,7 +468,7 @@ void runDormancy()
 void runBlockPartition()
 {
     const std::string csvPath = artifactRoot() + "/measurements/engine-blocks-" + converterName() + ".csv";
-    FILE* csv = std::fopen(csvPath.c_str(), "w");
+    FILE* csv = openWritableFile(csvPath);
     std::fprintf(csv, "converter,host_rate,block_size,samples_compared,max_abs_difference,bit_exact\n");
 
     const Patch patch { "saw", 1, 0, 72, 20000.0f, 0.0f, 0.0f, 0, 0 };
@@ -470,7 +499,7 @@ void runBlockPartition()
 void runOnset()
 {
     const std::string csvPath = artifactRoot() + "/measurements/onset-" + converterName() + ".csv";
-    FILE* csv = std::fopen(csvPath.c_str(), "w");
+    FILE* csv = openWritableFile(csvPath);
     std::fprintf(csv, "converter,host_rate,onset_host_samples,onset_ms,onset_native_samples,"
                       "peak_host_samples,peak_ms\n");
 
@@ -529,7 +558,7 @@ void runOnset()
 void runControlLatency()
 {
     const std::string csvPath = artifactRoot() + "/measurements/control-latency-" + converterName() + ".csv";
-    FILE* csv = std::fopen(csvPath.c_str(), "w");
+    FILE* csv = openWritableFile(csvPath);
     std::fprintf(csv, "converter,host_rate,event,latency_host_samples,latency_ms,latency_native_samples\n");
 
     constexpr double kNativeRate = 20000000.0 / 510.0;
@@ -615,7 +644,7 @@ void runControlLatency()
 void runPitch()
 {
     const std::string csvPath = artifactRoot() + "/measurements/pitch-" + converterName() + ".csv";
-    FILE* csv = std::fopen(csvPath.c_str(), "w");
+    FILE* csv = openWritableFile(csvPath);
     std::fprintf(csv, "converter,host_rate,note,zero_cross_hz,rms,peak,dc_mean\n");
 
     for (double rate : { 44100.0, 96000.0 })

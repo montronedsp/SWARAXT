@@ -636,7 +636,15 @@ void testSampleRateAndOversampling()
     for (double sampleRate : rates)
     {
         swaraxt::SwaraXtFilter filter;
+        expect(filter.quality() == swaraxt::FilterQuality::normal,
+               "fresh filter defaults to Normal quality");
+        expect(filter.solverIterationLimit() == 4,
+               "fresh Normal filter uses the balanced solver budget");
         filter.prepare(sampleRate);
+        expect(filter.quality() == swaraxt::FilterQuality::normal,
+               "Normal quality survives sample-rate preparation");
+        expect(filter.solverIterationLimit() == 4,
+               "prepared Normal filter keeps the balanced solver budget");
         if (sampleRate <= 48001.0)
             expect(filter.oversamplingFactor() == 4, "44.1/48 kHz use 4x oversampling");
         else if (sampleRate <= 96001.0)
@@ -650,6 +658,10 @@ void testSampleRateAndOversampling()
         const int samples = static_cast<int>(sampleRate);
         const auto input = sine(sampleRate, 200.0, 0.001, samples);
         const auto output = renderFilter(sampleRate, params, input);
+        const Metrics metrics = measure(output, static_cast<size_t>(samples / 4));
+        expect(metrics.invalid == 0, "Normal quality output remains finite at supported rates");
+        expect(std::abs(metrics.mean) < 1.0e-4,
+               "Normal quality output has no abnormal DC at supported rates");
         lowGains.push_back(amplitudeAt(output, sampleRate, 200.0, static_cast<size_t>(samples / 4)) / 0.001);
     }
 
