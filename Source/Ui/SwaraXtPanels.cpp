@@ -69,14 +69,6 @@ juce::StringArray operatorNames()
     };
 }
 
-juce::StringArray lfoWaveNames()
-{
-    return {
-        "Triangle", "Square", "Sample/Hold", "Ramp",
-        "Step Seq", "Wave 1", "Wave 2", "Wave 3"
-    };
-}
-
 juce::StringArray lfoModeNames()
 {
     return { "Free phase", "Retrigger", "Env master", "One-shot" };
@@ -604,11 +596,11 @@ MainPanel::MainPanel()
     };
     addSelector("OPERATOR", operatorNames(), true);
     addSelector("SHAPE", subShapeNames());
-    addSelector("LFO 1 WAVE", lfoWaveNames());
+    addSelector("LFO 1 WAVE", lfoWaveformNames());
     addSelector("RETRIGGER", lfoModeNames());
     addSelector("TIMING", timingModeNames());
     addSelector("DIVISION", beatDivisionNames());
-    addSelector("LFO 2 WAVE", lfoWaveNames());
+    addSelector("LFO 2 WAVE", lfoWaveformNames());
     addSelector("RETRIGGER", lfoModeNames());
     addSelector("TIMING", timingModeNames());
     addSelector("DIVISION", beatDivisionNames());

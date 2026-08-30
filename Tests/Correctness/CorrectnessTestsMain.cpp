@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,7 @@
 #include "avrlib/base.h"
 #include "avrlib/random.h"
 #include "shruthi/audio_out.h"
+#include "shruthi/lfo.h"
 #include "shruthi/midi_dispatcher.h"
 #include "shruthi/oscillator.h"
 #include "shruthi/part.h"
@@ -160,6 +162,91 @@ std::vector<uint8_t> renderOsc1(ShruthiRuntime& runtime, int blocks, int note)
     }
     runtime.part.NoteOff(0, static_cast<uint8_t>(note));
     return out;
+}
+
+struct MixerTrace {
+    std::vector<uint8_t> audio;
+    std::vector<uint8_t> osc1;
+    std::vector<uint8_t> osc2;
+};
+
+MixerTrace renderMainMixerOperator(int op, int mix, bool twoNotes = false,
+                                   int sequenceMask = -1)
+{
+    ShruthiRuntime runtime;
+    runtime.init();
+    configureSquarePart(runtime.part, 48);
+    auto* patch = runtime.part.mutable_patch();
+    patch->osc[0].shape = shruthi::WAVEFORM_SAW;
+    patch->osc[0].parameter = 24;
+    patch->osc[0].option = static_cast<uint8_t>(op);
+    patch->osc[1].shape = shruthi::WAVEFORM_SQUARE;
+    patch->osc[1].parameter = 72;
+    patch->osc[1].range = 7;
+    patch->osc[1].option = 19;
+    patch->mix_balance = static_cast<uint8_t>(mix);
+    if (sequenceMask >= 0)
+    {
+        patch->mix_sub_osc = 63;
+        patch->mix_noise = 63;
+        for (int step = 0; step < shruthi::kNumSteps; ++step)
+            runtime.part.mutable_sequencer_settings()->steps[step]
+                .set_controller(static_cast<uint8_t>(sequenceMask));
+    }
+    runtime.part.Touch(false);
+
+    runtime.ring.Init();
+    runtime.part.NoteOn(0, 60, 100);
+    if (twoNotes)
+        runtime.part.NoteOn(0, 67, 100);
+
+    MixerTrace trace;
+    for (int block = 0; block < 16; ++block)
+    {
+        runtime.part.ProcessBlock();
+        const auto* osc1 = runtime.part.voice().debug_osc1_buffer();
+        const auto* osc2 = runtime.part.voice().debug_osc2_buffer();
+        trace.osc1.insert(trace.osc1.end(), osc1, osc1 + shruthi::kAudioBlockSize);
+        trace.osc2.insert(trace.osc2.end(), osc2, osc2 + shruthi::kAudioBlockSize);
+        while (runtime.ring.readable())
+            trace.audio.push_back(runtime.ring.ImmediateRead());
+    }
+    return trace;
+}
+
+bool hasExactHolds(const std::vector<uint8_t>& samples, size_t holdLength)
+{
+    if (samples.empty() || samples.size() % holdLength != 0)
+        return false;
+    for (size_t start = 0; start < samples.size(); start += holdLength)
+        for (size_t offset = 1; offset < holdLength; ++offset)
+            if (samples[start] != samples[start + offset])
+                return false;
+    return true;
+}
+
+std::vector<uint8_t> renderLfoShape(int shape)
+{
+    avrlib::Random random;
+    random.Seed(0x21);
+    shruthi::SequencerSettings sequence {};
+    sequence.pattern_size = 16;
+    for (int step = 0; step < shruthi::kNumSteps; ++step)
+        sequence.steps[step].set_controller(static_cast<uint8_t>(step));
+
+    shruthi::Lfo lfo;
+    lfo.Init(&random);
+    lfo.Update(static_cast<uint8_t>(shape), 1024, 0, shruthi::LFO_MODE_FREE);
+    lfo.Reset();
+    std::vector<uint8_t> trace;
+    trace.reserve(128);
+    for (int sample = 0; sample < 132; ++sample)
+    {
+        const auto value = lfo.Render(sequence);
+        if (sample >= 4)
+            trace.push_back(value);
+    }
+    return trace;
 }
 
 void testGuiEngineRanges()
@@ -493,6 +580,312 @@ void testLfoVisualizer()
            "ramp visualizer rises through the cycle");
     expect(swaraxt::ui::lfoVisualizerY01(1, 0.25f) < swaraxt::ui::lfoVisualizerY01(1, 0.75f),
            "square visualizer remains low then high");
+
+    for (int waveform = shruthi::LFO_WAVEFORM_WAVE_1;
+         waveform < shruthi::LFO_WAVEFORM_LAST;
+         ++waveform)
+    {
+        int shapeOffset = waveform - shruthi::LFO_WAVEFORM_WAVE_1;
+        shapeOffset = shapeOffset == 0 ? 3 : shapeOffset + 16;
+        for (const int phaseIndex : { 0, 17, 63, 101, 127 })
+        {
+            const auto expected = shruthi::ResourcesManager::Lookup<uint8_t, uint8_t>(
+                shruthi::wav_res_waves + shapeOffset * 129,
+                static_cast<uint8_t>(phaseIndex));
+            const float phase = static_cast<float>(phaseIndex) / 128.0f;
+            expect(std::abs(swaraxt::ui::lfoVisualizerY01(waveform, phase)
+                            - static_cast<float>(expected) / 255.0f) < 1.0e-6f,
+                   "wavetable LFO visualizer matches the Shruthi resource waveform");
+        }
+    }
+}
+
+void testRenderedLfoShapes()
+{
+    std::vector<std::vector<uint8_t>> traces;
+    traces.reserve(shruthi::LFO_WAVEFORM_LAST);
+    for (int shape = 0; shape < shruthi::LFO_WAVEFORM_LAST; ++shape)
+    {
+        traces.push_back(renderLfoShape(shape));
+        expect(traces.back().size() == 128,
+               "every exposed LFO waveform renders a complete control-rate trace");
+    }
+
+    const std::set<uint8_t> triangle(traces[shruthi::LFO_WAVEFORM_TRIANGLE].begin(),
+                                     traces[shruthi::LFO_WAVEFORM_TRIANGLE].end());
+    const std::set<uint8_t> square(traces[shruthi::LFO_WAVEFORM_SQUARE].begin(),
+                                   traces[shruthi::LFO_WAVEFORM_SQUARE].end());
+    const std::set<uint8_t> sampleHold(traces[shruthi::LFO_WAVEFORM_S_H].begin(),
+                                       traces[shruthi::LFO_WAVEFORM_S_H].end());
+    const std::set<uint8_t> ramp(traces[shruthi::LFO_WAVEFORM_RAMP].begin(),
+                                 traces[shruthi::LFO_WAVEFORM_RAMP].end());
+    const std::set<uint8_t> step(traces[shruthi::LFO_WAVEFORM_STEP_SEQUENCER].begin(),
+                                 traces[shruthi::LFO_WAVEFORM_STEP_SEQUENCER].end());
+    expect(triangle.size() > 32, "triangle LFO produces a continuous rising/falling trace");
+    expect(square.size() == 2, "square LFO produces exactly two control levels");
+    expect(sampleHold.size() <= 3,
+           "sample-and-hold LFO holds one random value for each complete cycle");
+    expect(ramp.size() > 32 && traces[shruthi::LFO_WAVEFORM_RAMP]
+                                  != traces[shruthi::LFO_WAVEFORM_TRIANGLE],
+           "ramp LFO produces a distinct continuous trace");
+    expect(step.size() == 16,
+           "step-sequencer LFO renders all sixteen configured controller values");
+
+    for (int shape = shruthi::LFO_WAVEFORM_WAVE_1;
+         shape < shruthi::LFO_WAVEFORM_LAST;
+         ++shape)
+    {
+        const std::set<uint8_t> values(traces[shape].begin(), traces[shape].end());
+        expect(values.size() > 2, "each additional Shruthi LFO wave produces modulation");
+        expect(traces[shape] != traces[shruthi::LFO_WAVEFORM_TRIANGLE],
+               "additional Shruthi LFO waves do not fall back to triangle output");
+    }
+}
+
+void testMainMixerOperatorDsp()
+{
+    for (int op = 0; op < shruthi::OP_LAST; ++op)
+    {
+        const auto center = renderMainMixerOperator(op, 32);
+        expect(center.audio.size() == 16 * shruthi::kAudioBlockSize,
+               "all fourteen main mixer modes render the native audio block count");
+
+        const auto low = renderMainMixerOperator(op, 0);
+        const auto high = renderMainMixerOperator(op, 63);
+        if (op < shruthi::OP_PING_PONG_2)
+            expect(low.audio != high.audio,
+                   "MIX changes the native behavior of every non-sequenced mixer mode");
+        else
+            expect(low.audio == high.audio,
+                   "sequenced mixer modes use their source mask instead of normal balance");
+    }
+
+    const auto sum = renderMainMixerOperator(shruthi::OP_SUM, 32);
+    const auto sync = renderMainMixerOperator(shruthi::OP_SYNC, 32);
+    expect(sum.osc1 == sync.osc1,
+           "sync leaves oscillator 1 as the master waveform");
+    expect(sum.osc2 != sync.osc2,
+           "sync routes oscillator 1 resets into oscillator 2");
+
+    expect(hasExactHolds(renderMainMixerOperator(shruthi::OP_CRUSH_4, 32).audio, 4),
+           ">>4 holds each mixed sample for four native samples");
+    expect(hasExactHolds(renderMainMixerOperator(shruthi::OP_CRUSH_8, 32).audio, 8),
+           ">>8 holds each mixed sample for eight native samples");
+
+    const auto duoOneNote = renderMainMixerOperator(shruthi::OP_DUO, 32, false);
+    const auto duoTwoNotes = renderMainMixerOperator(shruthi::OP_DUO, 32, true);
+    expect(duoOneNote.audio != duoTwoNotes.audio && duoOneNote.osc2 != duoTwoNotes.osc2,
+           "Duo assigns the second oscillator to the additional held note");
+
+    const auto seqNone = renderMainMixerOperator(shruthi::OP_PING_PONG_SEQ, 32, false, 0);
+    const auto seqOsc2 = renderMainMixerOperator(shruthi::OP_PING_PONG_SEQ, 32, false, 1);
+    const auto seqOsc1 = renderMainMixerOperator(shruthi::OP_PING_PONG_SEQ, 32, false, 2);
+    const auto seqSub = renderMainMixerOperator(shruthi::OP_PING_PONG_SEQ, 32, false, 4);
+    const auto seqNoise = renderMainMixerOperator(shruthi::OP_PING_PONG_SEQ, 32, false, 8);
+    expect(seqNone.audio != seqOsc1.audio && seqNone.audio != seqOsc2.audio,
+           "seqmix bits 0 and 1 enable oscillator 2 and oscillator 1 independently");
+    expect(seqOsc1.audio != seqOsc2.audio,
+           "seqmix oscillator source bits are not swapped or collapsed");
+    expect(seqNone.audio != seqSub.audio,
+           "seqmix bit 2 enables the sub oscillator independently");
+    expect(seqNone.audio != seqNoise.audio,
+           "seqmix bit 3 enables noise independently");
+}
+
+std::vector<uint8_t> renderFm(int range, int timbre, int note)
+{
+    ShruthiRuntime runtime;
+    runtime.init();
+    configureSquarePart(runtime.part, static_cast<uint8_t>(timbre));
+    auto* patch = runtime.part.mutable_patch();
+    patch->osc[0].shape = shruthi::WAVEFORM_FM;
+    patch->osc[0].range = static_cast<int8_t>(range);
+    runtime.part.Touch(false);
+    return renderOsc1(runtime, 16, note);
+}
+
+void testLfoMatrixAndMixerMappings()
+{
+    SwaraXtAudioProcessor proc;
+    proc.prepareToPlay(48000.0, 128);
+    auto setPhysical = [&](const char* id, int value) {
+        auto* parameter = proc.getApvts().getParameter(id);
+        expect(parameter != nullptr, id);
+        if (parameter != nullptr)
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(value)));
+    };
+    auto process = [&] {
+        juce::AudioBuffer<float> buffer(2, 128);
+        juce::MidiBuffer midi;
+        proc.processBlock(buffer, midi);
+    };
+
+    for (int waveform = 0; waveform < shruthi::LFO_WAVEFORM_LAST; ++waveform)
+    {
+        setPhysical(swaraxt::IDs::lfo1Wave, waveform);
+        setPhysical(swaraxt::IDs::lfo2Wave,
+                    static_cast<int>(shruthi::LFO_WAVEFORM_LAST) - 1 - waveform);
+        process();
+        const auto& part = proc.engineForTests().shruthiPart();
+        expect(part.patch().lfo[0].waveform == waveform,
+               "LFO1 APVTS code reaches the Shruthi patch unchanged");
+        expect(part.patch().lfo[1].waveform
+                   == static_cast<int>(shruthi::LFO_WAVEFORM_LAST) - 1 - waveform,
+               "LFO2 APVTS code reaches the Shruthi patch unchanged");
+        expect(part.lfo_shape_for_tests(0) == waveform,
+               "LFO1 patch changes refresh the live LFO object");
+        expect(part.lfo_shape_for_tests(1)
+                   == static_cast<int>(shruthi::LFO_WAVEFORM_LAST) - 1 - waveform,
+               "LFO2 patch changes refresh the live LFO object");
+    }
+
+    for (int op = 0; op < 14; ++op)
+    {
+        setPhysical(swaraxt::IDs::osc1Option, op);
+        process();
+        expect(proc.engineForTests().shruthiPart().patch().osc[0].option == op,
+               "all fourteen APVTS mixer operators map to the same Shruthi code");
+    }
+
+    for (int row = 0; row < shruthi::kModulationMatrixSize; ++row)
+    {
+        const auto sourceId = "mod.row" + juce::String(row + 1) + ".source";
+        const auto destinationId = "mod.row" + juce::String(row + 1) + ".destination";
+        const auto amountId = "mod.row" + juce::String(row + 1) + ".amount";
+        const int source = (row * 7) % shruthi::kNumModulationSources;
+        const int destination = (row * 5) % shruthi::kNumModulationDestinations;
+        const int amounts[] { -63, -1, 0, 1, 63 };
+        setPhysical(sourceId.toRawUTF8(), source);
+        setPhysical(destinationId.toRawUTF8(), destination);
+        setPhysical(amountId.toRawUTF8(), amounts[row % 5]);
+    }
+    process();
+    for (int row = 0; row < shruthi::kModulationMatrixSize; ++row)
+    {
+        const auto& route = proc.engineForTests().shruthiPart().patch()
+                                .modulation_matrix.modulation[row];
+        const int amounts[] { -63, -1, 0, 1, 63 };
+        expect(route.source == (row * 7) % shruthi::kNumModulationSources,
+               "matrix source APVTS code reaches the same Shruthi enum");
+        expect(route.destination == (row * 5) % shruthi::kNumModulationDestinations,
+               "matrix destination APVTS code reaches the same Shruthi enum");
+        expect(route.amount == amounts[row % 5],
+               "matrix amount remains signed at engine ingress");
+    }
+
+    for (int source = 0; source < shruthi::kNumModulationSources; ++source)
+    {
+        setPhysical("mod.row1.source", source);
+        process();
+        expect(proc.engineForTests().shruthiPart().patch()
+                   .modulation_matrix.modulation[0].source == source,
+               "every matrix source preserves its complete Shruthi enum value");
+    }
+    for (int destination = 0;
+         destination < shruthi::kNumModulationDestinations;
+         ++destination)
+    {
+        setPhysical("mod.row1.destination", destination);
+        process();
+        expect(proc.engineForTests().shruthiPart().patch()
+                   .modulation_matrix.modulation[0].destination == destination,
+               "every matrix destination preserves its complete Shruthi enum value");
+    }
+
+    for (const auto [apvts, shruthiValue] :
+         { std::pair<int, int> { 0, 0 }, { 1, 0 }, { 63, 31 },
+           { 64, 32 }, { 126, 63 }, { 127, 63 } })
+    {
+        setPhysical(swaraxt::IDs::mixBalance, apvts);
+        process();
+        expect(proc.engineForTests().shruthiPart().patch().mix_balance == shruthiValue,
+               "0..127 Mix Balance maps monotonically to Shruthi 0..63");
+    }
+}
+
+void testFmRangeSemantics()
+{
+    SwaraXtAudioProcessor proc;
+    proc.prepareToPlay(48000.0, 128);
+    auto setPhysical = [&](const char* id, int value) {
+        auto* parameter = proc.getApvts().getParameter(id);
+        expect(parameter != nullptr, id);
+        if (parameter != nullptr)
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(value)));
+    };
+    for (int row = 0; row < shruthi::kModulationMatrixSize; ++row)
+    {
+        const auto amountId = "mod.row" + juce::String(row + 1) + ".amount";
+        setPhysical(amountId.toRawUTF8(), 0);
+    }
+    setPhysical(swaraxt::IDs::osc1Shape, shruthi::WAVEFORM_FM);
+    setPhysical(swaraxt::IDs::osc2Shape, shruthi::WAVEFORM_FM);
+    setPhysical(swaraxt::IDs::osc2Option, 0);
+
+    juce::MidiBuffer note;
+    note.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+    juce::AudioBuffer<float> buffer(2, 128);
+    proc.processBlock(buffer, note);
+    const auto& voice = proc.engineForTests().shruthiPart().voice();
+    uint16_t fmCarrierIncrement[2] {};
+    for (const int range : { -24, -18, -13, -12, -11, -6, 0, 6, 11, 12, 13, 18, 24 })
+    {
+        setPhysical(swaraxt::IDs::osc1Range, range);
+        setPhysical(swaraxt::IDs::osc2Range, range);
+        juce::MidiBuffer empty;
+        buffer.clear();
+        proc.processBlock(buffer, empty);
+        const auto& patch = proc.engineForTests().shruthiPart().patch();
+        expect(patch.osc[0].range == range && patch.osc[1].range == range,
+               "both FM oscillators receive the complete Shruthi -24..24 range");
+        expect(voice.debug_oscillator_secondary_parameter(0) == range + 24
+                   && voice.debug_oscillator_secondary_parameter(1) == range + 24,
+               "FM range reaches the native secondary ratio parameter");
+        for (int oscillator = 0; oscillator < 2; ++oscillator)
+        {
+            const auto increment = voice.debug_oscillator_increment(oscillator);
+            if (range == -24)
+                fmCarrierIncrement[oscillator] = increment;
+            else
+                expect(increment == fmCarrierIncrement[oscillator],
+                       "FM range changes modulator ratio without transposing the carrier");
+        }
+    }
+
+    const auto fmMinus24 = renderFm(-24, 64, 60);
+    const auto fmMinus13 = renderFm(-13, 64, 60);
+    const auto fmMinus12 = renderFm(-12, 64, 60);
+    const auto fmMinus11 = renderFm(-11, 64, 60);
+    const auto fmPlus11 = renderFm(11, 64, 60);
+    const auto fmPlus12 = renderFm(12, 64, 60);
+    const auto fmPlus13 = renderFm(13, 64, 60);
+    const auto fmPlus24 = renderFm(24, 64, 60);
+    expect(fmMinus24 == fmMinus13 && fmMinus13 == fmMinus12,
+           "native FM ratio saturates at the -12 boundary");
+    expect(fmMinus11 != fmMinus12, "native FM ratio changes immediately inside -12");
+    expect(fmPlus11 != fmPlus12, "native FM ratio changes immediately inside +12");
+    expect(fmPlus12 == fmPlus13 && fmPlus13 == fmPlus24,
+           "native FM ratio saturates at the +12 boundary");
+    expect(renderFm(0, 0, 60) != renderFm(0, 127, 60),
+           "FM TIMBRE controls modulation depth");
+    expect(renderFm(0, 64, 36) != renderFm(0, 64, 48)
+               && renderFm(0, 64, 48) != renderFm(0, 64, 60)
+               && renderFm(0, 64, 60) != renderFm(0, 64, 72),
+           "FM carrier and modulator track C2 through C5");
+
+    setPhysical(swaraxt::IDs::osc1Shape, shruthi::WAVEFORM_SAW);
+    uint16_t normalIncrement[3] {};
+    int index = 0;
+    for (const int range : { -24, 0, 24 })
+    {
+        setPhysical(swaraxt::IDs::osc1Range, range);
+        juce::MidiBuffer empty;
+        proc.processBlock(buffer, empty);
+        normalIncrement[index++] = voice.debug_oscillator_increment(0);
+    }
+    expect(normalIncrement[0] < normalIncrement[1]
+               && normalIncrement[1] < normalIncrement[2],
+           "normal oscillator range transposes across the full -24..24 span");
 }
 
 void testFactoryPulseLeadFinite()
@@ -580,6 +973,10 @@ int main()
     testShruthiFilterControlDomain();
     testSwaraFilterRouteSeparation();
     testLfoVisualizer();
+    testRenderedLfoShapes();
+    testLfoMatrixAndMixerMappings();
+    testMainMixerOperatorDsp();
+    testFmRangeSemantics();
     testFactoryPulseLeadFinite();
     testKeyTrackParameter();
     testModulationMenuAndLegacyHardwareIds();

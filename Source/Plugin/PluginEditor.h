@@ -49,6 +49,14 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     {
         return mainPanel_.modulationForTests();
     }
+    juce::ComboBox& lfoWaveComboForTests(int index) noexcept
+    {
+        return mainPanel_.lfoWaveComboForTests(index);
+    }
+    juce::ComboBox& mixOperatorComboForTests() noexcept
+    {
+        return mainPanel_.mixOperatorComboForTests();
+    }
 
  private:
     class BrandButton : public juce::Button {

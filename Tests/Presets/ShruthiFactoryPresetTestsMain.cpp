@@ -203,7 +203,21 @@ void verifyMutableBank()
         {
             expect(getInt(proc, swaraxt::IDs::osc1Shape) == patch.osc[0].shape,
                    "osc1 shape roundtrip");
-            expect(getInt(proc, swaraxt::IDs::mixBalance) == patch.mix_balance,
+            if (getInt(proc, swaraxt::IDs::osc1Option) != patch.osc[0].option)
+            {
+                std::printf("FAIL: %s mixer operator expected %u got %d (mod op1=%u)\n",
+                            record.displayName,
+                            static_cast<unsigned>(patch.osc[0].option),
+                            getInt(proc, swaraxt::IDs::osc1Option),
+                            static_cast<unsigned>(patch.ops_[0].op));
+                ++failures;
+            }
+            expect(getInt(proc, swaraxt::IDs::lfo1Wave) == patch.lfo[0].waveform,
+                   "LFO1 waveform roundtrip");
+            expect(getInt(proc, swaraxt::IDs::lfo2Wave) == patch.lfo[1].waveform,
+                   "LFO2 waveform roundtrip");
+            expect(getInt(proc, swaraxt::IDs::mixBalance)
+                       == juce::jmin(127, static_cast<int>(patch.mix_balance) * 2),
                    "mix balance roundtrip");
         }
         signatures.insert(stateSignature(proc));
@@ -211,6 +225,17 @@ void verifyMutableBank()
             renderSmoke(proc, note);
     }
     expect(static_cast<int>(signatures.size()) == 40, "40 unique Mutable states");
+}
+
+void verifyMainOperatorIsIndependentFromModOperators()
+{
+    SwaraXtAudioProcessor proc;
+    shruthi::Patch patch {};
+    patch.osc[0].option = shruthi::OP_RING_MOD;
+    patch.ops_[0].op = shruthi::OP_CV_XOR;
+    swaraxt::ShruthiFactoryPresets::applyPatchToApvts(patch, proc.getApvts());
+    expect(getInt(proc, swaraxt::IDs::osc1Option) == shruthi::OP_RING_MOD,
+           "factory import keeps main mixer operator independent from modulation Op 1");
 }
 
 void verifyProgramLayout()
@@ -249,6 +274,7 @@ int main(int argc, char* argv[])
     verifyOverrideParity();
     verifyUserFactoryParity();
     verifyMutableBank();
+    verifyMainOperatorIsIndependentFromModOperators();
 
     if (failures == 0)
         std::printf("ShruthiFactoryPresetTests: PASS\n");

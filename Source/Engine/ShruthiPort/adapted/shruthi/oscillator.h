@@ -188,6 +188,12 @@ class Oscillator {
     secondary_parameter_ = secondary_parameter;
   }
 
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+  uint16_t phase_increment_for_tests() const { return phase_increment_.integral; }
+  uint8_t secondary_parameter_for_tests() const { return secondary_parameter_; }
+  uint8_t shape_for_tests() const { return shape_; }
+#endif
+
  private:
   // Current phase of the oscillator.
   uint24_t phase_ {};

@@ -86,6 +86,9 @@ class Part {
   uint16_t lfo_phase_for_tests(uint8_t index) const {
     return index < kNumLfos ? lfo_[index].phase_for_tests() : 0;
   }
+  uint8_t lfo_shape_for_tests(uint8_t index) const {
+    return index < kNumLfos ? lfo_[index].shape_for_tests() : 0;
+  }
   uint8_t generated_note_count_for_tests() const { return generated_notes_.size(); }
   uint16_t gate_counter_for_tests() const { return arp_seq_gate_length_counter_; }
 

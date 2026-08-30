@@ -196,6 +196,7 @@ class Lfo {
   bool triggered() const { return cycle_complete_; }
   uint16_t phase_increment_for_tests() const { return phase_increment_; }
   uint16_t phase_for_tests() const { return phase_; }
+  uint8_t shape_for_tests() const { return shape_; }
 
  private:
   // Phase increment.

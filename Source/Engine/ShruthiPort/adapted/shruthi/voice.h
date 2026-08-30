@@ -119,6 +119,17 @@ class Voice {
   const uint8_t* debug_osc2_buffer() const { return debug_osc2_buffer_; }
   int16_t debug_destination14(uint8_t i) const { return dst_[i]; }
   uint32_t debug_process_block_count() const { return debug_process_block_count_; }
+  uint16_t debug_oscillator_increment(uint8_t index) const {
+    return index == 0 ? osc_1_.phase_increment_for_tests()
+                      : osc_2_.phase_increment_for_tests();
+  }
+  uint8_t debug_oscillator_secondary_parameter(uint8_t index) const {
+    return index == 0 ? osc_1_.secondary_parameter_for_tests()
+                      : osc_2_.secondary_parameter_for_tests();
+  }
+  uint8_t debug_oscillator_shape(uint8_t index) const {
+    return index == 0 ? osc_1_.shape_for_tests() : osc_2_.shape_for_tests();
+  }
 #endif
 
  private:

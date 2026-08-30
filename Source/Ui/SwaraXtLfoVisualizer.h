@@ -5,6 +5,9 @@
 
 #include <cmath>
 
+#include "shruthi/patch.h"
+#include "shruthi/resources.h"
+
 namespace swaraxt::ui {
 
 // One-cycle LFO visualizer mapping. y01 = 1 is the top of the display and
@@ -13,6 +16,17 @@ namespace swaraxt::ui {
 inline float lfoVisualizerY01(int waveform, float phase01)
 {
     const float phase = phase01 - std::floor(phase01);
+    if (waveform >= shruthi::LFO_WAVEFORM_WAVE_1
+        && waveform < shruthi::LFO_WAVEFORM_LAST)
+    {
+        int shapeOffset = waveform - shruthi::LFO_WAVEFORM_WAVE_1;
+        shapeOffset = shapeOffset == 0 ? 3 : shapeOffset + 16;
+        const auto phaseIndex = static_cast<uint8_t>(std::floor(phase * 128.0f));
+        const auto value = shruthi::ResourcesManager::Lookup<uint8_t, uint8_t>(
+            shruthi::wav_res_waves + shapeOffset * 129,
+            phaseIndex);
+        return static_cast<float>(value) / 255.0f;
+    }
     switch (waveform)
     {
         case 1: // Square: low for the first half-cycle, high for the second.

@@ -5,11 +5,13 @@
 
 #include <cmath>
 #include <cstdio>
+#include <array>
 #include <vector>
 
 #include "Plugin/PluginEditor.h"
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
+#include "shruthi/patch.h"
 
 namespace {
 
@@ -67,6 +69,13 @@ juce::MemoryBlock captureState(SwaraXtAudioProcessor& processor)
 void restoreState(SwaraXtAudioProcessor& processor, const juce::MemoryBlock& data)
 {
     processor.setStateInformation(data.getData(), static_cast<int>(data.getSize()));
+}
+
+void processControlState(SwaraXtAudioProcessor& processor)
+{
+    juce::AudioBuffer<float> buffer(2, 128);
+    juce::MidiBuffer midi;
+    processor.processBlock(buffer, midi);
 }
 
 void customizeSound(SwaraXtAudioProcessor& processor)
@@ -238,6 +247,95 @@ void testAudioEquivalence()
            "restored processor renders equivalent deterministic output");
 }
 
+void testLfoPresetSwitchAndMatrixRoundtrip()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 128);
+    SwaraXtAudioProcessorEditor editor(processor);
+    const std::array<int, 5> amounts { -63, -1, 0, 1, 63 };
+
+    auto applyAndCheck = [&](int lfo1, int lfo2, int salt) {
+        setInt(processor, swaraxt::IDs::lfo1Wave, lfo1);
+        setInt(processor, swaraxt::IDs::lfo2Wave, lfo2);
+        for (int row = 0; row < shruthi::kModulationMatrixSize; ++row)
+        {
+            const auto prefix = "mod.row" + juce::String(row + 1);
+            setInt(processor, (prefix + ".source").toRawUTF8(),
+                   (row * 7 + salt) % shruthi::kNumModulationSources);
+            setInt(processor, (prefix + ".destination").toRawUTF8(),
+                   (row * 5 + salt) % shruthi::kNumModulationDestinations);
+            setInt(processor, (prefix + ".amount").toRawUTF8(),
+                   amounts[static_cast<size_t>((row + salt) % amounts.size())]);
+        }
+        processControlState(processor);
+
+        const auto& part = processor.engineForTests().shruthiPart();
+        expect(part.patch().lfo[0].waveform == lfo1, "preset switch updates LFO1 patch");
+        expect(part.patch().lfo[1].waveform == lfo2, "preset switch updates LFO2 patch");
+        expect(part.lfo_shape_for_tests(0) == lfo1, "preset switch updates live LFO1");
+        expect(part.lfo_shape_for_tests(1) == lfo2, "preset switch updates live LFO2");
+        expect(editor.lfoWaveComboForTests(0).getSelectedId() == lfo1 + 1,
+               "open editor displays the switched LFO1 waveform");
+        expect(editor.lfoWaveComboForTests(1).getSelectedId() == lfo2 + 1,
+               "open editor displays the switched LFO2 waveform");
+    };
+
+    applyAndCheck(shruthi::LFO_WAVEFORM_SQUARE, shruthi::LFO_WAVEFORM_TRIANGLE, 0);
+    applyAndCheck(shruthi::LFO_WAVEFORM_RAMP, shruthi::LFO_WAVEFORM_S_H, 1);
+    applyAndCheck(shruthi::LFO_WAVEFORM_WAVE_10, shruthi::LFO_WAVEFORM_SQUARE, 2);
+    applyAndCheck(shruthi::LFO_WAVEFORM_SQUARE, shruthi::LFO_WAVEFORM_TRIANGLE, 0);
+    applyAndCheck(shruthi::LFO_WAVEFORM_RAMP, shruthi::LFO_WAVEFORM_S_H, 1);
+
+    setInt(processor, swaraxt::IDs::lfo1Wave, shruthi::LFO_WAVEFORM_WAVE_16);
+    setInt(processor, swaraxt::IDs::lfo2Wave, shruthi::LFO_WAVEFORM_WAVE_10);
+    for (int row = 0; row < shruthi::kModulationMatrixSize; ++row)
+    {
+        const auto prefix = "mod.row" + juce::String(row + 1);
+        setInt(processor, (prefix + ".source").toRawUTF8(),
+               (row * 11) % shruthi::kNumModulationSources);
+        setInt(processor, (prefix + ".destination").toRawUTF8(),
+               (row * 13) % shruthi::kNumModulationDestinations);
+        setInt(processor, (prefix + ".amount").toRawUTF8(),
+               amounts[static_cast<size_t>(row % amounts.size())]);
+    }
+    const auto saved = captureState(processor);
+
+    SwaraXtAudioProcessor restored;
+    restoreState(restored, saved);
+    restored.prepareToPlay(48000.0, 128);
+    processControlState(restored);
+    {
+        SwaraXtAudioProcessorEditor reopened(restored);
+        expect(reopened.lfoWaveComboForTests(0).getSelectedId()
+                   == shruthi::LFO_WAVEFORM_WAVE_16 + 1,
+               "reopened editor displays restored LFO1 waveform");
+        expect(reopened.lfoWaveComboForTests(1).getSelectedId()
+                   == shruthi::LFO_WAVEFORM_WAVE_10 + 1,
+               "reopened editor displays restored LFO2 waveform");
+    }
+    const auto& patch = restored.engineForTests().shruthiPart().patch();
+    expect(patch.lfo[0].waveform == shruthi::LFO_WAVEFORM_WAVE_16,
+           "state restore preserves LFO1 Wave 16");
+    expect(patch.lfo[1].waveform == shruthi::LFO_WAVEFORM_WAVE_10,
+           "state restore preserves LFO2 Wave 10");
+    expect(restored.engineForTests().shruthiPart().lfo_shape_for_tests(0)
+               == shruthi::LFO_WAVEFORM_WAVE_16,
+           "state restore refreshes live LFO1");
+    expect(restored.engineForTests().shruthiPart().lfo_shape_for_tests(1)
+               == shruthi::LFO_WAVEFORM_WAVE_10,
+           "state restore refreshes live LFO2");
+    for (int row = 0; row < shruthi::kModulationMatrixSize; ++row)
+    {
+        const auto& route = patch.modulation_matrix.modulation[row];
+        expect(route.source == (row * 11) % shruthi::kNumModulationSources,
+               "all matrix sources survive state restore");
+        expect(route.destination == (row * 13) % shruthi::kNumModulationDestinations,
+               "all matrix destinations survive state restore");
+        expect(route.amount == amounts[static_cast<size_t>(row % amounts.size())],
+               "negative and positive matrix amounts survive state restore");
+    }
+}
+
 }  // namespace
 
 int main(int argc, char* argv[])
@@ -253,6 +351,7 @@ int main(int argc, char* argv[])
     testMultiplePresetRoundtrips();
     testCustomizedFactoryPresetRestore();
     testAudioEquivalence();
+    testLfoPresetSwitchAndMatrixRoundtrip();
 
     if (failures == 0)
     {

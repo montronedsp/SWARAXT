@@ -191,6 +191,15 @@ class MainPanel : public juce::Component {
     }
     ModPanel& modulationForTests() noexcept { return *modulationView_; }
     const ModPanel& modulationForTests() const noexcept { return *modulationView_; }
+    juce::ComboBox& lfoWaveComboForTests(int index) noexcept
+    {
+        const int selector = index == 0 ? kLfo1Wave : kLfo2Wave;
+        return selectors_[static_cast<size_t>(selector)]->combo();
+    }
+    juce::ComboBox& mixOperatorComboForTests() noexcept
+    {
+        return selectors_[static_cast<size_t>(kMixOperator)]->combo();
+    }
 
  private:
     enum KnobIndex {

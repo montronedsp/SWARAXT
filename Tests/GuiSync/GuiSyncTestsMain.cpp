@@ -426,6 +426,30 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
         expect(osc1.modelComboForTests().getItemText(i) != "Reserved",
                "OSC MODEL does not contain Reserved");
 
+    for (int lfo = 0; lfo < 2; ++lfo)
+    {
+        auto& combo = editor.lfoWaveComboForTests(lfo);
+        expect(combo.getNumItems() == static_cast<int>(shruthi::LFO_WAVEFORM_LAST),
+               "LFO waveform combo lists every Shruthi waveform");
+        const auto* id = lfo == 0 ? swaraxt::IDs::lfo1Wave : swaraxt::IDs::lfo2Wave;
+        for (const int waveform : { 1, 14, 20, 3, 1 })
+        {
+            setInt(processor, id, waveform);
+            expect(combo.getSelectedId() == waveform + 1,
+                   "LFO waveform combo follows APVTS preset switching");
+        }
+    }
+
+    auto& operatorCombo = editor.mixOperatorComboForTests();
+    expect(operatorCombo.getNumItems() == 14,
+           "mixer operator combo lists every Shruthi operator");
+    for (int op = 0; op < 14; ++op)
+    {
+        setInt(processor, swaraxt::IDs::osc1Option, op);
+        expect(operatorCombo.getSelectedId() == op + 1,
+               "mixer operator combo preserves the Shruthi operator code");
+    }
+
     editor.setModuleViewsForTests(true, false);
     auto& mod = editor.modulationForTests();
     expect(mod.destinationComboForTests(0).getNumItems()

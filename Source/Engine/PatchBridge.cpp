@@ -59,7 +59,9 @@ void PatchBridge::applyCacheToEngine(const ParameterCache& cache)
     patch->osc[1].range = clampS8(ParameterCache::loadInt(cache.osc2Range));
     patch->osc[1].option = static_cast<uint8_t>(juce::jlimit(0, 127, ParameterCache::loadInt(cache.osc2Option)));
 
-    patch->mix_balance = static_cast<uint8_t>(ParameterCache::loadInt(cache.mixBalance));
+    // SWARA keeps the public 0..127 automation domain; Shruthi's mixer is 0..63.
+    patch->mix_balance = static_cast<uint8_t>(
+        juce::jlimit(0, 127, ParameterCache::loadInt(cache.mixBalance)) >> 1);
     patch->mix_sub_osc = static_cast<uint8_t>(ParameterCache::loadInt(cache.mixSub));
     patch->mix_noise = static_cast<uint8_t>(ParameterCache::loadInt(cache.mixNoise));
     patch->mix_sub_osc_shape = static_cast<uint8_t>(juce::jlimit(0, 10, ParameterCache::loadInt(cache.mixSubShape)));

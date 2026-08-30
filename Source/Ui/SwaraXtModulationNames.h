@@ -39,6 +39,17 @@ inline juce::StringArray oscillatorNames()
     };
 }
 
+/** LFO waveform names in exact Shruthi enum order. */
+inline juce::StringArray lfoWaveformNames()
+{
+    return {
+        "Triangle", "Square", "Sample/Hold", "Ramp", "Step Seq",
+        "Wave 1", "Wave 2", "Wave 3", "Wave 4", "Wave 5", "Wave 6",
+        "Wave 7", "Wave 8", "Wave 9", "Wave 10", "Wave 11", "Wave 12",
+        "Wave 13", "Wave 14", "Wave 15", "Wave 16"
+    };
+}
+
 // Only the 27 destinations Shruthi defines are listed. The parameter range is
 // clamped to these values at engine ingress so restored automation cannot
 // select an undefined destination. PWM 1/2 are displayed as Timbre 1/2.

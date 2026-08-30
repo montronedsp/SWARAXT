@@ -28,11 +28,9 @@ void setFloatParam(juce::AudioProcessorValueTreeState& apvts, const char* id, fl
         *param = value;
 }
 
-int mixerOperatorFromPatch(const shruthi::Patch& patch) noexcept
+int pluginMixBalanceFromPatch(const shruthi::Patch& patch) noexcept
 {
-    const int option = static_cast<int>(patch.osc[0].option);
-    const int op = static_cast<int>(patch.ops_[0].op & 0x0f);
-    return op != 0 ? op : option;
+    return juce::jmin(127, static_cast<int>(patch.mix_balance) * 2);
 }
 
 }  // namespace
@@ -86,14 +84,14 @@ void ShruthiFactoryPresets::applyPatchToApvts(const shruthi::Patch& patch,
     setIntParam(apvts, IDs::osc1Shape, patch.osc[0].shape);
     setIntParam(apvts, IDs::osc1Param, patch.osc[0].parameter);
     setIntParam(apvts, IDs::osc1Range, patch.osc[0].range);
-    setIntParam(apvts, IDs::osc1Option, mixerOperatorFromPatch(patch));
+    setIntParam(apvts, IDs::osc1Option, patch.osc[0].option);
 
     setIntParam(apvts, IDs::osc2Shape, patch.osc[1].shape);
     setIntParam(apvts, IDs::osc2Param, patch.osc[1].parameter);
     setIntParam(apvts, IDs::osc2Range, patch.osc[1].range);
     setIntParam(apvts, IDs::osc2Option, patch.osc[1].option);
 
-    setIntParam(apvts, IDs::mixBalance, patch.mix_balance);
+    setIntParam(apvts, IDs::mixBalance, pluginMixBalanceFromPatch(patch));
     setIntParam(apvts, IDs::mixSub, patch.mix_sub_osc);
     setIntParam(apvts, IDs::mixNoise, patch.mix_noise);
     setIntParam(apvts, IDs::mixSubShape, patch.mix_sub_osc_shape);
