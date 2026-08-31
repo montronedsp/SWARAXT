@@ -56,9 +56,12 @@ void SwaraXtLookAndFeel::applySkin()
     setColour(juce::ComboBox::textColourId, Palette::skin().comboText);
     setColour(juce::ComboBox::arrowColourId, Palette::skin().comboArrow);
     setColour(juce::PopupMenu::backgroundColourId, Palette::panelRaised());
-    setColour(juce::PopupMenu::textColourId, Palette::cream());
+    const auto popupText = SkinRegistry::active().id == SkinId::pastel
+        ? Palette::skin().comboText
+        : Palette::cream();
+    setColour(juce::PopupMenu::textColourId, popupText);
     setColour(juce::PopupMenu::highlightedBackgroundColourId, Palette::accent().withAlpha(0.35f));
-    setColour(juce::PopupMenu::highlightedTextColourId, Palette::cream());
+    setColour(juce::PopupMenu::highlightedTextColourId, popupText);
     setColour(juce::CaretComponent::caretColourId, Palette::orange());
 }
 
@@ -226,6 +229,7 @@ void SwaraXtLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& 
 {
     label.setBounds(box.getLocalBounds().reduced(9, 1).withTrimmedRight(18));
     label.setJustificationType(juce::Justification::centredLeft);
+    label.setFont(getComboBoxFont(box));
 }
 
 juce::Font SwaraXtLookAndFeel::getComboBoxFont(juce::ComboBox&)

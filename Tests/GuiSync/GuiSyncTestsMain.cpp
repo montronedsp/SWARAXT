@@ -341,6 +341,14 @@ void writeScreenshot(SwaraXtAudioProcessorEditor& editor,
     expect(stream.openedOk() && png.writeImageToStream(image, stream), "write GUI screenshot");
 }
 
+juce::Label* comboTextLabel(juce::ComboBox& combo)
+{
+    for (int child = 0; child < combo.getNumChildComponents(); ++child)
+        if (auto* label = dynamic_cast<juce::Label*>(combo.getChildComponent(child)))
+            return label;
+    return nullptr;
+}
+
 void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
 {
     SwaraXtAudioProcessor processor;
@@ -460,11 +468,13 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
            "Mixer Operator and Sub Shape share a visual baseline");
 
     const auto canonicalComboFont = operatorCombo.getLookAndFeel().getComboBoxFont(operatorCombo);
-    const auto expectCanonicalComboFont = [&](juce::ComboBox& combo, const char* description) {
-        const auto font = combo.getLookAndFeel().getComboBoxFont(combo);
-        expect(font.getTypefaceName() == canonicalComboFont.getTypefaceName()
-                   && std::abs(font.getHeight() - canonicalComboFont.getHeight()) < 0.001f,
-               description);
+    const auto expectCanonicalComboFont = [&](juce::ComboBox& combo,
+                                               const juce::String& description) {
+        const auto* label = comboTextLabel(combo);
+        expect(label != nullptr
+                   && label->getFont().getTypefaceName() == canonicalComboFont.getTypefaceName()
+                   && std::abs(label->getFont().getHeight() - canonicalComboFont.getHeight()) < 0.001f,
+               description.toRawUTF8());
     };
     expectCanonicalComboFont(osc1.modelComboForTests(),
                              "OSC selectors use canonical embedded ComboBox typography");
@@ -472,8 +482,6 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
                              "Sub selector uses canonical embedded ComboBox typography");
     expectCanonicalComboFont(editor.lfoWaveComboForTests(0),
                              "LFO selectors use canonical embedded ComboBox typography");
-    expectCanonicalComboFont(editor.sequenceEventComboForTests(),
-                             "Sequence Event uses canonical embedded ComboBox typography");
 
     editor.setModuleViewsForTests(false, false);
     expect(editor.modMatrixHeaderVisibleForTests(),
@@ -493,6 +501,8 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
     }
 
     editor.setSequencerEditorViewForTests(true);
+    expectCanonicalComboFont(editor.sequenceEventComboForTests(),
+                             "Sequence Event uses canonical embedded ComboBox typography");
     expect(! editor.modMatrixHeaderVisibleForTests(),
            "Mod Matrix header is hidden behind the SEQ editor");
     expect(editor.sequenceStartBoundsForTests().getX()
@@ -550,24 +560,82 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
 
 
     std::filesystem::create_directories(outputRoot);
-    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::small);
-    expect(editor.getWidth() == 891 && editor.getHeight() == 417,
-           "small editor is the approved proportional size");
-    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::large);
-    expect(editor.getWidth() == 1391 && editor.getHeight() == 651,
-           "large editor is the approved proportional size");
+    const auto expectComboGeometry = [&](swaraxt::ui::GuiSize size,
+                                         int expectedWidth,
+                                         int expectedHeight,
+                                         const char* sizeName) {
+        editor.setGuiSizeForTests(size);
+        const auto editorSizeDescription = juce::String(sizeName)
+            + " editor uses the approved proportional size";
+        expect(editor.getWidth() == expectedWidth && editor.getHeight() == expectedHeight,
+               editorSizeDescription.toRawUTF8());
+        for (auto* combo : { &osc1.modelComboForTests(), &subCombo, &operatorCombo,
+                            &editor.lfoWaveComboForTests(0),
+                            &editor.sequenceEventComboForTests() })
+        {
+            combo->resized();
+            const auto* label = comboTextLabel(*combo);
+            const auto geometryDescription = juce::String(sizeName)
+                + " ComboBox text geometry is deterministic";
+            expect(label != nullptr
+                       && label->getBounds()
+                              == combo->getLocalBounds().reduced(9, 1).withTrimmedRight(18),
+                   geometryDescription.toRawUTF8());
+            expectCanonicalComboFont(*combo, juce::String(sizeName)
+                                                + " ComboBox uses the embedded SWARA font");
+        }
+    };
+    expectComboGeometry(swaraxt::ui::GuiSize::small, 891, 417, "Small");
+    expectComboGeometry(swaraxt::ui::GuiSize::medium, 1113, 521, "Normal");
+    expectComboGeometry(swaraxt::ui::GuiSize::large, 1391, 651, "Large");
+    expectComboGeometry(swaraxt::ui::GuiSize::medium, 1113, 521, "Normal after Large");
+    expectComboGeometry(swaraxt::ui::GuiSize::small, 891, 417, "Small after Normal");
+    expectComboGeometry(swaraxt::ui::GuiSize::large, 1391, 651, "Large after Small");
+
     editor.setDecorationForTests(swaraxt::ui::DecorationId::legacy);
     editor.setSkinForTests(swaraxt::ui::SkinId::pastel);
+    const auto pastelComboText = swaraxt::ui::Palette::skin().comboText;
+    expect(pastelComboText == juce::Colour(0xfff7e8bd),
+           "Pastel ComboBox text uses the intended light palette foreground");
+    expect(operatorCombo.findColour(juce::ComboBox::textColourId) == pastelComboText,
+           "Pastel ComboBox resolves the light foreground colour");
+    expect(comboTextLabel(operatorCombo)->findColour(juce::Label::textColourId)
+               == pastelComboText,
+           "Pastel ComboBox internal Label receives the light foreground colour");
+    expect(operatorCombo.getLookAndFeel().findColour(juce::PopupMenu::textColourId)
+               == pastelComboText,
+           "Pastel ComboBox popup text uses the light foreground colour");
+    expect(operatorCombo.getLookAndFeel().findColour(
+               juce::PopupMenu::highlightedTextColourId) == pastelComboText,
+           "Pastel highlighted popup text uses the light foreground colour");
+    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::small);
+    writeScreenshot(editor, outputRoot / "pastel-legacy-small.png", false, false);
+    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::medium);
+    writeScreenshot(editor, outputRoot / "pastel-legacy-normal.png", false, false);
+    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::large);
     writeScreenshot(editor, outputRoot / "pastel-legacy-large.png", false, false);
+    const auto expectActiveSkinComboText = [&](const char* description) {
+        expect(operatorCombo.findColour(juce::ComboBox::textColourId)
+                   == swaraxt::ui::Palette::skin().comboText,
+               description);
+    };
     editor.setSkinForTests(swaraxt::ui::SkinId::midnightGold);
+    expectActiveSkinComboText("Midnight Gold preserves its ComboBox foreground");
     writeScreenshot(editor, outputRoot / "midnight-gold-legacy-large.png", false, false);
     editor.setSkinForTests(swaraxt::ui::SkinId::neonCobalt);
+    expectActiveSkinComboText("Neon Cobalt preserves its ComboBox foreground");
     writeScreenshot(editor, outputRoot / "neon-cobalt-legacy-large.png", false, false);
     editor.setSkinForTests(swaraxt::ui::SkinId::jungle);
+    expectActiveSkinComboText("Jungle preserves its ComboBox foreground");
     writeScreenshot(editor, outputRoot / "jungle-legacy-large.png", false, false);
     editor.setSkinForTests(swaraxt::ui::SkinId::rossocorsa);
+    expectActiveSkinComboText("Rossocorsa preserves its ComboBox foreground");
     writeScreenshot(editor, outputRoot / "rossocorsa-legacy-large.png", false, false);
     editor.setSkinForTests(swaraxt::ui::SkinId::pastel);
+    expect(operatorCombo.findColour(juce::ComboBox::textColourId) == pastelComboText
+               && comboTextLabel(operatorCombo)->findColour(juce::Label::textColourId)
+                      == pastelComboText,
+           "Pastel colour is restored after switching skins");
     editor.setDecorationForTests(swaraxt::ui::DecorationId::pcbTrace);
     writeScreenshot(editor, outputRoot / "pastel-pcb-trace-large.png", false, false);
     editor.setSequencerEditorViewForTests(false);
