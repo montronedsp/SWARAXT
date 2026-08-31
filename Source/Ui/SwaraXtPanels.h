@@ -67,7 +67,10 @@ class SwaraXtModulePanel : public juce::Component {
     void resized() override;
     void lookAndFeelChanged() override;
     void setSecondaryActionBounds(juce::Rectangle<int> bounds);
+    void setSecondaryHeaderVisible(bool visible);
+    bool secondaryHeaderVisibleForTests() const noexcept { return secondaryHeaderVisible_; }
     juce::Component& body() noexcept { return body_; }
+    const juce::Component& body() const noexcept { return body_; }
 
  private:
     juce::Label title_;
@@ -75,6 +78,7 @@ class SwaraXtModulePanel : public juce::Component {
     juce::Component body_;
     juce::Rectangle<int> secondaryActionBounds_;
     int secondaryDividerY_ = 0;
+    bool secondaryHeaderVisible_ = true;
 };
 
 class SwaraXtDepthSlider : public juce::Component {
@@ -206,6 +210,23 @@ class MainPanel : public juce::Component {
     {
         return selectors_[static_cast<size_t>(kMixOperator)]->combo();
     }
+    juce::ComboBox& subShapeComboForTests() noexcept
+    {
+        return selectors_[static_cast<size_t>(kSubShape)]->combo();
+    }
+    juce::ComboBox& sequenceEventComboForTests() noexcept;
+    juce::ComboBox& arpComboForTests(int index) noexcept;
+    bool modMatrixHeaderVisibleForTests() const noexcept
+    {
+        return mixModule_.secondaryHeaderVisibleForTests();
+    }
+    juce::Rectangle<int> sequenceStartBoundsForTests() const;
+    juce::Rectangle<int> sequenceLengthBoundsForTests() const;
+    juce::Rectangle<int> sequenceEventComboBoundsForTests() const;
+    juce::Rectangle<int> sequenceNoteBoundsForTests() const;
+    juce::Rectangle<int> sequenceVelocityBoundsForTests() const;
+    juce::Rectangle<int> sequenceNavigationBoundsForTests() const;
+    juce::Rectangle<int> arpComboBoundsForTests(int index) const;
 
  private:
     enum KnobIndex {
@@ -332,6 +353,24 @@ class SeqPanel : public juce::Component,
     int arpPatternForTests() const noexcept;
     void setSequenceLayoutForTests(int length, int rotation, int groove);
     void setSequenceStepForTests(int step, int note, int event, int velocity, int value);
+    juce::ComboBox& eventComboForTests() noexcept { return event_.combo(); }
+    juce::ComboBox& arpComboForTests(int index) noexcept
+    {
+        return selectors_[static_cast<size_t>(juce::jlimit(0, 5, index))]->combo();
+    }
+    juce::Rectangle<int> startBoundsForTests() const noexcept { return rotation_.getBounds(); }
+    juce::Rectangle<int> lengthBoundsForTests() const noexcept { return length_.getBounds(); }
+    juce::Rectangle<int> noteBoundsForTests() const noexcept { return note_.getBounds(); }
+    juce::Rectangle<int> velocityBoundsForTests() const noexcept { return velocity_.getBounds(); }
+    juce::Rectangle<int> eventComboBoundsForTests() const noexcept
+    {
+        return event_.combo().getBounds().translated(event_.getX(), event_.getY());
+    }
+    juce::Rectangle<int> arpComboBoundsForTests(int index) const noexcept
+    {
+        const auto& selector = *selectors_[static_cast<size_t>(juce::jlimit(0, 5, index))];
+        return selector.combo().getBounds().translated(selector.getX(), selector.getY());
+    }
 
  private:
     enum KnobIndex {

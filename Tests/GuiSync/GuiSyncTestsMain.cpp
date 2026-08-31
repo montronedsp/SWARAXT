@@ -357,6 +357,8 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
            "product lockup preserves canonical geometry with the refined group offset");
     expect(editor.presetBoundsForTests().getCentreX() == editor.getWidth() / 2,
            "preset name is centered on the complete editor");
+    expect(juce::String(SWARAXT_VERSION_STRING) == "1.2.0",
+           "GUI and build metadata report SWARA XT 1.2.0");
 
     for (int oscillator = 0; oscillator < 2; ++oscillator)
     {
@@ -450,6 +452,62 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
                "mixer operator combo preserves the Shruthi operator code");
     }
 
+    auto& subCombo = editor.subShapeComboForTests();
+    expect(operatorCombo.getHeight() == swaraxt::ui::Layout::selectorHeight
+               && subCombo.getHeight() == swaraxt::ui::Layout::selectorHeight,
+           "Mixer Operator and Sub Shape use the canonical ComboBox height");
+    expect(operatorCombo.getBounds().getCentreY() == subCombo.getBounds().getCentreY(),
+           "Mixer Operator and Sub Shape share a visual baseline");
+
+    const auto canonicalComboFont = operatorCombo.getLookAndFeel().getComboBoxFont(operatorCombo);
+    const auto expectCanonicalComboFont = [&](juce::ComboBox& combo, const char* description) {
+        const auto font = combo.getLookAndFeel().getComboBoxFont(combo);
+        expect(font.getTypefaceName() == canonicalComboFont.getTypefaceName()
+                   && std::abs(font.getHeight() - canonicalComboFont.getHeight()) < 0.001f,
+               description);
+    };
+    expectCanonicalComboFont(osc1.modelComboForTests(),
+                             "OSC selectors use canonical embedded ComboBox typography");
+    expectCanonicalComboFont(subCombo,
+                             "Sub selector uses canonical embedded ComboBox typography");
+    expectCanonicalComboFont(editor.lfoWaveComboForTests(0),
+                             "LFO selectors use canonical embedded ComboBox typography");
+    expectCanonicalComboFont(editor.sequenceEventComboForTests(),
+                             "Sequence Event uses canonical embedded ComboBox typography");
+
+    editor.setModuleViewsForTests(false, false);
+    expect(editor.modMatrixHeaderVisibleForTests(),
+           "Mod Matrix header is visible with the synth and matrix editor");
+
+    editor.setModuleViewsForTests(false, true);
+    editor.setSequencerEditorViewForTests(false);
+    expect(! editor.modMatrixHeaderVisibleForTests(),
+           "Mod Matrix header is hidden behind the ARP editor");
+    const auto navigation = editor.sequenceNavigationBoundsForTests();
+    for (int selector = 0; selector < 6; ++selector)
+    {
+        expect(! editor.arpComboBoundsForTests(selector).intersects(navigation),
+               "ARP ComboBoxes leave the Mod Matrix navigation button unobstructed");
+        expectCanonicalComboFont(editor.arpComboForTests(selector),
+                                 "ARP selectors use canonical embedded ComboBox typography");
+    }
+
+    editor.setSequencerEditorViewForTests(true);
+    expect(! editor.modMatrixHeaderVisibleForTests(),
+           "Mod Matrix header is hidden behind the SEQ editor");
+    expect(editor.sequenceStartBoundsForTests().getX()
+               < editor.sequenceLengthBoundsForTests().getX(),
+           "Sequence Start is left of Length");
+    const auto noteBounds = editor.sequenceNoteBoundsForTests();
+    const auto velocityBounds = editor.sequenceVelocityBoundsForTests();
+    const auto eventBounds = editor.sequenceEventComboBoundsForTests();
+    const int expectedEventCentre = noteBounds.getY() + swaraxt::ui::Layout::knobLabelHeight
+        + (noteBounds.getHeight() - swaraxt::ui::Layout::knobLabelHeight
+           - swaraxt::ui::Layout::valueBoxHeight) / 2;
+    expect(std::abs(eventBounds.getCentreY() - expectedEventCentre) <= 1
+               && noteBounds.getY() == velocityBounds.getY(),
+           "Sequence Event is centred with the Note and Velocity rotary controls");
+
     editor.setModuleViewsForTests(true, false);
     auto& mod = editor.modulationForTests();
     expect(mod.destinationComboForTests(0).getNumItems()
@@ -512,6 +570,10 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
     editor.setSkinForTests(swaraxt::ui::SkinId::pastel);
     editor.setDecorationForTests(swaraxt::ui::DecorationId::pcbTrace);
     writeScreenshot(editor, outputRoot / "pastel-pcb-trace-large.png", false, false);
+    editor.setSequencerEditorViewForTests(false);
+    writeScreenshot(editor, outputRoot / "swara-1.2-arp-large.png", false, true);
+    editor.setSequencerEditorViewForTests(true);
+    writeScreenshot(editor, outputRoot / "swara-1.2-seq-large.png", false, true);
 }
 
 }  // namespace

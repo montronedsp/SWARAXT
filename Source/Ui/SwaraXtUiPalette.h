@@ -53,7 +53,6 @@ struct Layout {
     static constexpr int valueBoxWide = 54;
     static constexpr int selectorLabelHeight = 12;
     static constexpr int selectorHeight = 23;
-    static constexpr int selectorPrimaryHeight = 25;
     static constexpr int selectorDescriptionHeight = 0;
     static constexpr int navButtonWidth = 82;
 

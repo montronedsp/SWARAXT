@@ -62,6 +62,50 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     {
         return mainPanel_.mixOperatorComboForTests();
     }
+    juce::ComboBox& subShapeComboForTests() noexcept
+    {
+        return mainPanel_.subShapeComboForTests();
+    }
+    juce::ComboBox& sequenceEventComboForTests() noexcept
+    {
+        return mainPanel_.sequenceEventComboForTests();
+    }
+    juce::ComboBox& arpComboForTests(int index) noexcept
+    {
+        return mainPanel_.arpComboForTests(index);
+    }
+    bool modMatrixHeaderVisibleForTests() const noexcept
+    {
+        return mainPanel_.modMatrixHeaderVisibleForTests();
+    }
+    juce::Rectangle<int> sequenceStartBoundsForTests() const
+    {
+        return mainPanel_.sequenceStartBoundsForTests();
+    }
+    juce::Rectangle<int> sequenceLengthBoundsForTests() const
+    {
+        return mainPanel_.sequenceLengthBoundsForTests();
+    }
+    juce::Rectangle<int> sequenceEventComboBoundsForTests() const
+    {
+        return mainPanel_.sequenceEventComboBoundsForTests();
+    }
+    juce::Rectangle<int> sequenceNoteBoundsForTests() const
+    {
+        return mainPanel_.sequenceNoteBoundsForTests();
+    }
+    juce::Rectangle<int> sequenceVelocityBoundsForTests() const
+    {
+        return mainPanel_.sequenceVelocityBoundsForTests();
+    }
+    juce::Rectangle<int> sequenceNavigationBoundsForTests() const
+    {
+        return mainPanel_.sequenceNavigationBoundsForTests();
+    }
+    juce::Rectangle<int> arpComboBoundsForTests(int index) const
+    {
+        return mainPanel_.arpComboBoundsForTests(index);
+    }
 
  private:
     class BrandButton : public juce::Button {

@@ -238,8 +238,7 @@ void SwaraXtSelector::resized()
 {
     auto area = getLocalBounds();
     label_.setBounds(area.removeFromTop(Layout::selectorLabelHeight));
-    combo_.setBounds(area.removeFromTop(primary_ ? Layout::selectorPrimaryHeight
-                                                 : Layout::selectorHeight));
+    combo_.setBounds(area.removeFromTop(Layout::selectorHeight));
     if (area.getHeight() >= Layout::selectorDescriptionHeight)
         description_.setBounds(area.removeFromTop(Layout::selectorDescriptionHeight));
 }
@@ -283,12 +282,24 @@ void SwaraXtModulePanel::paint(juce::Graphics& g)
                           actionBounds.toFloat());
     };
     paintDivider(title_);
-    paintDivider(secondaryTitle_, secondaryActionBounds_);
+    if (secondaryHeaderVisible_)
+        paintDivider(secondaryTitle_, secondaryActionBounds_);
 }
 
 void SwaraXtModulePanel::setSecondaryActionBounds(juce::Rectangle<int> bounds)
 {
     secondaryActionBounds_ = bounds;
+    repaint();
+}
+
+void SwaraXtModulePanel::setSecondaryHeaderVisible(bool visible)
+{
+    if (secondaryHeaderVisible_ == visible)
+        return;
+
+    secondaryHeaderVisible_ = visible;
+    secondaryTitle_.setVisible(visible);
+    resized();
     repaint();
 }
 
@@ -322,7 +333,8 @@ void SwaraXtModulePanel::resized()
     }
     else
         title_.setBounds({});
-    if (secondaryTitle_.getText().isNotEmpty() && secondaryDividerY_ > 0)
+    if (secondaryHeaderVisible_ && secondaryTitle_.getText().isNotEmpty()
+        && secondaryDividerY_ > 0)
     {
         const int width = juce::jmax(64, secondaryTitle_.getText().length() * 8 + 20);
         secondaryTitle_.setBounds((getWidth() - width) / 2,
@@ -740,8 +752,60 @@ void MainPanel::setLocalViews(bool modulation, bool sequencer)
     sequencerView_->setVisible(sequencer);
     seqViewButton_.setToggleState(sequencer, juce::dontSendNotification);
     seqViewButton_.setButtonText(sequencer ? "SYNTH" : "SEQ/ARP");
+    mixModule_.setSecondaryHeaderVisible(! sequencer);
     seqViewButton_.toFront(false);
     reflow();
+}
+
+juce::ComboBox& MainPanel::sequenceEventComboForTests() noexcept
+{
+    return sequencerView_->eventComboForTests();
+}
+
+juce::ComboBox& MainPanel::arpComboForTests(int index) noexcept
+{
+    return sequencerView_->arpComboForTests(index);
+}
+
+juce::Rectangle<int> MainPanel::sequenceStartBoundsForTests() const
+{
+    return mixModule_.body().getLocalArea(sequencerView_.get(),
+                                         sequencerView_->startBoundsForTests());
+}
+
+juce::Rectangle<int> MainPanel::sequenceLengthBoundsForTests() const
+{
+    return mixModule_.body().getLocalArea(sequencerView_.get(),
+                                         sequencerView_->lengthBoundsForTests());
+}
+
+juce::Rectangle<int> MainPanel::sequenceEventComboBoundsForTests() const
+{
+    return mixModule_.body().getLocalArea(sequencerView_.get(),
+                                         sequencerView_->eventComboBoundsForTests());
+}
+
+juce::Rectangle<int> MainPanel::sequenceNoteBoundsForTests() const
+{
+    return mixModule_.body().getLocalArea(sequencerView_.get(),
+                                         sequencerView_->noteBoundsForTests());
+}
+
+juce::Rectangle<int> MainPanel::sequenceVelocityBoundsForTests() const
+{
+    return mixModule_.body().getLocalArea(sequencerView_.get(),
+                                         sequencerView_->velocityBoundsForTests());
+}
+
+juce::Rectangle<int> MainPanel::sequenceNavigationBoundsForTests() const
+{
+    return seqViewButton_.getBounds();
+}
+
+juce::Rectangle<int> MainPanel::arpComboBoundsForTests(int index) const
+{
+    return mixModule_.body().getLocalArea(sequencerView_.get(),
+                                         sequencerView_->arpComboBoundsForTests(index));
 }
 
 void MainPanel::setSequencerHostSyncForTests(bool enabled)
@@ -1341,14 +1405,23 @@ void SeqPanel::reflow()
 
         area.removeFromTop(3);
         auto common = area.removeFromTop(area.getHeight() / 2);
-        layoutRow(common, { &length_, &rotation_, &groove_ }, 3);
+        layoutRow(common, { &rotation_, &length_, &groove_ }, 3);
         layoutRow(area, { &note_, &event_, &velocity_, &controller_ }, 3);
+
+        auto eventCombo = event_.combo().getBounds();
+        const int rotaryAreaHeight = juce::jmax(
+            0, event_.getHeight() - Layout::knobLabelHeight - Layout::valueBoxHeight);
+        eventCombo.setY(Layout::knobLabelHeight
+                        + (rotaryAreaHeight - Layout::selectorHeight) / 2);
+        event_.combo().setBounds(eventCombo);
         return;
     }
 
-    auto row1 = area.removeFromTop(area.getHeight() / 3);
-    auto row2 = area.removeFromTop(area.getHeight() / 2);
-    auto row3 = area;
+    constexpr int selectorRowHeight = Layout::selectorLabelHeight
+        + Layout::selectorHeight + 7;
+    auto row1 = area.removeFromTop(selectorRowHeight);
+    auto row2 = area.removeFromTop(selectorRowHeight);
+    auto row3 = area.removeFromBottom(72);
     layoutRow(row1, { selectors_[kMode].get(), selectors_[kClockMode].get(),
                       selectors_[kDirection].get() }, 4);
     layoutRow(row2, { selectors_[kPattern].get(), selectors_[kOctaves].get(),
