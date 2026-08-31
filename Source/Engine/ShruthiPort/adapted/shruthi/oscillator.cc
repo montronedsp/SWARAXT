@@ -43,6 +43,16 @@ namespace shruthi {
   phase.integral = phase_.integral; \
   phase.fractional = phase_.fractional; \
   uint8_t size = kAudioBlockSize; \
+  while (size--) {
+
+#define BEGIN_SAMPLE_LOOP_MORE_REGISTERS \
+  uint24c_t phase; \
+  uint24_t phase_increment_int; \
+  phase_increment_int.integral = phase_increment_.integral; \
+  phase_increment_int.fractional = phase_increment_.fractional; \
+  phase.integral = phase_.integral; \
+  phase.fractional = phase_.fractional; \
+  uint8_t size = kAudioBlockSize; \
   uint8_t* sync_input = sync_input_; \
   uint8_t* sync_output = sync_output_; \
   while (size--) {
@@ -127,7 +137,7 @@ void Oscillator::RenderSimpleWavetable(uint8_t* buffer) {
   wave_index = U8AddClip(wave_index, 1, kNumZonesFullSampleRate);
   const prog_uint8_t* wave_2 = waveform_table[base_resource_id + wave_index];
 
-  BEGIN_SAMPLE_LOOP
+  BEGIN_SAMPLE_LOOP_MORE_REGISTERS
     UPDATE_PHASE_MORE_REGISTERS
     uint8_t sample = InterpolateTwoTables(
         wave_1, wave_2,
@@ -184,7 +194,7 @@ void Oscillator::RenderInterpolatedWavetable(uint8_t* buffer) {
   const prog_uint8_t* wave_2 = wav_res_waves + U8U8Mul(
       wave_index_2,
       129);
-  BEGIN_SAMPLE_LOOP
+  BEGIN_SAMPLE_LOOP_MORE_REGISTERS
     UPDATE_PHASE_MORE_REGISTERS
     *buffer++ = InterpolateTwoTables(
         wave_1,
@@ -220,7 +230,7 @@ void Oscillator::RenderSweepingWavetableRam(uint8_t* buffer) {
 
 // ------- Casio CZ-like synthesis -------------------------------------------
 void Oscillator::RenderCzSaw(uint8_t* buffer) {
-  BEGIN_SAMPLE_LOOP
+  BEGIN_SAMPLE_LOOP_MORE_REGISTERS
     UPDATE_PHASE_MORE_REGISTERS
     uint8_t phi = phase.integral >> 8;
     uint8_t clipped_phi = phi < 0x20 ? phi << 3 : 0xff;
@@ -329,7 +339,7 @@ void Oscillator::Render8BitLand(uint8_t* buffer) {
 void Oscillator::RenderCrushedSine(uint8_t* buffer) {
   uint8_t decimate = data_.cr.decimate;
   uint8_t held_sample = data_.cr.state;
-  BEGIN_SAMPLE_LOOP
+  BEGIN_SAMPLE_LOOP_MORE_REGISTERS
     UPDATE_PHASE_MORE_REGISTERS
     ++decimate;
     if (parameter_ <= 63) {

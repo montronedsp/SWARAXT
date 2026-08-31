@@ -30,7 +30,7 @@ set(SWARAXT_SHRUTHI_SOURCES
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/part.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/patch.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/parameter.cc"
-    "${SWARAXT_SHRUTHI_ROOT}/shruthi/note_stack.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/note_stack.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/clock.cc"
     "${SWARAXT_SHRUTHI_ROOT}/shruthi/sequencer_settings.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/system_settings.cc"

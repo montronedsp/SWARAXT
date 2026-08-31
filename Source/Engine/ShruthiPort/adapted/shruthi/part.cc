@@ -157,24 +157,24 @@ static const prog_char init_sequence[] PROGMEM = {
     // Pattern size and pattern
     16,
     0,
-    0x80 | 48, 0x00 | 0x70 | 0x0,
-    0x80 | 48, 0x80 | 0x50 | 0x0,
-    0x80 | 60, 0x00 | 0x50 | 0x0,
-    0x80 | 60, 0x80 | 0x50 | 0x0,
+    static_cast<prog_char>(0x80 | 48), 0x00 | 0x70 | 0x0,
+    static_cast<prog_char>(0x80 | 48), static_cast<prog_char>(0x80 | 0x50 | 0x0),
+    static_cast<prog_char>(0x80 | 60), 0x00 | 0x50 | 0x0,
+    static_cast<prog_char>(0x80 | 60), static_cast<prog_char>(0x80 | 0x50 | 0x0),
 
-    0x80 | 48, 0x00 | 0x70 | 0xf,
-    0x80 | 48, 0x80 | 0x50 | 0xf,
-    0x80 | 60, 0x00 | 0x50 | 0xf,
+    static_cast<prog_char>(0x80 | 48), 0x00 | 0x70 | 0xf,
+    static_cast<prog_char>(0x80 | 48), static_cast<prog_char>(0x80 | 0x50 | 0xf),
+    static_cast<prog_char>(0x80 | 60), 0x00 | 0x50 | 0xf,
     0x00 | 60, 0x00 | 0x50 | 0xf,
 
-    0x80 | 48, 0x00 | 0x70 | 0xc,
-    0x80 | 48, 0x80 | 0x50 | 0xc,
-    0x80 | 60, 0x00 | 0x50 | 0xc,
-    0x80 | 60, 0x80 | 0x50 | 0xc,
+    static_cast<prog_char>(0x80 | 48), 0x00 | 0x70 | 0xc,
+    static_cast<prog_char>(0x80 | 48), static_cast<prog_char>(0x80 | 0x50 | 0xc),
+    static_cast<prog_char>(0x80 | 60), 0x00 | 0x50 | 0xc,
+    static_cast<prog_char>(0x80 | 60), static_cast<prog_char>(0x80 | 0x50 | 0xc),
 
-    0x80 | 48, 0x00 | 0x70 | 0x4,
+    static_cast<prog_char>(0x80 | 48), 0x00 | 0x70 | 0x4,
     0x00 | 48, 0x00 | 0x50 | 0x4,
-    0x80 | 60, 0x00 | 0x70 | 0x4,
+    static_cast<prog_char>(0x80 | 60), 0x00 | 0x70 | 0x4,
     0x00 | 60, 0x00 | 0x50 | 0x4,
 };
 
@@ -267,7 +267,7 @@ void Part::NoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
 }
 
 /* static */
-void Part::NoteOff(uint8_t channel, uint8_t note) {
+void Part::NoteOff(uint8_t /*channel*/, uint8_t note) {
   if (ignore_note_off_messages_) {
     for (uint8_t i = 1; i <= pressed_keys_.max_size(); ++i) {
       // Flag the note so that it is removed once the sustain pedal is released.
@@ -333,13 +333,12 @@ void Part::ControlChange(uint8_t controller, uint8_t value) {
               }
             }
           } else {
-            const Parameter& p = ParameterManager::parameter(parameter_index);
             uint8_t old_value = GetParameter(nrpn_parameter_number_);
-            uint8_t value = p.Increment(
+            uint8_t incremented_value = p.Increment(
                 old_value,
                 controller == midi::kDataIncrement ? 1 : -1);
-            if (value != old_value) {
-              SetParameter(parameter_index, nrpn_parameter_number_, value, 0);
+            if (incremented_value != old_value) {
+              SetParameter(parameter_index, nrpn_parameter_number_, incremented_value, 0);
             }
           }
         }
@@ -647,7 +646,6 @@ void Part::ClockArpeggiator() {
       n = 0;
     }
     n = (n + sequencer_settings_.pattern_rotation) & 0x0f;
-    SequenceStep& step = sequencer_settings_.steps[n];
     if (sequencer_settings_.steps[n].legato()) {
       arp_seq_gate_length_counter_ += step_duration();
     }

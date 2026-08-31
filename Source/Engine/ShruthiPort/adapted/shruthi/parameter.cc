@@ -256,7 +256,7 @@ static const prog_Parameter parameters[kNumParameters] PROGMEM = {
   // 2
   { PRM_OSC_RANGE_1,
     UNIT_INT8,
-    -24, 24,
+    static_cast<uint8_t>(-24), 24,
     { 22, 0 },
     STR_RES_RNG, STR_RES_RANGE },
 
@@ -284,7 +284,7 @@ static const prog_Parameter parameters[kNumParameters] PROGMEM = {
   // 6
   { PRM_OSC_RANGE_2,
     UNIT_INT8,
-    -24, 24,
+    static_cast<uint8_t>(-24), 24,
     { 26, 0 },
     STR_RES_RNG, STR_RES_RANGE },
 
@@ -487,7 +487,7 @@ static const prog_Parameter parameters[kNumParameters] PROGMEM = {
   // 35
   { PRM_MOD_AMOUNT,
     UNIT_INT8,
-    -63, 63,
+    static_cast<uint8_t>(-63), 63,
     { 0, 0 },
     STR_RES_AMT, STR_RES_AMOUNT },
 
@@ -550,7 +550,7 @@ static const prog_Parameter parameters[kNumParameters] PROGMEM = {
   // 44
   { PRM_SYS_OCTAVE,
     UNIT_INT8,
-    -2, +2,
+    static_cast<uint8_t>(-2), +2,
     { 82, 0 },
     STR_RES_OCTAVE, STR_RES_OCTAVE },
 
@@ -578,7 +578,7 @@ static const prog_Parameter parameters[kNumParameters] PROGMEM = {
   // 48
   { PRM_SYS_MASTER_TUNING,
     UNIT_INT8,
-    -127, 127,
+    static_cast<uint8_t>(-127), 127,
     { 0, 0 },
     STR_RES_TUNING, STR_RES_TUNING },
 

@@ -61,7 +61,7 @@ class Part {
   void PitchBend(uint16_t pitch_bend) {
     voice_.PitchBend(pitch_bend);
   }
-  void Aftertouch(uint8_t note, uint8_t velocity) {
+  void Aftertouch(uint8_t /*note*/, uint8_t velocity) {
     voice_.Aftertouch(velocity);
   }
   void Aftertouch(uint8_t velocity) {
@@ -141,7 +141,7 @@ class Part {
   }
 
   // These variables are sent to I/O pins, and are made accessible here.
-  inline uint8_t modulation_source(uint8_t i, uint8_t j) const {
+  inline uint8_t modulation_source(uint8_t /*i*/, uint8_t j) const {
     return voice_.modulation_source(j);
   }
 

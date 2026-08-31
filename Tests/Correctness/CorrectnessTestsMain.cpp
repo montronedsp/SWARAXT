@@ -5,6 +5,7 @@
 #include <JuceHeader.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -22,10 +23,13 @@
 
 #include "avrlib/base.h"
 #include "avrlib/random.h"
+#include "avr/pgmspace.h"
 #include "shruthi/audio_out.h"
 #include "shruthi/lfo.h"
 #include "shruthi/midi_dispatcher.h"
+#include "shruthi/note_stack.h"
 #include "shruthi/oscillator.h"
+#include "shruthi/parameter.h"
 #include "shruthi/part.h"
 #include "shruthi/patch.h"
 #include "shruthi/storage.h"
@@ -73,6 +77,144 @@ void zeroPartMatrix(shruthi::Part& part)
         patch->modulation_matrix.modulation[row].destination = shruthi::MOD_DST_VCA;
         patch->modulation_matrix.modulation[row].amount = 0;
     }
+}
+
+void testNoteStackInvariants()
+{
+    constexpr uint8_t kFreeSlot = 0xff;
+    shruthi::NoteStack stack;
+    stack.Init();
+    expect(stack.size() == 0, "note stack initializes empty");
+    expect(stack.dummy().note == kFreeSlot, "empty note stack exposes its free dummy node");
+
+    stack.NoteOff(60);
+    expect(stack.size() == 0, "note-off on an empty stack is harmless");
+    stack.NoteOn(60, 90);
+    expect(stack.size() == 1 && stack.most_recent_note().note == 60,
+           "first note occupies a valid stack slot");
+    stack.NoteOn(60, 111);
+    expect(stack.size() == 1 && stack.most_recent_note().velocity == 111,
+           "duplicate note-on refreshes velocity without duplicating the note");
+
+    stack.Clear();
+    constexpr std::array<uint8_t, kNoteStackSize> notes { 67, 60, 64, 62, 69, 61, 65, 63 };
+    constexpr std::array<uint8_t, kNoteStackSize> sorted { 60, 61, 62, 63, 64, 65, 67, 69 };
+    for (const auto note : notes)
+        stack.NoteOn(note, static_cast<uint8_t>(note + 20));
+
+    expect(stack.size() == stack.max_size(), "eight distinct notes fill the stack exactly");
+    expect(stack.least_recent_note().note == notes.front(),
+           "least-recent selection follows insertion age, not pitch");
+    expect(stack.most_recent_note().note == notes.back(),
+           "most-recent selection follows the linked-list root");
+    for (uint8_t i = 0; i < stack.size(); ++i)
+        expect(stack.sorted_note(i).note == sorted[i],
+               "pitch-sorted note access remains ordered at full capacity");
+
+    stack.NoteOn(70, 100);
+    expect(stack.size() == stack.max_size(), "saturation keeps the fixed stack capacity");
+    expect(stack.least_recent_note().note == 60,
+           "saturation evicts exactly the least-recent note");
+    bool evictedNoteRemains = false;
+    for (uint8_t i = 0; i < stack.size(); ++i)
+        evictedNoteRemains = evictedNoteRemains || stack.sorted_note(i).note == notes.front();
+    expect(! evictedNoteRemains, "voice stealing removes the evicted note from sorted access");
+
+    stack.NoteOff(64);
+    expect(stack.size() == stack.max_size() - 1, "note-off frees exactly one pool slot");
+    stack.NoteOn(71, 101);
+    expect(stack.size() == stack.max_size() && stack.most_recent_note().note == 71,
+           "a freed pool slot is reused without selecting the dummy slot");
+
+    stack.Clear();
+    for (int event = 0; event < 4096; ++event)
+    {
+        const uint8_t note = static_cast<uint8_t>(36 + event % 24);
+        stack.NoteOn(note, static_cast<uint8_t>(1 + event % 127));
+        if (event % 3 == 0)
+            stack.NoteOff(static_cast<uint8_t>(36 + (event + 7) % 24));
+
+        expect(stack.size() <= stack.max_size(), "rapid note storm never exceeds pool capacity");
+        std::set<uint8_t> activeNotes;
+        for (uint8_t slot = 1; slot <= stack.max_size(); ++slot)
+        {
+            const auto active = stack.note(slot).note;
+            if (active != kFreeSlot)
+                activeNotes.insert(active);
+        }
+        expect(activeNotes.size() == stack.size(),
+               "rapid note storm preserves unique occupied pool slots");
+        for (uint8_t i = 1; i < stack.size(); ++i)
+            expect(stack.sorted_note(i - 1).note < stack.sorted_note(i).note,
+                   "rapid note storm preserves strict pitch ordering");
+    }
+}
+
+void testShruthiSignedParameterMetadata()
+{
+    struct ExpectedRange {
+        uint8_t parameterIndex;
+        int8_t minimum;
+        int8_t maximum;
+    };
+    constexpr std::array expectedRanges {
+        ExpectedRange { 2, -24, 24 },
+        ExpectedRange { 6, -24, 24 },
+        ExpectedRange { 35, -63, 63 },
+        ExpectedRange { 44, -2, 2 },
+        ExpectedRange { 48, -127, 127 },
+    };
+
+    for (const auto expected : expectedRanges)
+    {
+        const auto& parameter = shruthi::ParameterManager::parameter(expected.parameterIndex);
+        expect(parameter.unit == shruthi::UNIT_INT8,
+               "signed Shruthi metadata keeps the UNIT_INT8 interpretation");
+        expect(static_cast<int8_t>(parameter.min_value) == expected.minimum,
+               "signed Shruthi metadata preserves the minimum byte pattern");
+        expect(static_cast<int8_t>(parameter.max_value) == expected.maximum,
+               "signed Shruthi metadata preserves the maximum byte pattern");
+        if (expected.minimum > -128)
+            expect(parameter.Clamp(static_cast<uint8_t>(expected.minimum - 1))
+                       == parameter.min_value,
+                   "signed Shruthi metadata clamps below its minimum");
+        if (expected.maximum < 127)
+            expect(parameter.Clamp(static_cast<uint8_t>(expected.maximum + 1))
+                       == parameter.max_value,
+                   "signed Shruthi metadata clamps above its maximum");
+        expect(parameter.Increment(parameter.min_value, -1) == parameter.min_value,
+               "signed Shruthi metadata rejects decrement below minimum");
+        expect(parameter.Increment(parameter.max_value, 1) == parameter.max_value,
+               "signed Shruthi metadata rejects increment above maximum");
+    }
+}
+
+void testPgmspaceStrncpyCompatibility()
+{
+    std::array<char, 8> destination;
+    destination.fill('?');
+    char* const original = destination.data();
+    expect(strncpy_P(destination.data(), "ignored", 0) == original,
+           "strncpy_P returns the original destination for zero length");
+    expect(destination[0] == '?', "strncpy_P leaves the destination untouched for zero length");
+
+    destination.fill('?');
+    expect(strncpy_P(destination.data(), "abcdef", 4) == original,
+           "strncpy_P returns the original destination when truncating");
+    expect(std::memcmp(destination.data(), "abcd", 4) == 0 && destination[4] == '?',
+           "strncpy_P truncates without adding a terminator when the source is too long");
+
+    destination.fill('?');
+    strncpy_P(destination.data(), "xy", 5);
+    const std::array<char, 5> padded { 'x', 'y', '\0', '\0', '\0' };
+    expect(std::memcmp(destination.data(), padded.data(), padded.size()) == 0,
+           "strncpy_P null-pads the complete requested count");
+    expect(destination[5] == '?', "strncpy_P does not write beyond the requested count");
+
+    destination.fill('?');
+    strncpy_P(destination.data(), "xy", 3);
+    expect(destination[0] == 'x' && destination[1] == 'y' && destination[2] == '\0',
+           "strncpy_P copies an exact-fit source terminator");
 }
 
 void configureSquarePart(shruthi::Part& part, uint8_t timbre)
@@ -1040,6 +1182,9 @@ void testModulationMenuAndLegacyHardwareIds()
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juce;
+    testNoteStackInvariants();
+    testShruthiSignedParameterMetadata();
+    testPgmspaceStrncpyCompatibility();
     testGuiEngineRanges();
     testInvalidRestoredState();
     testJuce9ParameterMetadataCompatibility();

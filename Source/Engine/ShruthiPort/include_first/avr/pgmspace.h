@@ -52,7 +52,26 @@ static inline const void* pgm_read_ptr(const void* addr)
 
 static inline char* strncpy_P(char* dest, const char* src, size_t n)
 {
-    return strncpy(dest, src, n);
+    char* const result = dest;
+    while (n != 0)
+    {
+        const char value = *src;
+        *dest = value;
+        ++dest;
+        --n;
+        if (value == '\0')
+        {
+            while (n != 0)
+            {
+                *dest = '\0';
+                ++dest;
+                --n;
+            }
+            break;
+        }
+        ++src;
+    }
+    return result;
 }
 
 static inline int strcmp_P(const char* a, const char* b)
