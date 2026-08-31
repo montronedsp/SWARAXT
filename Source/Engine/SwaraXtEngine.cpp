@@ -9,6 +9,7 @@
 #include <chrono>
 #endif
 #include <cmath>
+#include <limits>
 
 namespace swaraxt {
 
@@ -76,6 +77,7 @@ void SwaraXtEngine::reset()
     part_.mutable_voice()->Kill();
     audioRing_.Init();
     patchBridge_.invalidateArpRuntimeSync();
+    appliedSequenceRevision_ = std::numeric_limits<uint32_t>::max();
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
@@ -124,6 +126,28 @@ void SwaraXtEngine::applyParameters()
         return;
 
     patchBridge_.applyCacheToEngine(*parameterCache_);
+    if (sequenceState_ != nullptr)
+    {
+        SequenceSnapshot sequence;
+        uint32_t revision = 0;
+        if (sequenceState_->capture(sequence, revision) && revision != appliedSequenceRevision_)
+        {
+            auto* settings = part_.mutable_sequencer_settings();
+            settings->pattern_size = static_cast<uint8_t>(juce::jlimit(1, 16,
+                static_cast<int>(sequence.length)));
+            settings->pattern_rotation = static_cast<uint8_t>(sequence.rotation & 0x0f);
+            settings->seq_groove_template = static_cast<uint8_t>(juce::jlimit(0, 5,
+                static_cast<int>(sequence.grooveTemplate)));
+            for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
+            {
+                const auto packed = sequence.steps[static_cast<size_t>(i)];
+                settings->steps[i].set_raw(SequenceSnapshot::dataA(packed),
+                                           SequenceSnapshot::dataB(packed));
+            }
+            appliedSequenceRevision_ = revision;
+        }
+        part_.mutable_sequencer_settings()->arp_pattern = sequenceState_->arpPattern();
+    }
     const float master = ParameterCache::load(parameterCache_->master);
     masterGain_ = master;
     if (snapMasterOnApply_ || dormant_)

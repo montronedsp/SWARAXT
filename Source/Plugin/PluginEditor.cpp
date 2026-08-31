@@ -520,6 +520,32 @@ void SwaraXtAudioProcessorEditor::setSequencerHostSyncForTests(bool enabled)
     mainPanel_.setSequencerHostSyncForTests(enabled);
 }
 
+void SwaraXtAudioProcessorEditor::setSequencerEditorViewForTests(bool sequence)
+{
+    mainPanel_.setSequencerEditorViewForTests(sequence);
+}
+
+void SwaraXtAudioProcessorEditor::setSequencerPatternForTests(int pattern)
+{
+    mainPanel_.setSequencerPatternForTests(pattern);
+}
+
+int SwaraXtAudioProcessorEditor::sequencerPatternForTests() const
+{
+    return mainPanel_.sequencerPatternForTests();
+}
+
+void SwaraXtAudioProcessorEditor::setSequenceLayoutForTests(int length, int rotation, int groove)
+{
+    mainPanel_.setSequenceLayoutForTests(length, rotation, groove);
+}
+
+void SwaraXtAudioProcessorEditor::setSequenceStepForTests(int step, int note, int event,
+                                                          int velocity, int value)
+{
+    mainPanel_.setSequenceStepForTests(step, note, event, velocity, value);
+}
+
 juce::Rectangle<float> SwaraXtAudioProcessorEditor::productLockupBoundsForTests() const
 {
     return swaraxt::ui::ProductLockupGeometry::editorPlacement();

@@ -34,12 +34,21 @@ SwaraXtAudioProcessor::SwaraXtAudioProcessor()
 {
     parameterCache_.bind(apvts_);
     engine_.bindParameters(parameterCache_);
+    engine_.bindSequenceState(sequenceState_);
+    apvts_.addParameterListener(swaraxt::IDs::arpPattern, this);
     // Preset values only — engine reset happens in prepareToPlay().
     loadFactoryPreset(0);
 }
 
 SwaraXtAudioProcessor::~SwaraXtAudioProcessor()
 {
+    apvts_.removeParameterListener(swaraxt::IDs::arpPattern, this);
+}
+
+void SwaraXtAudioProcessor::parameterChanged(const juce::String& parameterID, float newValue)
+{
+    if (parameterID == swaraxt::IDs::arpPattern)
+        sequenceState_.setArpPatternFromParameter(static_cast<int>(std::lround(newValue)));
 }
 
 void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -187,6 +196,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
     currentProgram_ = index;
 
     // Start from APVTS defaults (Shruthi-aligned init), then specialize.
+    sequenceState_.resetToDefault();
     for (auto* param : getParameters())
     {
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
@@ -496,6 +506,9 @@ void SwaraXtAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("presetKind", currentUserPresetName_.isEmpty() ? "factory" : "user", nullptr);
     state.setProperty("presetName", currentPresetName(), nullptr);
     state.setProperty(kFilterQualityProperty, static_cast<int>(filterQuality()), nullptr);
+    if (const auto existing = state.getChildWithName("SEQUENCE"); existing.isValid())
+        state.removeChild(existing, nullptr);
+    state.addChild(sequenceState_.toValueTree(), -1, nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
   #endif
@@ -513,6 +526,14 @@ void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInByte
                 return;
 
             apvts_.replaceState(tree);
+            if (! sequenceState_.restoreFromValueTree(tree.getChildWithName("SEQUENCE")))
+            {
+                auto legacySequence = swaraxt::SequenceState::defaultSnapshot();
+                if (const auto* pattern = apvts_.getRawParameterValue(swaraxt::IDs::arpPattern))
+                    legacySequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 7,
+                        static_cast<int>(std::lround(pattern->load()))));
+                sequenceState_.store(legacySequence);
+            }
             setFilterQuality(decodeFilterQuality(
                 tree.getProperty(kFilterQualityProperty,
                                  static_cast<int>(swaraxt::FilterQuality::normal))));

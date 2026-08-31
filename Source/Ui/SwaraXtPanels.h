@@ -10,6 +10,7 @@
 
 #include "Ui/SwaraXtUiPalette.h"
 #include "Ui/SwaraXtModulationNames.h"
+#include "Engine/SequenceState.h"
 
 class SwaraXtAudioProcessor;
 
@@ -173,6 +174,11 @@ class MainPanel : public juce::Component {
     void reflow();
     void setLocalViews(bool modulation, bool sequencer);
     void setSequencerHostSyncForTests(bool enabled);
+    void setSequencerEditorViewForTests(bool sequence);
+    void setSequencerPatternForTests(int pattern);
+    int sequencerPatternForTests() const;
+    void setSequenceLayoutForTests(int length, int rotation, int groove);
+    void setSequenceStepForTests(int step, int note, int event, int velocity, int value);
     const OscillatorPanel& oscillatorForTests(int index) const noexcept
     {
         return index == 0 ? osc1_ : osc2_;
@@ -310,12 +316,22 @@ class ModPanel : public juce::Component {
     int page_ = 0;
 };
 
-class SeqPanel : public juce::Component {
+class SeqPanel : public juce::Component,
+                 private swaraxt::SequenceState::Listener,
+                 private juce::AsyncUpdater {
  public:
     SeqPanel();
+    ~SeqPanel() override;
     void attach(SwaraXtAudioProcessor& processor);
     void reflow();
     void setHostSyncForTests(bool enabled);
+    void setEditorViewForTests(bool sequence);
+    bool showingSequenceEditorForTests() const noexcept { return showingSequenceEditor_; }
+    void selectStepForTests(int step);
+    void setArpPatternForTests(int pattern);
+    int arpPatternForTests() const noexcept;
+    void setSequenceLayoutForTests(int length, int rotation, int groove);
+    void setSequenceStepForTests(int step, int note, int event, int velocity, int value);
 
  private:
     enum KnobIndex {
@@ -337,7 +353,28 @@ class SeqPanel : public juce::Component {
     std::vector<std::unique_ptr<SwaraXtSelector>> selectors_;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments_;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> selectorAttachments_;
+    std::unique_ptr<juce::ParameterAttachment> arpPatternAttachment_;
+    juce::TextButton arpViewButton_ { "ARP" };
+    juce::TextButton sequenceViewButton_ { "SEQ" };
+    std::array<juce::TextButton, swaraxt::SequenceSnapshot::kNumSteps> stepButtons_;
+    SwaraXtKnob length_ { "LENGTH" };
+    SwaraXtKnob rotation_ { "START" };
+    SwaraXtKnob note_ { "NOTE" };
+    SwaraXtSelector event_ { "EVENT", juce::StringArray { "Rest", "Note", "Tie" } };
+    SwaraXtKnob velocity_ { "VELOCITY" };
+    SwaraXtKnob controller_ { "VALUE" };
+    SwaraXtSelector groove_ { "GROOVE", juce::StringArray {
+        "Swing", "Shuffle", "Push", "Lag", "Human", "Monkey" } };
+    swaraxt::SequenceState* sequenceState_ = nullptr;
+    int selectedStep_ = 0;
+    bool showingSequenceEditor_ = false;
+    bool refreshingSequenceControls_ = false;
     void updateClockControls();
+    void setEditorView(bool sequence);
+    void refreshSequenceControls();
+    void writeSelectedStep(uint8_t dataA, uint8_t dataB);
+    void sequenceStateChanged() override;
+    void handleAsyncUpdate() override;
     bool attached_ = false;
 };
 

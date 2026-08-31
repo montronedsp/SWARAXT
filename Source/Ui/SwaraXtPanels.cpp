@@ -749,6 +749,31 @@ void MainPanel::setSequencerHostSyncForTests(bool enabled)
     sequencerView_->setHostSyncForTests(enabled);
 }
 
+void MainPanel::setSequencerEditorViewForTests(bool sequence)
+{
+    sequencerView_->setEditorViewForTests(sequence);
+}
+
+void MainPanel::setSequencerPatternForTests(int pattern)
+{
+    sequencerView_->setArpPatternForTests(pattern);
+}
+
+int MainPanel::sequencerPatternForTests() const
+{
+    return sequencerView_->arpPatternForTests();
+}
+
+void MainPanel::setSequenceLayoutForTests(int length, int rotation, int groove)
+{
+    sequencerView_->setSequenceLayoutForTests(length, rotation, groove);
+}
+
+void MainPanel::setSequenceStepForTests(int step, int note, int event, int velocity, int value)
+{
+    sequencerView_->setSequenceStepForTests(step, note, event, velocity, value);
+}
+
 void MainPanel::reflow()
 {
     const int gap = Layout::moduleGap;
@@ -986,7 +1011,9 @@ SeqPanel::SeqPanel()
     selectors_.push_back(std::make_unique<SwaraXtSelector>("MODE", seqModeNames()));
     selectors_.push_back(std::make_unique<SwaraXtSelector>("CLOCK", clockModeNames()));
     selectors_.push_back(std::make_unique<SwaraXtSelector>("DIRECTION", arpDirectionNames()));
-    selectors_.push_back(std::make_unique<SwaraXtSelector>("PATTERN", numberedNames("Pattern", 0, 7)));
+    auto patterns = numberedNames("Pattern", 1, 15);
+    patterns.add("Sequence");
+    selectors_.push_back(std::make_unique<SwaraXtSelector>("PATTERN", patterns));
     selectors_.push_back(std::make_unique<SwaraXtSelector>("OCTAVES", numberedNames("Octave", 1, 4)));
     selectors_.push_back(std::make_unique<SwaraXtSelector>("DIVISION", juce::StringArray {
         "1/1", "1/2", "1/2T", "1/4", "1/4T", "1/8", "1/8T", "1/16",
@@ -998,6 +1025,115 @@ SeqPanel::SeqPanel()
         selectors_[kClockMode]->refreshDescription();
         updateClockControls();
     };
+    selectors_[kPattern]->combo().onChange = [this] {
+        selectors_[kPattern]->refreshDescription();
+        if (refreshingSequenceControls_ || sequenceState_ == nullptr)
+            return;
+        const int pattern = selectors_[kPattern]->combo().getSelectedItemIndex();
+        sequenceState_->setArpPattern(pattern);
+        if (pattern <= 7 && arpPatternAttachment_ != nullptr)
+            arpPatternAttachment_->setValueAsCompleteGesture(static_cast<float>(pattern));
+    };
+
+    for (auto* button : { &arpViewButton_, &sequenceViewButton_ })
+    {
+        addAndMakeVisible(*button);
+        button->getProperties().set("swaraxtSecondaryAction", true);
+    }
+    arpViewButton_.onClick = [this] { setEditorView(false); };
+    sequenceViewButton_.onClick = [this] { setEditorView(true); };
+
+    for (int i = 0; i < static_cast<int>(stepButtons_.size()); ++i)
+    {
+        auto& button = stepButtons_[static_cast<size_t>(i)];
+        addChildComponent(button);
+        button.getProperties().set("swaraxtSecondaryAction", true);
+        button.onClick = [this, i] {
+            selectedStep_ = i;
+            refreshSequenceControls();
+        };
+    }
+
+    const std::array<juce::Component*, 7> sequenceControls {
+        &length_, &rotation_, &note_, &event_, &velocity_, &controller_, &groove_
+    };
+    for (auto* control : sequenceControls)
+        addChildComponent(control);
+
+    auto configureInteger = [](SwaraXtKnob& knob, int minimum, int maximum, int initial) {
+        knob.slider().setRange(minimum, maximum, 1.0);
+        knob.slider().setValue(initial, juce::dontSendNotification);
+    };
+    configureInteger(length_, 1, 16, 16);
+    configureInteger(rotation_, 0, 15, 0);
+    configureInteger(note_, 0, 127, 48);
+    configureInteger(velocity_, 0, 7, 7);
+    configureInteger(controller_, 0, 15, 0);
+
+    length_.slider().onValueChange = [this] {
+        if (! refreshingSequenceControls_ && sequenceState_ != nullptr)
+            sequenceState_->setLength(static_cast<int>(length_.slider().getValue()));
+    };
+    rotation_.slider().onValueChange = [this] {
+        if (! refreshingSequenceControls_ && sequenceState_ != nullptr)
+            sequenceState_->setRotation(static_cast<int>(rotation_.slider().getValue()));
+    };
+    groove_.combo().onChange = [this] {
+        groove_.refreshDescription();
+        if (! refreshingSequenceControls_ && sequenceState_ != nullptr)
+            sequenceState_->setGrooveTemplate(groove_.combo().getSelectedItemIndex());
+    };
+    note_.slider().onValueChange = [this] {
+        if (refreshingSequenceControls_ || sequenceState_ == nullptr)
+            return;
+        const auto snapshot = sequenceState_->snapshot();
+        const auto packed = snapshot.steps[static_cast<size_t>(selectedStep_)];
+        writeSelectedStep(static_cast<uint8_t>((SequenceSnapshot::dataA(packed) & 0x80)
+                              | (static_cast<int>(note_.slider().getValue()) & 0x7f)),
+                          SequenceSnapshot::dataB(packed));
+    };
+    event_.combo().onChange = [this] {
+        event_.refreshDescription();
+        if (refreshingSequenceControls_ || sequenceState_ == nullptr)
+            return;
+        const auto snapshot = sequenceState_->snapshot();
+        const auto packed = snapshot.steps[static_cast<size_t>(selectedStep_)];
+        uint8_t dataA = SequenceSnapshot::dataA(packed);
+        uint8_t dataB = SequenceSnapshot::dataB(packed);
+        const int event = event_.combo().getSelectedItemIndex();
+        dataA = event == 0 ? static_cast<uint8_t>(dataA & 0x7f)
+                           : static_cast<uint8_t>(dataA | 0x80);
+        dataB = event == 2 ? static_cast<uint8_t>(dataB | 0x80)
+                           : static_cast<uint8_t>(dataB & 0x7f);
+        writeSelectedStep(dataA, dataB);
+    };
+    velocity_.slider().onValueChange = [this] {
+        if (refreshingSequenceControls_ || sequenceState_ == nullptr)
+            return;
+        const auto snapshot = sequenceState_->snapshot();
+        const auto packed = snapshot.steps[static_cast<size_t>(selectedStep_)];
+        const auto velocity = static_cast<uint8_t>(static_cast<int>(velocity_.slider().getValue()) & 0x07);
+        writeSelectedStep(SequenceSnapshot::dataA(packed),
+                          static_cast<uint8_t>((SequenceSnapshot::dataB(packed) & 0x8f)
+                                               | (velocity << 4)));
+    };
+    controller_.slider().onValueChange = [this] {
+        if (refreshingSequenceControls_ || sequenceState_ == nullptr)
+            return;
+        const auto snapshot = sequenceState_->snapshot();
+        const auto packed = snapshot.steps[static_cast<size_t>(selectedStep_)];
+        const auto value = static_cast<uint8_t>(static_cast<int>(controller_.slider().getValue()) & 0x0f);
+        writeSelectedStep(SequenceSnapshot::dataA(packed),
+                          static_cast<uint8_t>((SequenceSnapshot::dataB(packed) & 0xf0) | value));
+    };
+
+    setEditorView(false);
+}
+
+SeqPanel::~SeqPanel()
+{
+    if (sequenceState_ != nullptr)
+        sequenceState_->removeListener(this);
 }
 
 void SeqPanel::attach(SwaraXtAudioProcessor& processor)
@@ -1006,6 +1142,8 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
         return;
 
     auto& apvts = processor.getApvts();
+    sequenceState_ = &processor.sequenceState();
+    sequenceState_->addListener(this);
     const char* knobIds[] = { swaraxt::IDs::seqTempo, swaraxt::IDs::seqSwing,
                               swaraxt::IDs::seqGate };
     sliderAttachments_.clear();
@@ -1020,16 +1158,33 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
         swaraxt::IDs::seqMode,
         swaraxt::IDs::seqClockMode,
         swaraxt::IDs::arpDirection,
-        swaraxt::IDs::arpPattern,
         swaraxt::IDs::arpOctaves,
         swaraxt::IDs::arpGate
     };
     selectorAttachments_.clear();
-    for (size_t i = 0; i < selectors_.size(); ++i)
+    const int selectorIndices[] = { kMode, kClockMode, kDirection, kOctaves, kDivision };
+    for (size_t i = 0; i < std::size(selectorIds); ++i)
         selectorAttachments_.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-            apvts, selectorIds[i], selectors_[i]->combo()));
+            apvts, selectorIds[i], selectors_[static_cast<size_t>(selectorIndices[i])]->combo()));
+
+    if (auto* pattern = apvts.getParameter(swaraxt::IDs::arpPattern))
+    {
+        arpPatternAttachment_ = std::make_unique<juce::ParameterAttachment>(
+            *pattern,
+            [this](float value) {
+                refreshingSequenceControls_ = true;
+                selectors_[kPattern]->combo().setSelectedItemIndex(
+                    juce::jlimit(0, 7, static_cast<int>(std::lround(value))),
+                    juce::dontSendNotification);
+                selectors_[kPattern]->refreshDescription();
+                refreshingSequenceControls_ = false;
+            },
+            nullptr);
+        arpPatternAttachment_->sendInitialUpdate();
+    }
 
     updateClockControls();
+    refreshSequenceControls();
     attached_ = true;
 }
 
@@ -1046,9 +1201,151 @@ void SeqPanel::setHostSyncForTests(bool enabled)
                                                           juce::sendNotificationSync);
 }
 
+void SeqPanel::setEditorViewForTests(bool sequence)
+{
+    setEditorView(sequence);
+}
+
+void SeqPanel::selectStepForTests(int step)
+{
+    selectedStep_ = juce::jlimit(0, SequenceSnapshot::kNumSteps - 1, step);
+    refreshSequenceControls();
+}
+
+void SeqPanel::setArpPatternForTests(int pattern)
+{
+    selectors_[kPattern]->combo().setSelectedItemIndex(juce::jlimit(0, 15, pattern),
+                                                        juce::sendNotificationSync);
+}
+
+int SeqPanel::arpPatternForTests() const noexcept
+{
+    return selectors_[kPattern]->combo().getSelectedItemIndex();
+}
+
+void SeqPanel::setSequenceLayoutForTests(int length, int rotation, int groove)
+{
+    length_.slider().setValue(juce::jlimit(1, 16, length), juce::sendNotificationSync);
+    rotation_.slider().setValue(juce::jlimit(0, 15, rotation), juce::sendNotificationSync);
+    groove_.combo().setSelectedItemIndex(juce::jlimit(0, 5, groove),
+                                         juce::sendNotificationSync);
+}
+
+void SeqPanel::setSequenceStepForTests(int step, int note, int event, int velocity, int value)
+{
+    selectStepForTests(step);
+    note_.slider().setValue(juce::jlimit(0, 127, note), juce::sendNotificationSync);
+    event_.combo().setSelectedItemIndex(juce::jlimit(0, 2, event),
+                                        juce::sendNotificationSync);
+    velocity_.slider().setValue(juce::jlimit(0, 7, velocity), juce::sendNotificationSync);
+    controller_.slider().setValue(juce::jlimit(0, 15, value), juce::sendNotificationSync);
+}
+
+void SeqPanel::setEditorView(bool sequence)
+{
+    showingSequenceEditor_ = sequence;
+    arpViewButton_.setToggleState(! sequence, juce::dontSendNotification);
+    sequenceViewButton_.setToggleState(sequence, juce::dontSendNotification);
+
+    for (auto& knob : knobs_)
+        knob->setVisible(! sequence);
+    for (auto& selector : selectors_)
+        selector->setVisible(! sequence);
+    for (auto& button : stepButtons_)
+        button.setVisible(sequence);
+    const std::array<juce::Component*, 7> sequenceControls {
+        &length_, &rotation_, &note_, &event_, &velocity_, &controller_, &groove_
+    };
+    for (auto* control : sequenceControls)
+        control->setVisible(sequence);
+    reflow();
+}
+
+void SeqPanel::refreshSequenceControls()
+{
+    if (sequenceState_ == nullptr)
+        return;
+
+    const auto snapshot = sequenceState_->snapshot();
+    refreshingSequenceControls_ = true;
+    length_.slider().setValue(snapshot.length, juce::dontSendNotification);
+    rotation_.slider().setValue(snapshot.rotation, juce::dontSendNotification);
+    groove_.combo().setSelectedItemIndex(snapshot.grooveTemplate, juce::dontSendNotification);
+    groove_.refreshDescription();
+    selectors_[kPattern]->combo().setSelectedItemIndex(snapshot.arpPattern,
+                                                        juce::dontSendNotification);
+    selectors_[kPattern]->refreshDescription();
+
+    for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
+    {
+        const auto packed = snapshot.steps[static_cast<size_t>(i)];
+        const auto value = SequenceSnapshot::dataB(packed) & 0x0f;
+        auto& button = stepButtons_[static_cast<size_t>(i)];
+        button.setButtonText(juce::String::formatted("%02d:%X", i + 1, value));
+        button.setToggleState(i == selectedStep_, juce::dontSendNotification);
+    }
+
+    const auto selected = snapshot.steps[static_cast<size_t>(selectedStep_)];
+    const uint8_t dataA = SequenceSnapshot::dataA(selected);
+    const uint8_t dataB = SequenceSnapshot::dataB(selected);
+    note_.slider().setValue(dataA & 0x7f, juce::dontSendNotification);
+    velocity_.slider().setValue((dataB & 0x70) >> 4, juce::dontSendNotification);
+    controller_.slider().setValue(dataB & 0x0f, juce::dontSendNotification);
+    event_.combo().setSelectedItemIndex((dataA & 0x80) == 0 ? 0 : ((dataB & 0x80) != 0 ? 2 : 1),
+                                        juce::dontSendNotification);
+    event_.refreshDescription();
+    refreshingSequenceControls_ = false;
+}
+
+void SeqPanel::writeSelectedStep(uint8_t dataA, uint8_t dataB)
+{
+    if (sequenceState_ != nullptr)
+        sequenceState_->setStep(selectedStep_, dataA, dataB);
+}
+
+void SeqPanel::sequenceStateChanged()
+{
+    triggerAsyncUpdate();
+}
+
+void SeqPanel::handleAsyncUpdate()
+{
+    refreshSequenceControls();
+}
+
 void SeqPanel::reflow()
 {
     auto area = getLocalBounds();
+    auto tabs = area.removeFromTop(22);
+    arpViewButton_.setBounds(tabs.removeFromLeft(46));
+    tabs.removeFromLeft(4);
+    sequenceViewButton_.setBounds(tabs.removeFromLeft(46));
+
+    if (showingSequenceEditor_)
+    {
+        auto stepGrid = area.removeFromTop(58);
+        for (int row = 0; row < 2; ++row)
+        {
+            auto stepRow = stepGrid.removeFromTop(27);
+            if (row == 0)
+                stepGrid.removeFromTop(4);
+            const int gap = 2;
+            const int width = juce::jmax(1, (stepRow.getWidth() - gap * 7) / 8);
+            for (int column = 0; column < 8; ++column)
+            {
+                stepButtons_[static_cast<size_t>(row * 8 + column)].setBounds(
+                    stepRow.removeFromLeft(width));
+                stepRow.removeFromLeft(gap);
+            }
+        }
+
+        area.removeFromTop(3);
+        auto common = area.removeFromTop(area.getHeight() / 2);
+        layoutRow(common, { &length_, &rotation_, &groove_ }, 3);
+        layoutRow(area, { &note_, &event_, &velocity_, &controller_ }, 3);
+        return;
+    }
+
     auto row1 = area.removeFromTop(area.getHeight() / 3);
     auto row2 = area.removeFromTop(area.getHeight() / 2);
     auto row3 = area;

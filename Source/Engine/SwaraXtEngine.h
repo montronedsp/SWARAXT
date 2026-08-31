@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <limits>
 
 namespace juce {
 class MidiBuffer;
@@ -17,6 +18,7 @@ class AudioBuffer;
 #include "Engine/HostTransport.h"
 #include "Engine/ParameterCache.h"
 #include "Engine/PatchBridge.h"
+#include "Engine/SequenceState.h"
 #include "Engine/SampleRate/HostResampler.h"
 #include "Engine/SampleRate/InternalSampleQueue.h"
 #include "Engine/SampleRate/PolyphaseFirResampler.h"
@@ -115,6 +117,7 @@ class SwaraXtEngine {
     void resetResampler() noexcept;
     void touchModulationRates() noexcept;
     void bindParameters(ParameterCache& cache) noexcept { parameterCache_ = &cache; }
+    void bindSequenceState(SequenceState& state) noexcept { sequenceState_ = &state; }
     void applyParameters();
 
     void process(const juce::MidiBuffer& midi,
@@ -198,6 +201,8 @@ class SwaraXtEngine {
     shruthi::Storage storage_;
     shruthi::Part part_;
     PatchBridge patchBridge_;
+    SequenceState* sequenceState_ = nullptr;
+    uint32_t appliedSequenceRevision_ = std::numeric_limits<uint32_t>::max();
 
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;

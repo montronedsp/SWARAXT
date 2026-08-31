@@ -27,6 +27,11 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
 
     void setModuleViewsForTests(bool modulation, bool sequencer);
     void setSequencerHostSyncForTests(bool enabled);
+    void setSequencerEditorViewForTests(bool sequence);
+    void setSequencerPatternForTests(int pattern);
+    int sequencerPatternForTests() const;
+    void setSequenceLayoutForTests(int length, int rotation, int groove);
+    void setSequenceStepForTests(int step, int note, int event, int velocity, int value);
     juce::Rectangle<float> productLockupBoundsForTests() const;
     juce::Rectangle<int> presetBoundsForTests() const { return presetSelector_.getBounds(); }
     void setGuiSizeForTests(swaraxt::ui::GuiSize size);

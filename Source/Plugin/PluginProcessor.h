@@ -11,10 +11,12 @@
 #include "Engine/ParameterCache.h"
 #include "Engine/HostTransport.h"
 #include "Engine/SwaraXtEngine.h"
+#include "Engine/SequenceState.h"
 #include "Plugin/SwaraXtParameterLayout.h"
 #include "Plugin/ShruthiFactoryPresetData.h"
 #include "Plugin/ApvtsFactoryPresetData.h"
-class SwaraXtAudioProcessor : public juce::AudioProcessor {
+class SwaraXtAudioProcessor : public juce::AudioProcessor,
+                              private juce::AudioProcessorValueTreeState::Listener {
  public:
     struct PresetEntry {
         juce::String name;
@@ -56,6 +58,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor {
     const juce::AudioProcessorValueTreeState& getApvts() const { return apvts_; }
     swaraxt::SwaraXtEngine& engineForTests() noexcept { return engine_; }
     const swaraxt::SwaraXtEngine& engineForTests() const noexcept { return engine_; }
+    swaraxt::SequenceState& sequenceState() noexcept { return sequenceState_; }
+    const swaraxt::SequenceState& sequenceState() const noexcept { return sequenceState_; }
 
     std::vector<PresetEntry> getPresetEntries() const;
     bool loadPresetEntry(const PresetEntry& entry, juce::String& error);
@@ -67,7 +71,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor {
     void setFilterQuality(swaraxt::FilterQuality quality) noexcept { engine_.setFilterQuality(quality); }
     swaraxt::FilterQuality filterQuality() const noexcept { return engine_.filterQuality(); }
 
-    static constexpr int kStateVersion = 2;
+    static constexpr int kStateVersion = 3;
     static constexpr const char* kStateRoot = "SWARAXT_STATE";
 
  private:
@@ -75,9 +79,11 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor {
     swaraxt::HostTransportSnapshot captureHostTransport() noexcept;
     static bool validatePresetName(const juce::String& name, juce::String& cleanName);
     bool decodePresetData(const void* data, int sizeInBytes, juce::ValueTree& state) const;
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
 
     juce::AudioProcessorValueTreeState apvts_;
     swaraxt::ParameterCache parameterCache_;
+    swaraxt::SequenceState sequenceState_;
     swaraxt::SwaraXtEngine engine_;
     int currentProgram_ = 0;
     std::atomic<bool> requestEngineReset_ { false };
