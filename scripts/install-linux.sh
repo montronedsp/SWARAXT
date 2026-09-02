@@ -68,29 +68,50 @@ trap cleanup EXIT
 echo "Downloading ${archive}..."
 curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
     -o "${tmp}/${archive}" "${asset_base}/${archive}"
-curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
-    -o "${tmp}/${checksums}" "${asset_base}/${checksums}"
 
-echo "Verifying SHA-256..."
 expected=""
-while IFS= read -r line || [[ -n "${line}" ]]; do
-    line="${line%$'\r'}"
-    [[ -z "${line}" ]] && continue
-    [[ "${line}" == \#* ]] && continue
-    hash="${line%% *}"
-    rest="${line#"${hash}"}"
-    rest="${rest#"${rest%%[![:space:]]*}"}"
-    rest="${rest%$'\r'}"
-    if [[ "${hash}" =~ ^[0-9a-fA-F]{64}$ && "${rest}" == "${archive}" ]]; then
-        expected="${hash}"
-        break
-    fi
-done < "${tmp}/${checksums}"
+if curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
+    -o "${tmp}/${checksums}" "${asset_base}/${checksums}" 2>/dev/null; then
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        line="${line%$'\r'}"
+        [[ -z "${line}" ]] && continue
+        [[ "${line}" == \#* ]] && continue
+        hash="${line%% *}"
+        rest="${line#"${hash}"}"
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        rest="${rest%$'\r'}"
+        if [[ "${hash}" =~ ^[0-9a-fA-F]{64}$ && "${rest}" == "${archive}" ]]; then
+            expected="${hash}"
+            break
+        fi
+    done < "${tmp}/${checksums}"
+fi
 
 if [[ -z "${expected}" ]]; then
-    echo "Checksum entry not found for ${archive}." >&2
+    echo "Checksum file unavailable; verifying via GitHub release metadata..."
+    release_json="$(curl -fsSL --proto '=https' --tlsv1.2 \
+        "https://api.github.com/repos/${repo}/releases/tags/${tag}")"
+    assets_json="$(printf '%s\n' "${release_json}" | sed -n '/"assets": \[/,/\]/p')"
+    asset_name=""
+    while IFS= read -r line; do
+        if [[ "${line}" =~ \"name\":[[:space:]]*\"([^\"]+)\" ]]; then
+            asset_name="${BASH_REMATCH[1]}"
+        elif [[ -n "${asset_name}" && "${line}" =~ \"digest\":[[:space:]]*\"sha256:([0-9a-fA-F]{64})\" ]]; then
+            if [[ "${asset_name}" == "${archive}" ]]; then
+                expected="${BASH_REMATCH[1]}"
+                break
+            fi
+            asset_name=""
+        fi
+    done <<< "${assets_json}"
+fi
+
+if [[ -z "${expected}" ]]; then
+    echo "Unable to resolve SHA-256 checksum for ${archive}." >&2
     exit 1
 fi
+
+echo "Verifying SHA-256..."
 
 actual="$(sha256sum "${tmp}/${archive}")"
 actual="${actual%% *}"
