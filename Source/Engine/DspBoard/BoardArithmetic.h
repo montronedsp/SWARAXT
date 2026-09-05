@@ -55,4 +55,4 @@ constexpr std::uint8_t interpolate(const std::uint8_t* table, std::uint16_t phas
 }
 constexpr std::int16_t fromAdc(std::uint8_t code) noexcept { return static_cast<std::int16_t>((static_cast<int>(code) - 128) * 16); }
 } // namespace arithmetic
-} // namespace swara::board
+} // namespace swaraxt::board
