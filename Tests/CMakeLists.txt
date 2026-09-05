@@ -1,5 +1,7 @@
 # Opt-in test and research targets (SWARA_BUILD_TESTS=ON).
 
+add_subdirectory(DspBoard)
+
 add_executable(SwaraXTTests
     SwaraXtTestsMain.cpp
     ${SWARAXT_SHRUTHI_SOURCES}
