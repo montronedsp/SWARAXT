@@ -57,7 +57,9 @@ class SubOscillator {
         uint8_t tri = phase_.integral >> 7;
         v = phase_.integral & 0x8000 ? tri : ~tri;
       }
-      *buffer++ = U8Mix(*buffer, v, mix_gain, sub_gain);
+      const uint8_t base = *buffer;
+      *buffer = U8Mix(base, v, mix_gain, sub_gain);
+      ++buffer;
     }
   }
 

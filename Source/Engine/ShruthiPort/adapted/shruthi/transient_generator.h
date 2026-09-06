@@ -44,7 +44,9 @@ class TransientGenerator {
     while (counter_ && size--) {
       uint8_t value = RenderOne(shape);
       uint8_t amplitude = U8U8MulShift8(gain_, amount);
-      *buffer++ = U8Mix(*buffer, value, amplitude);
+      const uint8_t base = *buffer;
+      *buffer = U8Mix(base, value, amplitude);
+      ++buffer;
     }
   }
 
