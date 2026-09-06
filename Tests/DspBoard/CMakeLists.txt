@@ -31,6 +31,9 @@ target_link_libraries(SwaraBoardModelTests PRIVATE SwaraBoardAlgorithm)
 swaraxt_enable_warnings(SwaraBoardModelTests)
 add_test(NAME SwaraBoardModelTests COMMAND SwaraBoardModelTests)
 
+swaraxt_add_plugin_console_test(SwaraBoardIntegrationTests IntegrationTests.cpp)
+target_compile_definitions(SwaraBoardIntegrationTests PRIVATE SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
+
 if(MSVC)
     add_executable(SwaraBoardSanitizerTests ModelTests.cpp
         "${CMAKE_SOURCE_DIR}/Source/Engine/DspBoard/BoardResources.cpp"

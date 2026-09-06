@@ -52,6 +52,10 @@ set(SWARAXT_ENGINE_SOURCES
     "${CMAKE_SOURCE_DIR}/Source/Engine/SwaraXtEngine.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Engine/SampleRate/HostResampler.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Engine/Filter/SwaraXtFilter.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/DspBoard/BoardResources.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/DspBoard/BoardFilter.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/DspBoard/BoardEffects.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/DspBoard/BoardProcessor.cpp"
 )
 
 set(SWARAXT_PLUGIN_SOURCES

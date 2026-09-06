@@ -15,6 +15,7 @@ class AudioBuffer;
 }  // namespace juce
 
 #include "Engine/Filter/SwaraXtFilter.h"
+#include "Engine/DspBoard/BoardProcessor.h"
 #include "Engine/HostTransport.h"
 #include "Engine/ParameterCache.h"
 #include "Engine/PatchBridge.h"
@@ -119,6 +120,9 @@ class SwaraXtEngine {
     void bindParameters(ParameterCache& cache) noexcept { parameterCache_ = &cache; }
     void bindSequenceState(SequenceState& state) noexcept { sequenceState_ = &state; }
     void applyParameters();
+    double boardTailSeconds() const noexcept { return boardTailSeconds_.load(std::memory_order_relaxed); }
+    const board::BoardControl& boardControlsForTests() const noexcept { return activeBoard_; }
+    const board::BoardProcessor& boardProcessorForTests() const noexcept { return boardProcessor_; }
 
     void process(const juce::MidiBuffer& midi,
                  juce::AudioBuffer<float>& buffer,
@@ -175,6 +179,10 @@ class SwaraXtEngine {
     };
 
     void renderInternalBlock();
+    void updateBoardAtBlockBoundary() noexcept;
+    void resetBoardState() noexcept;
+    bool boardRequiresAudio() const noexcept;
+    float nextBoardGain() noexcept;
     void advanceDormantControl();
     void updateDormantWakeState();
     void enterDormant() noexcept;
@@ -207,6 +215,16 @@ class SwaraXtEngine {
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
+    board::BoardProcessor boardProcessor_;
+    board::BoardControl requestedBoard_, activeBoard_;
+    static_assert(std::atomic<double>::is_always_lock_free, "Host tail publication must be realtime lock-free");
+    std::atomic<double> boardTailSeconds_ { 0.0 };
+    enum class BoardFadePhase : uint8_t { stable, fadeOut, switchPending, fadeIn };
+    BoardFadePhase boardFadePhase_ = BoardFadePhase::stable;
+    float boardGain_ = 1.0f, boardGainIncrement_ = 0.0f;
+    int boardFadeRemaining_ = 0;
+    bool snapBoardOnApply_ = true, boardWake_ = false;
+    std::uint8_t boardTempo_ = 120;
     std::atomic<uint8_t> requestedFilterQuality_ {
         static_cast<uint8_t>(FilterQuality::normal)
     };

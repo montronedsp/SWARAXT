@@ -90,7 +90,8 @@ void BoardProcessor::observeTail(const FloatBlock& samples, const BoardControl& 
 }
 bool BoardProcessor::needsAudio(const BoardControl& c) const noexcept
 {
-    return tailActive_ || (c.effect == Effect::looper && c.cv2 >= 128 && hasValidLoop())
+    // Recording advances even through silence; only empty replay may sleep.
+    return tailActive_ || (c.effect == Effect::looper && (c.cv2 < 128 || hasValidLoop()))
         || (c.postDcaFilter() && c.resonance != 0);
 }
 }

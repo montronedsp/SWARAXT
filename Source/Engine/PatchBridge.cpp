@@ -145,6 +145,17 @@ void PatchBridge::applyCacheToEngine(const ParameterCache& cache)
     settings->midi_channel = static_cast<uint8_t>(juce::jlimit(0, 16, ParameterCache::loadInt(cache.midiChannel)));
     settings->midi_out_mode = shruthi::MIDI_OUT_OFF;
 
+    const auto boardControls = cache.boardControls();
+    const bool boardCv = boardControls.model == board::Model::dspBoard || boardControls.effect != board::Effect::off;
+    settings->expansion_filter_board = boardCv ? shruthi::FILTER_BOARD_DSP : shruthi::FILTER_BOARD_LPF;
+    if (boardCv)
+    {
+        // Voice::UpdateDestinations scales these to 14-bit bases BEFORE adding
+        // matrix modulation. CV1 panel steps are 2 codes, CV2 steps are 4 codes.
+        patch->filter_cutoff_2 = static_cast<uint8_t>(boardControls.cv1 / 2);
+        patch->filter_resonance_2 = static_cast<uint8_t>(boardControls.cv2 / 4);
+    }
+
     auto* seq = part_->mutable_sequencer_settings();
     seq->seq_mode = static_cast<uint8_t>(juce::jlimit(0, 2, ParameterCache::loadInt(cache.seqMode)));
     const bool hostClock = ParameterCache::loadInt(cache.seqClockMode) != 0;

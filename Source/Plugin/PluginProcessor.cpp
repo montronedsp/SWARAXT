@@ -140,6 +140,12 @@ juce::AudioProcessorEditor* SwaraXtAudioProcessor::createEditor()
     return new SwaraXtAudioProcessorEditor(*this);
 }
 
+double SwaraXtAudioProcessor::getTailLengthSeconds() const
+{
+    const auto controls = parameterCache_.boardControls();
+    return std::max(swaraxt::board::BoardProcessor::tailSeconds(controls), engine_.boardTailSeconds());
+}
+
 void SwaraXtAudioProcessor::setCurrentProgram(int index)
 {
     const int clamped = juce::jlimit(0, getNumPrograms() - 1, index);
@@ -525,6 +531,21 @@ void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInByte
             if (version > kStateVersion || version < 1)
                 return;
 
+            // APVTS otherwise retains current values for absent parameters.
+            // Legacy states must not inherit an active Board/FX configuration.
+            for (const auto* id : { swaraxt::IDs::filterModel, swaraxt::IDs::dspFxProgram,
+                                   swaraxt::IDs::dspFxParam1, swaraxt::IDs::dspFxParam2,
+                                   swaraxt::IDs::dspBoardRouting })
+            {
+                if (!tree.getChildWithProperty("id", id).isValid())
+                {
+                    const auto* parameter = apvts_.getParameter(id);
+                    juce::ValueTree value("PARAM");
+                    value.setProperty("id", id, nullptr);
+                    value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
+                    tree.addChild(value, -1, nullptr);
+                }
+            }
             apvts_.replaceState(tree);
             if (! sequenceState_.restoreFromValueTree(tree.getChildWithName("SEQUENCE")))
             {

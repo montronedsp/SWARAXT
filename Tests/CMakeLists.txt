@@ -1,7 +1,5 @@
 # Opt-in test and research targets (SWARA_BUILD_TESTS=ON).
 
-add_subdirectory(DspBoard)
-
 add_executable(SwaraXTTests
     SwaraXtTestsMain.cpp
     ${SWARAXT_SHRUTHI_SOURCES}
@@ -158,3 +156,5 @@ endfunction()
 swaraxt_add_src_quality_target(SwaraXTSrcStudyHermite 0)
 swaraxt_add_src_quality_target(SwaraXTSrcStudyFir64 64)
 swaraxt_add_src_quality_target(SwaraXTSrcStudyFir96 96)
+
+add_subdirectory(DspBoard)

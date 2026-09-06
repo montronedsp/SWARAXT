@@ -60,6 +60,11 @@ static constexpr const char* filterModAmount = "filter_mod_amount";
 static constexpr const char* filterShruthiEnv = "filter.shruthi_env";
 static constexpr const char* filterShruthiLfo = "filter.shruthi_lfo";
 static constexpr const char* midiChannel = "midi.channel";
+static constexpr const char* filterModel = "filter.model";
+static constexpr const char* dspFxProgram = "dsp.fx";
+static constexpr const char* dspFxParam1 = "dsp.param1";
+static constexpr const char* dspFxParam2 = "dsp.param2";
+static constexpr const char* dspBoardRouting = "dsp.route";
 }  // namespace IDs
 
 juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout();
