@@ -381,17 +381,24 @@ void Oscillator::RenderVowel(uint8_t* buffer) {
     }
 
     // Interpolate formant amplitudes.
-    for (uint8_t i = 0; i < 4; ++i) {
-      uint8_t amplitude_a = ResourcesManager::Lookup<uint8_t, uint8_t>(
-          wav_res_vowel_data,
-          offset_1 + 3 + i);
-      uint8_t amplitude_b = ResourcesManager::Lookup<uint8_t, uint8_t>(
-          wav_res_vowel_data,
-          offset_2 + 3 + i);
+    for (uint8_t i = 0; i < 3; ++i) {
       data_.vw.formant_amplitude[i] = U8U4MixU8(
-          amplitude_a,
-          amplitude_b, balance);
+          ResourcesManager::Lookup<uint8_t, uint8_t>(
+              wav_res_vowel_data,
+              offset_1 + 3 + i),
+          ResourcesManager::Lookup<uint8_t, uint8_t>(
+              wav_res_vowel_data,
+              offset_2 + 3 + i),
+          balance);
     }
+    data_.vw.noise_modulation = U8U4MixU8(
+        ResourcesManager::Lookup<uint8_t, uint8_t>(
+            wav_res_vowel_data,
+            offset_1 + 6),
+        ResourcesManager::Lookup<uint8_t, uint8_t>(
+            wav_res_vowel_data,
+            offset_2 + 6),
+        balance);
   }
   BEGIN_SAMPLE_LOOP
     int8_t result = 0;
