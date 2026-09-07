@@ -308,7 +308,12 @@ inline void Voice::ProcessModulationMatrix() {
         source_value = 255 - source_value;
       }
       if (amount != 63) {
-        source_value = U8Mix(255, source_value, amount << 2);
+        // amount * 4 is the AVR `amount << 2` wrap; int16 multiply avoids
+        // shifting a negative value when amount == -128.
+        source_value = U8Mix(
+            255,
+            source_value,
+            static_cast<uint8_t>(static_cast<int16_t>(amount) * 4));
       }
       modulation_destinations_[MOD_DST_VCA] = U8U8MulShift8(
             modulation_destinations_[MOD_DST_VCA],
