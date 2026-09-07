@@ -1,4 +1,4 @@
-Swara XT 1.2.1
+Swara XT 1.2.2
 MontroneDSP
 
 Windows requirements
