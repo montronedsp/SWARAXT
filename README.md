@@ -85,6 +85,16 @@ SWARA XT contains software derived from the Shruthi firmware by Emilie Gillet.
 
 SWARA XT is an independent project and is not an official Mutable Instruments product.
 
+## Source branches
+
+### `classic`
+
+`classic` is the frozen public reference for the historically faithful Shruthi-derived Classic engine. It stays at the validated Classic implementation and does not receive experimental HD development. Use it when you want the stable Classic port.
+
+### `main`
+
+`main` is the active development branch. It receives current SWARA XT updates, and alternate or higher-resolution engine work is integrated and validated here. Behavior outside Classic may evolve between development releases. This tree currently ships the Classic production engine; the `avrlib_hd` faithful reference lives as in-tree infrastructure and tests, not as a user-selectable second engine.
+
 ---
 
 **SWARA XT 1.1.2 — MontroneDSP**
