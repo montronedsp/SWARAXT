@@ -1,5 +1,274 @@
 # Opt-in test and research targets (SWARA_BUILD_TESTS=ON).
 
+# HD support library unit tests: standalone, no JUCE. Compiled with a strict
+# warning-as-error gate so avrlib_hd stays warning-free on the supported compilers.
+add_executable(AvrlibHdUnitTests
+    avrlib_hd/AvrlibHdUnitTestsMain.cpp
+)
+target_include_directories(AvrlibHdUnitTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdUnitTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdUnitTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME AvrlibHdUnitTests COMMAND AvrlibHdUnitTests)
+
+# Classic Shruthi resource tables compiled with the classic flag set (they carry
+# the audited warning volume, so no -Werror here); consumed by the HD resource
+# tests and later by the HD engine.
+add_library(AvrlibHdResourceData STATIC
+    "${SWARAXT_SHRUTHI_ROOT}/shruthi/resources.cc"
+)
+swaraxt_configure_shruthi_target(AvrlibHdResourceData)
+
+add_executable(AvrlibHdResourceTests
+    avrlib_hd/ResourcesLoaderTestsMain.cpp
+)
+target_include_directories(AvrlibHdResourceTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdResourceTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdResourceTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+target_link_libraries(AvrlibHdResourceTests PRIVATE AvrlibHdResourceData)
+add_test(NAME AvrlibHdResourceTests COMMAND AvrlibHdResourceTests)
+
+# Classic oscillator compiled with the classic flag set so the parity TU can
+# drive shruthi::Oscillator against HdOscillator::RenderNaive.
+add_library(AvrlibHdClassicOscObj STATIC
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/oscillator.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
+)
+swaraxt_configure_shruthi_target(AvrlibHdClassicOscObj)
+target_link_libraries(AvrlibHdClassicOscObj PRIVATE AvrlibHdResourceData)
+
+# Classic voice/part/patch compiled with the classic flag set so the mod-matrix
+# parity TU can drive the real shruthi::Voice::ProcessControlBlock and read its
+# 14-bit destinations and source/destination bytes through the debug taps.
+add_library(AvrlibHdClassicVoiceObj STATIC
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/voice.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/part.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/patch.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/parameter.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/note_stack.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/clock.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/system_settings.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/voice_allocator.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/midi_dispatcher.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
+    "${SWARAXT_SHRUTHI_ROOT}/shruthi/sequencer_settings.cc"
+    "${SWARAXT_SHRUTHI_ROOT}/avrlib/string.cc"
+    "${SWARAXT_SHRUTHI_ROOT}/shruthi/resources.cc"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/audio_out.cc"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/storage.cc"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/display.cc"
+    "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/editor.cc"
+)
+swaraxt_configure_shruthi_target(AvrlibHdClassicVoiceObj)
+target_link_libraries(AvrlibHdClassicVoiceObj PRIVATE AvrlibHdResourceData)
+target_compile_definitions(AvrlibHdClassicVoiceObj
+    PUBLIC SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+
+add_executable(AvrlibHdOscillatorParityTests
+    avrlib_hd/OscillatorParityTestsMain.cpp
+)
+target_include_directories(AvrlibHdOscillatorParityTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdOscillatorParityTests)
+swaraxt_enable_warnings(AvrlibHdOscillatorParityTests)
+target_link_libraries(AvrlibHdOscillatorParityTests PRIVATE AvrlibHdClassicOscObj AvrlibHdResourceData)
+add_test(NAME AvrlibHdOscillatorParityTests COMMAND AvrlibHdOscillatorParityTests)
+
+add_executable(AvrlibHdOscillatorTests
+    avrlib_hd/OscillatorUnitTestsMain.cpp
+)
+target_include_directories(AvrlibHdOscillatorTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdOscillatorTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdOscillatorTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(NOT MSVC)
+    target_link_libraries(AvrlibHdOscillatorTests PRIVATE m)
+endif()
+add_test(NAME AvrlibHdOscillatorTests COMMAND AvrlibHdOscillatorTests)
+
+# Envelope + LFO parity: the Classic Envelope/Lfo are header-only, so the parity
+# TU drives them directly against HdEnvelope/HdLfo faithful mode. It carries the
+# classic flag set and links the resource tables + the Classic Random state.
+add_executable(AvrlibHdEnvLfoParityTests
+    avrlib_hd/EnvLfoParityTestsMain.cpp
+)
+target_include_directories(AvrlibHdEnvLfoParityTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdEnvLfoParityTests)
+swaraxt_enable_warnings(AvrlibHdEnvLfoParityTests)
+target_link_libraries(AvrlibHdEnvLfoParityTests PRIVATE AvrlibHdClassicOscObj AvrlibHdResourceData)
+add_test(NAME AvrlibHdEnvLfoParityTests COMMAND AvrlibHdEnvLfoParityTests)
+
+# Envelope + LFO HD unit tests (strict -Werror, synthetic tables, no Classic).
+add_executable(AvrlibHdEnvLfoTests
+    avrlib_hd/EnvLfoUnitTestsMain.cpp
+)
+target_include_directories(AvrlibHdEnvLfoTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdEnvLfoTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdEnvLfoTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(NOT MSVC)
+    target_link_libraries(AvrlibHdEnvLfoTests PRIVATE m)
+endif()
+add_test(NAME AvrlibHdEnvLfoTests COMMAND AvrlibHdEnvLfoTests)
+
+# Sub-osc + transient parity: Classic SubOscillator/TransientGenerator are
+# header-only, so the parity TU drives them directly (byte-exact).
+add_executable(AvrlibHdSubTransParityTests
+    avrlib_hd/SubTransParityTestsMain.cpp
+)
+target_include_directories(AvrlibHdSubTransParityTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdSubTransParityTests)
+swaraxt_enable_warnings(AvrlibHdSubTransParityTests)
+add_test(NAME AvrlibHdSubTransParityTests COMMAND AvrlibHdSubTransParityTests)
+
+# Sub-osc + transient HD unit tests (strict -Werror, no Classic).
+add_executable(AvrlibHdSubTransTests
+    avrlib_hd/SubTransUnitTestsMain.cpp
+)
+target_include_directories(AvrlibHdSubTransTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdSubTransTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdSubTransTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(NOT MSVC)
+    target_link_libraries(AvrlibHdSubTransTests PRIVATE m)
+endif()
+add_test(NAME AvrlibHdSubTransTests COMMAND AvrlibHdSubTransTests)
+
+# Mod-matrix parity: drives the real shruthi::Voice control block.
+add_executable(AvrlibHdModMatrixParityTests
+    avrlib_hd/ModMatrixParityTestsMain.cpp
+)
+target_include_directories(AvrlibHdModMatrixParityTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdModMatrixParityTests)
+swaraxt_enable_warnings(AvrlibHdModMatrixParityTests)
+target_compile_definitions(AvrlibHdModMatrixParityTests PRIVATE
+    SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+target_link_libraries(AvrlibHdModMatrixParityTests PRIVATE
+    AvrlibHdClassicVoiceObj AvrlibHdClassicOscObj AvrlibHdResourceData)
+add_test(NAME AvrlibHdModMatrixParityTests COMMAND AvrlibHdModMatrixParityTests)
+
+# Voice parity: drives partial/full voice block through the classic Part and
+# compares the HostAudioRing output with the faithful avrlib_hd::HdVoice.
+add_executable(AvrlibHdVoiceParityTests
+    avrlib_hd/VoiceParityTestsMain.cpp
+)
+target_include_directories(AvrlibHdVoiceParityTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdVoiceParityTests)
+swaraxt_enable_warnings(AvrlibHdVoiceParityTests)
+target_link_libraries(AvrlibHdVoiceParityTests PRIVATE
+    AvrlibHdClassicVoiceObj AvrlibHdClassicOscObj AvrlibHdResourceData)
+add_test(NAME AvrlibHdVoiceParityTests COMMAND AvrlibHdVoiceParityTests)
+
+# Mod-matrix HD unit tests (strict -Werror, no Classic).
+add_executable(AvrlibHdModMatrixTests
+    avrlib_hd/ModMatrixUnitTestsMain.cpp
+)
+target_include_directories(AvrlibHdModMatrixTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdModMatrixTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdModMatrixTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(NOT MSVC)
+    target_link_libraries(AvrlibHdModMatrixTests PRIVATE m)
+endif()
+add_test(NAME AvrlibHdModMatrixTests COMMAND AvrlibHdModMatrixTests)
+
+# Vowel/breath parity: faithfulness of HdVowel::RenderNaive vs the Classic
+# Oscillator::RenderVowel (driven through the real shruthi::Oscillator).
+add_executable(AvrlibHdVowelParityTests
+    avrlib_hd/VowelParityTestsMain.cpp
+)
+target_include_directories(AvrlibHdVowelParityTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdVowelParityTests)
+swaraxt_enable_warnings(AvrlibHdVowelParityTests)
+target_link_libraries(AvrlibHdVowelParityTests PRIVATE AvrlibHdClassicOscObj AvrlibHdResourceData)
+add_test(NAME AvrlibHdVowelParityTests COMMAND AvrlibHdVowelParityTests)
+
+# Vowel HD unit tests (strict -Werror, synthetic tables, no Classic).
+add_executable(AvrlibHdVowelTests
+    avrlib_hd/VowelUnitTestsMain.cpp
+)
+target_include_directories(AvrlibHdVowelTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdVowelTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdVowelTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(NOT MSVC)
+    target_link_libraries(AvrlibHdVowelTests PRIVATE m)
+endif()
+add_test(NAME AvrlibHdVowelTests COMMAND AvrlibHdVowelTests)
+
+# HD VCF parity: kFaithful must be bit-identical to the live engine's
+# swaraxt::SwaraXtFilter for the same committed params across a grid of
+# Shruthi-derived control values; also pins the updateFilterFromShruthi scaling.
+add_executable(AvrlibHdFilterParityTests
+    avrlib_hd/FilterParityTestsMain.cpp
+)
+target_include_directories(AvrlibHdFilterParityTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+    "${CMAKE_SOURCE_DIR}/Source"
+)
+swaraxt_configure_shruthi_target(AvrlibHdFilterParityTests)
+swaraxt_enable_warnings(AvrlibHdFilterParityTests)
+add_test(NAME AvrlibHdFilterParityTests COMMAND AvrlibHdFilterParityTests)
+
+# HD VCF unit tests (strict -Werror): mapping, mode budgets, determinism,
+# finite-output safety.
+add_executable(AvrlibHdFilterTests
+    avrlib_hd/FilterUnitTestsMain.cpp
+)
+target_include_directories(AvrlibHdFilterTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+    "${CMAKE_SOURCE_DIR}/Source"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdFilterTests PRIVATE /W4 /permissive- /WX /wd4244 /wd4267)
+else()
+    target_compile_options(AvrlibHdFilterTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(NOT MSVC)
+    target_link_libraries(AvrlibHdFilterTests PRIVATE m)
+endif()
+add_test(NAME AvrlibHdFilterTests COMMAND AvrlibHdFilterTests)
+
 add_executable(SwaraXTTests
     SwaraXtTestsMain.cpp
     ${SWARAXT_SHRUTHI_SOURCES}
