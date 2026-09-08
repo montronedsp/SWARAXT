@@ -9,6 +9,7 @@ public:
     void reset() noexcept { poles_ = {}; }
     void process(Block& samples, std::uint8_t cutoff, std::uint8_t resonance, bool highPass) noexcept;
     static void dca(Block& samples, std::uint8_t gain) noexcept;
+    static bool hasFeedback(std::uint8_t cutoff, std::uint8_t resonance, bool highPass) noexcept;
     const std::array<std::int16_t, 3>& poles() const noexcept { return poles_; }
 private:
     std::array<std::int16_t, 3> poles_{};

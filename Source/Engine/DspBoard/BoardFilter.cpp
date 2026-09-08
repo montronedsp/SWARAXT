@@ -6,14 +6,26 @@
 
 namespace swaraxt::board {
 using namespace arithmetic;
+namespace {
+std::uint8_t compensatedResonance(std::uint8_t response, std::uint16_t integrator) noexcept
+{
+    const auto compensation = static_cast<std::uint8_t>(96 - U8U8MulShift8(static_cast<std::uint8_t>(integrator >> 8), 96));
+    return static_cast<std::uint8_t>(response > compensation ? response - compensation : 0);
+}
+}
+bool BoardFilter::hasFeedback(std::uint8_t cutoff, std::uint8_t resonanceCode, bool highPass) noexcept
+{
+    if (highPass) cutoff = std::min<std::uint8_t>(cutoff, 240);
+    return compensatedResonance(resources::waveform_res_resonance_response[resonanceCode],
+        resources::lut_res_integrator_gain[cutoff]) != 0;
+}
 void BoardFilter::process(Block& samples, std::uint8_t cutoff, std::uint8_t resonanceCode, bool highPass) noexcept
 {
     if (highPass) cutoff = std::min<std::uint8_t>(cutoff, 240);
     auto resonance = resources::waveform_res_resonance_response[resonanceCode];
     const auto gain = static_cast<std::uint8_t>(255 - U8U8MulShift8(resonance, 208));
     const auto integrator = resources::lut_res_integrator_gain[cutoff];
-    const auto compensation = static_cast<std::uint8_t>(96 - U8U8MulShift8(static_cast<std::uint8_t>(integrator >> 8), 96));
-    resonance = static_cast<std::uint8_t>(resonance > compensation ? resonance - compensation : 0);
+    resonance = compensatedResonance(resonance, integrator);
     for (auto& in : samples)
     {
         const auto feedback = s16(S16U8MulShift8(sub(poles_[0], poles_[1]), resonance) * 4);

@@ -151,10 +151,27 @@ void fixedPointTailTest()
     require(varying,"source one-code positive feedback limit cycle");
     std::cout << "Positive comb feedback=1 retains AC limit-cycle after >4 seconds: confirmed\n";
 }
+void compensatedFilterTailTest()
+{
+    BoardControl c;
+    c.model=Model::dspBoard;c.route=Route::lowPassLast;c.effect=Effect::off;
+    c.cutoff=0;c.resonance=1;c.dca=0;
+    BoardProcessor processor;
+    for(int block=0;block<3000;++block)
+    {
+        FloatBlock samples{};processor.processBoard(samples,c);
+    }
+    require(!processor.needsAudio(c),"zero effective feedback must not prevent dormancy");
+    require(std::isfinite(BoardProcessor::tailSeconds(c)),"zero effective feedback must have finite advertised tail");
+    c.resonance=254;
+    require(processor.needsAudio(c),"nonzero feedback retains conservative autonomous-filter processing");
+    require(std::isinf(BoardProcessor::tailSeconds(c)),"autonomous filter retains sustained tail");
+    std::cout << "Cutoff-compensated filter feedback tail policy PASS\n";
+}
 }
 int main()
 {
-    try { responseTests(); safetyTests(); fixedPointTailTest(); }
+    try { responseTests(); safetyTests(); fixedPointTailTest(); compensatedFilterTailTest(); }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     return 0;
 }

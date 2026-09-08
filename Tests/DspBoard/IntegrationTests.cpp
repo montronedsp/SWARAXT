@@ -262,6 +262,58 @@ void headroomAndTailTests()
     }
     std::cout<<"Finite tail/dormancy and interleaved pitch/looper instance isolation PASS\n";
 }
+void suspendAndResetSafety()
+{
+    SwaraXtAudioProcessor p;
+    set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,15);
+    set(p,IDs::dspFxParam2,63);set(p,IDs::dspBoardRouting,4);
+    juce::MemoryBlock emptyReplay;p.getStateInformation(emptyReplay);
+    for(double rate:{44100.,48000.,88200.,96000.,176400.,192000.})
+    {
+        p.setStateInformation(emptyReplay.getData(),static_cast<int>(emptyReplay.getSize()));
+        p.prepareToPlay(rate,256);
+        for(int block=0;block<20;++block)
+        {
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            p.processBlock(audio,midi);
+            require(audio.getMagnitude(0,256)==0,"restored empty replay host silence");
+        }
+        set(p,IDs::dspFxParam2,0);
+        for(int block=0;block<8;++block)process(p,256,block==0);
+        require(p.engineForTests().boardProcessorForTests().hasValidLoop(),"record before suspend");
+        set(p,IDs::dspFxParam2,63);process(p,256);
+        p.releaseResources();
+        juce::AudioBuffer<float> suspended(2,256);juce::MidiBuffer midi;
+        p.processBlock(suspended,midi);
+        require(suspended.getMagnitude(0,256)==0,"released processor produces silence");
+        p.prepareToPlay(rate,256);process(p,256);
+        require(!p.engineForTests().boardProcessorForTests().hasValidLoop(),"resume invalidates transient loop");
+        p.prepareToPlay(rate,128);process(p,128);
+        require(!p.engineForTests().boardProcessorForTests().hasValidLoop(),"block change retains invalid-loop safety");
+        p.releaseResources();
+    }
+    std::cout<<"Six-rate empty replay/state/suspend/resume/block-change safety PASS\n";
+}
+void compensatedFilterDormancy()
+{
+    SwaraXtAudioProcessor p;
+    set(p,IDs::filterModel,1);set(p,IDs::dspBoardRouting,2);
+    set(p,IDs::filterCutoff,100);set(p,IDs::filterResonance,.01f);
+    p.prepareToPlay(48000,512);
+    for(int i=0;i<350;++i)process(p);
+    const auto low=p.engineForTests().boardControlsForTests();
+    require(low.resonance!=0 && !board::BoardFilter::hasFeedback(low.cutoff,low.resonance,false),"test reaches nonzero panel / zero effective resonance");
+    require(p.engineForTests().dormantForTests(),"compensated post-DCA filter sleeps");
+    require(std::isfinite(p.getTailLengthSeconds()),"compensated filter finite host tail");
+    set(p,IDs::filterResonance,1);
+    for(int i=0;i<8;++i)process(p);
+    require(!p.engineForTests().dormantForTests(),"dormant resonance automation wakes autonomous filter");
+    require(std::isinf(p.getTailLengthSeconds()),"autonomous filter sustained host tail");
+    set(p,IDs::filterResonance,.01f);
+    for(int i=0;i<350;++i)process(p);
+    require(p.engineForTests().dormantForTests(),"compensated filter returns to dormancy");
+    std::cout<<"Post-DCA compensated feedback dormancy, host tail and resonance wake PASS\n";
+}
 void benchmark()
 {
     for(int model=0;model<2;++model)
@@ -286,7 +338,7 @@ int main(int argc,char** argv)
     juce::ScopedJuceInitialiser_GUI gui;
     try {
         if(argc>1 && juce::String(argv[1])=="--benchmark")benchmark();
-        else {stateTests();controlTests();hostTempoTests();streamingTests();dormantModulationTest();headroomAndTailTests();}
+        else {stateTests();controlTests();hostTempoTests();streamingTests();dormantModulationTest();headroomAndTailTests();suspendAndResetSafety();compensatedFilterDormancy();}
     }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     return 0;

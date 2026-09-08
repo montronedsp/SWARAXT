@@ -31,11 +31,21 @@ target_link_libraries(SwaraBoardModelTests PRIVATE SwaraBoardAlgorithm)
 swaraxt_enable_warnings(SwaraBoardModelTests)
 add_test(NAME SwaraBoardModelTests COMMAND SwaraBoardModelTests)
 
+add_executable(SwaraBoardSafetyTests SafetyTests.cpp
+    "${CMAKE_SOURCE_DIR}/Source/Engine/SampleRate/HostResampler.cpp")
+target_link_libraries(SwaraBoardSafetyTests PRIVATE SwaraBoardAlgorithm)
+swaraxt_enable_warnings(SwaraBoardSafetyTests)
+add_test(NAME SwaraBoardSafetyTests COMMAND SwaraBoardSafetyTests)
+
 swaraxt_add_plugin_console_test(SwaraBoardIntegrationTests IntegrationTests.cpp)
 target_compile_definitions(SwaraBoardIntegrationTests PRIVATE SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
 swaraxt_add_plugin_console_test(SwaraBoardGuiTests GuiTests.cpp)
 
 if(MSVC)
+    swaraxt_add_plugin_console_test(SwaraBoardIntegrationSanitizerTests IntegrationTests.cpp)
+    target_compile_definitions(SwaraBoardIntegrationSanitizerTests PRIVATE SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
+    target_compile_options(SwaraBoardIntegrationSanitizerTests PRIVATE /fsanitize=address /Zi)
+    target_link_options(SwaraBoardIntegrationSanitizerTests PRIVATE /INCREMENTAL:NO /DEBUG)
     add_executable(SwaraBoardSanitizerTests ModelTests.cpp
         "${CMAKE_SOURCE_DIR}/Source/Engine/DspBoard/BoardResources.cpp"
         "${CMAKE_SOURCE_DIR}/Source/Engine/DspBoard/BoardFilter.cpp"
@@ -47,7 +57,7 @@ if(MSVC)
     swaraxt_enable_warnings(SwaraBoardSanitizerTests)
     add_test(NAME SwaraBoardSanitizerTests COMMAND SwaraBoardSanitizerTests)
     get_filename_component(swara_board_compiler_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
-    set_tests_properties(SwaraBoardSanitizerTests PROPERTIES
+    set_tests_properties(SwaraBoardSanitizerTests SwaraBoardIntegrationSanitizerTests PROPERTIES
         ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${swara_board_compiler_directory}")
 endif()

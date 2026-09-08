@@ -113,6 +113,8 @@ struct ParameterCache {
         c.cv2 = board::BoardControl::nativeCv(std::clamp(loadInt(dspFxParam2), 0, 63) * 4);
         c.tempo = board::BoardControl::tempoCode(load(seqTempo));
         c.resonance = board::BoardControl::nativeCv(static_cast<int>(std::lround(load(filterResonance) * 254)));
+        if (c.postDcaFilter() && c.resonance != 0)
+            c.cutoff = board::BoardControl::cutoffCode(load(filterCutoff));
         return c;
     }
     std::atomic<float>* filterModel = nullptr;

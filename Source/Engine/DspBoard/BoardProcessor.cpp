@@ -3,6 +3,12 @@
 #include "BoardResources.h"
 
 namespace swaraxt::board {
+namespace {
+bool autonomousFilter(const BoardControl& c) noexcept
+{
+    return c.postDcaFilter() && BoardFilter::hasFeedback(c.cutoff, c.resonance, c.route == Route::highPassLast);
+}
+}
 void BoardProcessor::reset(Effect effect) noexcept
 {
     input_.reset(); output_.reset(); filter_.reset();
@@ -52,7 +58,7 @@ void BoardProcessor::processClassicFx(FloatBlock& samples, const BoardControl& c
 }
 double BoardProcessor::tailSeconds(const BoardControl& c) noexcept
 {
-    if (c.postDcaFilter() && c.resonance != 0) return std::numeric_limits<double>::infinity();
+    if (autonomousFilter(c)) return std::numeric_limits<double>::infinity();
     switch (c.effect)
     {
         case Effect::off: return c.model == Model::classic ? 0 : .25;
@@ -92,6 +98,6 @@ bool BoardProcessor::needsAudio(const BoardControl& c) const noexcept
 {
     // Recording advances even through silence; only empty replay may sleep.
     return tailActive_ || (c.effect == Effect::looper && (c.cv2 < 128 || hasValidLoop()))
-        || (c.postDcaFilter() && c.resonance != 0);
+        || autonomousFilter(c);
 }
 }

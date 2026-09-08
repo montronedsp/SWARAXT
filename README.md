@@ -4,6 +4,12 @@
 
 It combines a digital dual-oscillator voice with a resonant four-pole low-pass filter, modulation matrix, envelopes, LFOs, sequencer/arpeggiator, presets, and a scalable themed interface.
 
+## `classic+` — Experimental
+
+`classic` remains the stable/reference Classic Shruthi port. `classic+` is an experimental development branch integrating the separate Shruthi DSP Board firmware's filter, routing, and character effects into SWARA XT. Classic mode with FX Off is intended to remain identical to `classic`.
+
+**Do not rely on or build `classic+` for production use yet.** DSP Board behavior and parameters may change. Its analog response is based on schematic/model analysis, not measured hardware-exact calibration.
+
 ## Features
 
 - Two digital oscillator sources with multiple oscillator models
