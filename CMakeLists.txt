@@ -68,6 +68,7 @@ set(SWARAXT_PLUGIN_SOURCES
 set(SWARAXT_UI_SOURCES
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtLookAndFeel.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtPanels.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtBoardPanel.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtSkin.cpp"
 )
 

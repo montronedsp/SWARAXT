@@ -483,7 +483,7 @@ void testJuce9ParameterMetadataCompatibility()
 {
     SwaraXtAudioProcessor proc;
     const auto& parameters = proc.getParameters();
-    expect(parameters.size() == 88, "JUCE 9 preserves the host-visible parameter count");
+    expect(parameters.size() == 93, "88 existing parameters plus five appended Board parameters");
 
     std::set<std::string> parameterIds;
     for (const auto* parameter : parameters)
@@ -491,8 +491,8 @@ void testJuce9ParameterMetadataCompatibility()
         expect(parameter != nullptr, "parameter list contains no null entries");
         if (parameter != nullptr)
         {
-            expect(parameter->getVersionHint() == 1,
-                   "all existing parameters preserve version hint 1");
+            expect(parameter->getVersionHint() == (parameter->getParameterIndex() < 88 ? 1 : 2),
+                   "existing parameter hints stay 1; appended Board parameters use 2");
             const auto* withId = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameter);
             expect(withId != nullptr, "all existing parameters retain stable string IDs");
             if (withId != nullptr)

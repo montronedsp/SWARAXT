@@ -3,6 +3,7 @@
 #include "Plugin/PluginProcessor.h"
 #include <iostream>
 #include <stdexcept>
+#include <chrono>
 
 namespace {
 using namespace swaraxt;
@@ -106,6 +107,30 @@ void controlTests()
         require(p.engineForTests().boardControlsForTests().tempo==tempo,"internal Board tempo");
     }
     std::cout<<"Native CV1/CV2 signed bases and tempo controls PASS\n";
+}
+class BoardPlayHead final : public juce::AudioPlayHead {
+public:
+    Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo position;position.setBpm(bpm);position.setIsPlaying(true);
+        return position;
+    }
+    double bpm=120;
+};
+void hostTempoTests()
+{
+    SwaraXtAudioProcessor p;BoardPlayHead host;p.setPlayHead(&host);
+    set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,14);set(p,IDs::seqClockMode,1);
+    p.prepareToPlay(48000,512);
+    for(double bpm:{20.,40.,80.,120.,135.,174.,240.,300.})
+    {
+        host.bpm=bpm;process(p,2048,true);
+        require(p.engineForTests().boardControlsForTests().tempo==std::clamp(int(bpm),40,240),"host tempo native clamp");
+    }
+    set(p,IDs::seqClockMode,0);set(p,IDs::seqTempo,91);process(p,2048);
+    require(p.engineForTests().boardControlsForTests().tempo==91,"free Board tempo ignores host");
+    p.setPlayHead(nullptr);
+    std::cout<<"Host/free tempo selection and native 40..240 bounds PASS\n";
 }
 std::vector<float> render(double rate,int blockSize,int effect,int route)
 {
@@ -237,11 +262,32 @@ void headroomAndTailTests()
     }
     std::cout<<"Finite tail/dormancy and interleaved pitch/looper instance isolation PASS\n";
 }
+void benchmark()
+{
+    for(int model=0;model<2;++model)
+        for(int effect=0;effect<17;++effect)
+        {
+            SwaraXtAudioProcessor p;
+            set(p,IDs::filterModel,float(model));set(p,IDs::dspFxProgram,float(effect));
+            set(p,IDs::dspFxParam2,24);p.prepareToPlay(48000,256);
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(110)),0);
+            p.processBlock(audio,midi);midi.clear();
+            for(int i=0;i<20;++i)p.processBlock(audio,midi);
+            const auto start=std::chrono::steady_clock::now();
+            for(int i=0;i<400;++i)p.processBlock(audio,midi);
+            const double elapsed=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
+            std::cout<<"CPU model="<<model<<" fx="<<effect<<" realtime-percent="<<(elapsed/(400.*256/48000)*100)<<'\n';
+        }
 }
-int main()
+}
+int main(int argc,char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    try {stateTests();controlTests();streamingTests();dormantModulationTest();headroomAndTailTests();}
+    try {
+        if(argc>1 && juce::String(argv[1])=="--benchmark")benchmark();
+        else {stateTests();controlTests();hostTempoTests();streamingTests();dormantModulationTest();headroomAndTailTests();}
+    }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     return 0;
 }

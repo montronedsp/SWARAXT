@@ -18,6 +18,7 @@ namespace swaraxt::ui {
 
 class ModPanel;
 class SeqPanel;
+class BoardPanel;
 
 enum class KnobSize { standard, large };
 
@@ -30,6 +31,8 @@ class SwaraXtKnob : public juce::Component {
     juce::Slider& slider() noexcept { return slider_; }
     const juce::Slider& slider() const noexcept { return slider_; }
     KnobSize knobSize() const noexcept { return size_; }
+    void setLabel(const juce::String& text) { label_.setText(text, juce::dontSendNotification); }
+    juce::String labelText() const { return label_.getText(); }
 
  private:
     juce::Label label_;
@@ -67,6 +70,7 @@ class SwaraXtModulePanel : public juce::Component {
     void resized() override;
     void lookAndFeelChanged() override;
     void setSecondaryActionBounds(juce::Rectangle<int> bounds);
+    void setPrimaryActionBounds(juce::Rectangle<int> bounds);
     void setSecondaryHeaderVisible(bool visible);
     bool secondaryHeaderVisibleForTests() const noexcept { return secondaryHeaderVisible_; }
     juce::Component& body() noexcept { return body_; }
@@ -77,6 +81,7 @@ class SwaraXtModulePanel : public juce::Component {
     juce::Label secondaryTitle_;
     juce::Component body_;
     juce::Rectangle<int> secondaryActionBounds_;
+    juce::Rectangle<int> primaryActionBounds_;
     int secondaryDividerY_ = 0;
     bool secondaryHeaderVisible_ = true;
 };
@@ -177,6 +182,8 @@ class MainPanel : public juce::Component {
     void lookAndFeelChanged() override;
     void reflow();
     void setLocalViews(bool modulation, bool sequencer);
+    void setBoardEditorView(bool visible);
+    BoardPanel& boardPanelForTests() noexcept { return *boardView_; }
     void setSequencerHostSyncForTests(bool enabled);
     void setSequencerEditorViewForTests(bool sequence);
     void setSequencerPatternForTests(int pattern);
@@ -284,10 +291,12 @@ class MainPanel : public juce::Component {
     LfoTrace lfo1Trace_;
     LfoTrace lfo2Trace_;
     juce::TextButton seqViewButton_ { "SEQ/ARP" };
+    juce::TextButton boardViewButton_ { "FX" };
     juce::Label env1Role_;
     juce::Label env2Role_;
     std::unique_ptr<ModPanel> modulationView_;
     std::unique_ptr<SeqPanel> sequencerView_;
+    std::unique_ptr<BoardPanel> boardView_;
 
     std::vector<std::unique_ptr<SwaraXtKnob>> knobs_;
     std::vector<std::unique_ptr<SwaraXtSelector>> selectors_;
@@ -296,6 +305,7 @@ class MainPanel : public juce::Component {
     bool attached_ = false;
     bool showingModulation_ = false;
     bool showingSequencer_ = false;
+    bool showingBoard_ = false;
 };
 
 class ModPanel : public juce::Component {

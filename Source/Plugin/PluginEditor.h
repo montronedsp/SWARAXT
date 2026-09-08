@@ -26,6 +26,8 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void mouseDown(const juce::MouseEvent& event) override;
 
     void setModuleViewsForTests(bool modulation, bool sequencer);
+    void setBoardEditorViewForTests(bool visible) { mainPanel_.setBoardEditorView(visible); }
+    swaraxt::ui::BoardPanel& boardPanelForTests() noexcept { return mainPanel_.boardPanelForTests(); }
     void setSequencerHostSyncForTests(bool enabled);
     void setSequencerEditorViewForTests(bool sequence);
     void setSequencerPatternForTests(int pattern);
