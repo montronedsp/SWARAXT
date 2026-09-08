@@ -15,6 +15,8 @@ class AudioBuffer;
 }  // namespace juce
 
 #include "Engine/Filter/SwaraXtFilter.h"
+#include "Engine/Filter/Smr4InputCoupling.h"
+#include "Engine/DspBoard/BoardProcessor.h"
 #include "Engine/HostTransport.h"
 #include "Engine/ParameterCache.h"
 #include "Engine/PatchBridge.h"
@@ -62,6 +64,10 @@ class SwaraXtEngine {
     static constexpr double kInternalSampleRate = 20000000.0 / 510.0;
     static constexpr int kAudioBlockSize = 40;
     static constexpr int kMaxPendingMidi = 512;
+    // Original SMR4 analysis §1.2: MCU CVs update at ~976 Hz as PWM and are
+    // reconstructed by a one-pole near 1.25 kHz (assembly: 33 nF control caps).
+    // This is the VCA CV path, not the cutoff scaler 1/(2π R19 C11)=861.7 Hz.
+    static constexpr double kSmr4VcaCvCutoffHz = 1250.0;
 
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
     struct DebugBlockCapture {
@@ -70,6 +76,7 @@ class SwaraXtEngine {
         float postShruthiMixer[kAudioBlockSize] {};
         float filterOutput[kAudioBlockSize] {};
         float postVca[kAudioBlockSize] {};
+        float vcaTarget[kAudioBlockSize] {};
         float vcaGain[kAudioBlockSize] {};
         int samples = 0;
         uint32_t nativeBlockIndex = 0;
@@ -119,6 +126,9 @@ class SwaraXtEngine {
     void bindParameters(ParameterCache& cache) noexcept { parameterCache_ = &cache; }
     void bindSequenceState(SequenceState& state) noexcept { sequenceState_ = &state; }
     void applyParameters();
+    double boardTailSeconds() const noexcept { return boardTailSeconds_.load(std::memory_order_relaxed); }
+    const board::BoardControl& boardControlsForTests() const noexcept { return activeBoard_; }
+    const board::BoardProcessor& boardProcessorForTests() const noexcept { return boardProcessor_; }
 
     void process(const juce::MidiBuffer& midi,
                  juce::AudioBuffer<float>& buffer,
@@ -175,6 +185,10 @@ class SwaraXtEngine {
     };
 
     void renderInternalBlock();
+    void updateBoardAtBlockBoundary() noexcept;
+    void resetBoardState() noexcept;
+    bool boardRequiresAudio() const noexcept;
+    float nextBoardGain() noexcept;
     void advanceDormantControl();
     void updateDormantWakeState();
     void enterDormant() noexcept;
@@ -190,6 +204,11 @@ class SwaraXtEngine {
     void snapMasterGain(float value) noexcept;
     float nextMasterGain() noexcept;
     float nextQualityGain() noexcept;
+    float nextVcaCv(float target) noexcept;
+    void setPostMixerTarget(float linear) noexcept;
+    void snapPostMixerGain(float linear) noexcept;
+    float nextPostMixerGain() noexcept;
+    float nextConditioningMix() noexcept;
     void updateHostLfoRates(double bpm) noexcept;
     void prepareHostClock(const HostTransportSnapshot& transport, int numSamples) noexcept;
     void resetHostState() noexcept;
@@ -207,6 +226,17 @@ class SwaraXtEngine {
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
+    Smr4InputCoupling smr4Input_;
+    board::BoardProcessor boardProcessor_;
+    board::BoardControl requestedBoard_, activeBoard_;
+    static_assert(std::atomic<double>::is_always_lock_free, "Host tail publication must be realtime lock-free");
+    std::atomic<double> boardTailSeconds_ { 0.0 };
+    enum class BoardFadePhase : uint8_t { stable, fadeOut, switchPending, fadeIn };
+    BoardFadePhase boardFadePhase_ = BoardFadePhase::stable;
+    float boardGain_ = 1.0f, boardGainIncrement_ = 0.0f;
+    int boardFadeRemaining_ = 0;
+    bool snapBoardOnApply_ = true, boardWake_ = false;
+    std::uint8_t boardTempo_ = 120;
     std::atomic<uint8_t> requestedFilterQuality_ {
         static_cast<uint8_t>(FilterQuality::normal)
     };
@@ -233,7 +263,18 @@ class SwaraXtEngine {
     int masterRampSamples_ = 1;
     int masterSamplesRemaining_ = 0;
     bool snapMasterOnApply_ = true;
-    float previousVcaGain_ = 0.0f;
+    float vcaCvState_ = 0.0f;
+    float vcaCvCoeff_ = 0.0f;
+    float postMixerGainCurrent_ = 1.0f;
+    float postMixerGainTarget_ = 1.0f;
+    float postMixerGainIncrement_ = 0.0f;
+    int postMixerRampSamples_ = 1;
+    int postMixerSamplesRemaining_ = 0;
+    float conditioningMix_ = 0.0f;
+    float conditioningMixTarget_ = 0.0f;
+    float conditioningMixIncrement_ = 0.0f;
+    int conditioningMixRemaining_ = 0;
+    int conditioningRampSamples_ = 1;
     float filterCutoffHz_ = 8000.0f;
     float filterResonance_ = 0.2f;
     float filterEnvAmount_ = 0.35f;

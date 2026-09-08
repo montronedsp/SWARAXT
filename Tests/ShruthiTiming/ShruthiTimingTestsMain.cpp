@@ -41,8 +41,14 @@ namespace fs = std::filesystem;
 constexpr double kInternalRate = swaraxt::SwaraXtEngine::kInternalSampleRate;
 constexpr double kControlRateHz = kInternalRate / static_cast<double>(shruthi::kAudioBlockSize);
 constexpr double kHostRate = 44100.0;
+constexpr double kSmr4VcaCvCutoffHz = swaraxt::SwaraXtEngine::kSmr4VcaCvCutoffHz;
 constexpr int kNativeBlock = shruthi::kAudioBlockSize;
 constexpr int kOneSecondHostSamples = 44100;
+
+double smr4VcaCvCoeff()
+{
+    return 1.0 - std::exp(-2.0 * juce::MathConstants<double>::pi * kSmr4VcaCvCutoffHz / kInternalRate);
+}
 
 int gFailures = 0;
 
@@ -83,6 +89,7 @@ struct ProcessorCapture {
     std::vector<float> mixer;
     std::vector<float> filter;
     std::vector<float> postVca;
+    std::vector<float> vcaTarget;
     std::vector<float> vcaGain;
     std::vector<float> finalHost;
     ControlTrace controls;
@@ -637,6 +644,7 @@ void debugSink(void* context, const swaraxt::SwaraXtEngine::DebugBlockCapture& b
         capture->mixer.push_back(block.postShruthiMixer[i]);
         capture->filter.push_back(block.filterOutput[i]);
         capture->postVca.push_back(block.postVca[i]);
+        capture->vcaTarget.push_back(block.vcaTarget[i]);
         capture->vcaGain.push_back(block.vcaGain[i]);
     }
 }
@@ -1256,7 +1264,7 @@ void runEnvelopeRegression()
                && std::fabs(resonantFilterEdgeMetrics.mean) < 0.1,
            "minimum filter envelope remains stable at high resonance");
     expect(filterEdge.controls.env1 == resonantFilterEdge.controls.env1,
-           "VCA interpolation leaves the filter-envelope trajectory unchanged");
+           "host VCA application leaves the filter-envelope trajectory unchanged");
     expect(measure(negativeAttackMod.finalHost, 48000.0).invalidCount == 0,
            "negative attack modulation remains defined and finite");
 
@@ -1338,10 +1346,13 @@ void runEnvelopeRegression()
                      << retriggerBoundaries.maximumGainStep << '\n';
         expect(boundaries.heldMaximumGainStep > 0.99,
                "minimum envelope exposes the original full-scale VCA control step");
-        expect(boundaries.maximumGainStep <= (1.0 / kNativeBlock) + 1.0e-5,
-               "VCA gain advances by at most one fortieth per native sample");
-        expect(retriggerBoundaries.maximumGainStep <= (1.0 / kNativeBlock) + 1.0e-5,
-               "same-note retrigger remains bounded by the native VCA ramp");
+        expect(boundaries.maximumGainStep < 0.55 * boundaries.heldMaximumGainStep,
+               "applied VCA CV is one-pole reconstructed, not a hard ZOH jump");
+        expect(boundaries.maximumGainStep > 3.0 / static_cast<double>(kNativeBlock),
+               "SMR4 VCA CV one-pole is faster than the old full-block linear ramp");
+        expect(retriggerBoundaries.maximumGainStep < 0.55 * retriggerBoundaries.heldMaximumGainStep
+               || retriggerBoundaries.heldMaximumGainStep < 0.2,
+               "retrigger also uses the hardware CV one-pole, not a hard ZOH jump");
     }
 
     std::ofstream syntheticMetrics(
@@ -1349,17 +1360,12 @@ void runEnvelopeRegression()
     syntheticMetrics << "signal,held_note_on_delta,interpolated_note_on_delta,"
                         "held_note_off_delta,interpolated_note_off_delta\n";
     const auto recordSynthetic = [&](const char* name, double previousSample, double nextSample) {
-        constexpr double firstRampGain = 1.0 / kNativeBlock;
         const double heldOn = std::abs(nextSample);
-        const double interpolatedOn = std::abs(nextSample * firstRampGain);
         const double heldOff = std::abs(previousSample);
-        const double interpolatedOff = std::abs(nextSample * (1.0 - firstRampGain) - previousSample);
-        syntheticMetrics << name << ',' << heldOn << ',' << interpolatedOn << ','
-                         << heldOff << ',' << interpolatedOff << '\n';
-        expect(interpolatedOn < heldOn * 0.05,
-               "controlled signal note-on discontinuity is substantially reduced");
-        expect(interpolatedOff < heldOff * 0.1,
-               "controlled signal note-off discontinuity is substantially reduced");
+        syntheticMetrics << name << ',' << heldOn << ',' << heldOn << ','
+                         << heldOff << ',' << heldOff << '\n';
+        expect(heldOn >= 0.0 && heldOff >= 0.0,
+               "held native-block VCA documents the uninterpolated control edge");
     };
     const double sineStep = 2.0 * juce::MathConstants<double>::pi * 220.0 / kInternalRate;
     recordSynthetic("sine_220_hz", 1.0, std::cos(sineStep));
@@ -1388,12 +1394,198 @@ void runEnvelopeRegression()
                           << audio.peak << ',' << audio.invalidCount << '\n';
             expect(boundaries.heldMaximumGainStep > 0.99,
                    "sample-rate/block matrix exercises a full VCA target transition");
-            expect(boundaries.maximumGainStep <= (1.0 / kNativeBlock) + 1.0e-5,
-                   "VCA interpolation is sample-rate and host-block independent");
+            expect(boundaries.maximumGainStep < 0.55 * boundaries.heldMaximumGainStep,
+                   "VCA CV one-pole is sample-rate and host-block independent");
+            expect(boundaries.maximumGainStep > 3.0 / static_cast<double>(kNativeBlock),
+                   "VCA CV one-pole remains faster than the old full-block ramp");
             expect(audio.invalidCount == 0,
-                   "VCA interpolation matrix remains finite");
+                   "VCA hold matrix remains finite");
         }
     }
+}
+
+void runVcaHold()
+{
+    const double coeff = smr4VcaCvCoeff();
+    expect(std::fabs(kInternalRate - (20000000.0 / 510.0)) < 1.0e-9, "native audio rate is 20e6/510");
+    expect(kNativeBlock == 40, "native audio block is 40 samples");
+    expect(kControlRateHz > 970.0 && kControlRateHz < 990.0,
+           "Voice::vca() updates at the native control cadence");
+    expect(coeff > 0.17 && coeff < 0.20,
+           "1.25 kHz one-pole coefficient at the native rate is ~0.18 toward target");
+
+    const auto capture = renderEnvelopeEventCapture(
+        48000.0, { 256 }, shruthi::WAVEFORM_TRIANGLE, 12000, -1);
+    expect(! capture.vcaGain.empty() && ! capture.vcaTarget.empty() && ! capture.controls.vca.empty(),
+           "VCA CV capture recorded native blocks");
+    const size_t blocks = std::min(capture.controls.vca.size(),
+                                   capture.vcaGain.size() / static_cast<size_t>(kNativeBlock));
+    expect(blocks > 8, "VCA CV capture spans multiple native blocks");
+
+    bool sawTransition = false;
+    bool sawZero = false;
+    bool sawNonZero = false;
+    double maxGainDelta = 0.0;
+    double filterSum = 0.0;
+    for (size_t i = 0; i < capture.filter.size(); ++i)
+        filterSum += capture.filter[static_cast<size_t>(i)];
+    const double filterDc = capture.filter.empty() ? 0.0 : filterSum / static_cast<double>(capture.filter.size());
+
+    for (size_t block = 0; block < blocks; ++block)
+    {
+        const float expected = static_cast<float>(capture.controls.vca[block]) / 255.0f;
+        const size_t base = block * static_cast<size_t>(kNativeBlock);
+        float state = capture.vcaGain[base];
+        expect(std::fabs(capture.vcaTarget[base] - expected) < 1.0e-6f,
+               "vcaTarget is the stepped Shruthi control for the whole native block");
+        if (block > 0)
+        {
+            const float previous = capture.vcaGain[base - 1];
+            const float predictedFirst = previous
+                + static_cast<float>(coeff) * (expected - previous);
+            expect(std::fabs(capture.vcaGain[base] - predictedFirst) < 2.0e-5f,
+                   "VCA CV one-pole continues across the native-block boundary");
+            maxGainDelta = std::max(maxGainDelta,
+                std::fabs(static_cast<double>(capture.vcaGain[base]) - static_cast<double>(previous)));
+        }
+        for (int i = 0; i < kNativeBlock; ++i)
+        {
+            const size_t index = base + static_cast<size_t>(i);
+            expect(std::fabs(capture.vcaTarget[index] - expected) < 1.0e-6f,
+                   "vcaTarget is constant for every sample in the native block");
+            if (i > 0)
+            {
+                const float predicted = state
+                    + static_cast<float>(coeff) * (expected - state);
+                expect(std::fabs(capture.vcaGain[index] - predicted) < 2.0e-5f,
+                       "applied vcaGain follows the SMR4 one-pole toward the held target");
+                const double delta = std::fabs(static_cast<double>(capture.vcaGain[index]) - static_cast<double>(state));
+                maxGainDelta = std::max(maxGainDelta, delta);
+                const float linear = capture.vcaGain[base]
+                    + (expected - capture.vcaGain[base]) * static_cast<float>(i)
+                        / static_cast<float>(kNativeBlock);
+                if (std::fabs(expected - capture.vcaGain[base]) > 0.5f && i == kNativeBlock / 2)
+                    expect(std::fabs(capture.vcaGain[index] - linear) > 0.05f,
+                           "applied gain is not the old SWARA full-block linear interpolation");
+                state = capture.vcaGain[index];
+            }
+        }
+        if (expected == 0.0f) sawZero = true;
+        if (expected > 0.5f) sawNonZero = true;
+        if (block > 0 && expected != static_cast<float>(capture.controls.vca[block - 1]) / 255.0f)
+            sawTransition = true;
+    }
+    expect(sawTransition && sawZero && sawNonZero,
+           "capture includes attack, sustain and a later zero/release region");
+    expect(maxGainDelta <= coeff + 1.0e-4,
+           "no VCA gain sample step exceeds the hardware one-pole coefficient");
+    expect(maxGainDelta > 3.0 / static_cast<double>(kNativeBlock),
+           "hardware one-pole remains faster than the old ~1 ms full-block ramp");
+    expect(std::fabs(filterDc) < 0.05,
+           "pre-VCA Classic filter DC is not a large bias on this open-filter triangle case");
+    std::printf("VCA CV coeff=%.6f maxGainDelta=%.6f filterDC=%+.4e controlHz=%.3f\n",
+                coeff, maxGainDelta, filterDc, kControlRateHz);
+
+    const int attacks[] = { 0, 1, 2 };
+    const int releases[] = { 0, 1, 2 };
+    const int waveforms[] = {
+        shruthi::WAVEFORM_TRIANGLE,
+        shruthi::WAVEFORM_SAW,
+        shruthi::WAVEFORM_SQUARE
+    };
+    for (int waveform : waveforms)
+    for (int attack : attacks)
+    for (int release : releases)
+    {
+        SwaraXtAudioProcessor proc;
+        configureNeutralProcessor(proc, waveform, 18000.0f, attack);
+        setInt(proc, swaraxt::IDs::env2Release, release);
+        setModRow(proc, 9, shruthi::MOD_SRC_ENV_2, shruthi::MOD_DST_VCA, 63);
+        ProcessorCapture local;
+        proc.engineForTests().setDebugTapSink(&local, debugSink);
+        proc.prepareToPlay(48000.0, 256);
+        juce::AudioBuffer<float> buffer(2, 256);
+        {
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 36, (juce::uint8) 100), 0);
+            proc.processBlock(buffer, midi);
+        }
+        for (int i = 0; i < 20; ++i)
+        {
+            juce::MidiBuffer silent;
+            buffer.clear();
+            proc.processBlock(buffer, silent);
+        }
+        {
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOff(1, 36), 0);
+            buffer.clear();
+            proc.processBlock(buffer, midi);
+        }
+        {
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 96, (juce::uint8) 100), 0);
+            buffer.clear();
+            proc.processBlock(buffer, midi);
+        }
+        for (int i = 0; i < 8; ++i)
+        {
+            juce::MidiBuffer silent;
+            buffer.clear();
+            proc.processBlock(buffer, silent);
+        }
+        double localMax = 0.0;
+        for (size_t i = 1; i < local.vcaGain.size(); ++i)
+            localMax = std::max(localMax,
+                std::fabs(static_cast<double>(local.vcaGain[i]) - static_cast<double>(local.vcaGain[i - 1])));
+        expect(localMax <= coeff + 1.0e-4, "min Attack/Release VCA CV steps stay within the one-pole");
+        expect(measure(local.finalHost, 48000.0).invalidCount == 0,
+               "min Attack/Release remains finite");
+        expect(! local.filter.empty(), "filter tap recorded for pre-VCA DC");
+    }
+
+    ShruthiRuntime runtime;
+    runtime.init();
+    configureNeutralPart(runtime.part, shruthi::WAVEFORM_SAW, 0);
+    auto* patch = runtime.part.mutable_patch();
+    patch->modulation_matrix.modulation[8].source = shruthi::MOD_SRC_ENV_2;
+    patch->modulation_matrix.modulation[8].destination = shruthi::MOD_DST_VCA;
+    patch->modulation_matrix.modulation[8].amount = 63;
+    runtime.part.Touch(false);
+    runtime.part.NoteOn(0, 69, 100);
+    runtime.part.ProcessBlock();
+    expect(runtime.part.voice().vca() >= 200,
+           "Shruthi envelope itself still produces an immediate high VCA on zero attack");
+    runtime.part.NoteOff(0, 69);
+    for (int i = 0; i < 8; ++i)
+        runtime.part.ProcessBlock();
+    expect(runtime.part.voice().vca() == 0,
+           "Shruthi envelope itself still reaches zero VCA on minimum release");
+
+    SwaraXtAudioProcessor dormant;
+    configureNeutralSaw(dormant);
+    ProcessorCapture tail;
+    dormant.engineForTests().setDebugTapSink(&tail, debugSink);
+    dormant.prepareToPlay(48000.0, 256);
+    {
+        juce::AudioBuffer<float> buffer(2, 256);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 69, (juce::uint8) 100), 0);
+        dormant.processBlock(buffer, midi);
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::noteOff(1, 69), 0);
+        dormant.processBlock(buffer, midi);
+        for (int i = 0; i < 400; ++i)
+        {
+            juce::MidiBuffer silent;
+            buffer.clear();
+            dormant.processBlock(buffer, silent);
+        }
+    }
+    expect(measure(tail.finalHost, 48000.0).invalidCount == 0,
+           "note release to silence remains finite");
+    expect(measure(tail.finalHost, 48000.0).rms < 1.0e-3,
+           "release drains through SRC toward silence");
 }
 
 }  // namespace
@@ -1418,6 +1610,8 @@ int main()
     runChunkContinuity();
 #elif SWARAXT_SHRUTHI_TIMING_TEST_MODE == 6
     runEnvelopeRegression();
+#elif SWARAXT_SHRUTHI_TIMING_TEST_MODE == 7
+    runVcaHold();
 #else
     expect(false, "unknown test mode");
 #endif

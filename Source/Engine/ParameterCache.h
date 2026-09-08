@@ -8,6 +8,7 @@
 #include <atomic>
 
 #include "Plugin/SwaraXtParameterLayout.h"
+#include "Engine/DspBoard/BoardControl.h"
 
 namespace swaraxt {
 
@@ -71,6 +72,13 @@ struct ParameterCache {
         filterModAmount = bindOne(IDs::filterModAmount);
         filterShruthiEnv = bindOne(IDs::filterShruthiEnv);
         filterShruthiLfo = bindOne(IDs::filterShruthiLfo);
+        filterModel = bindOne(IDs::filterModel);
+        dspFxProgram = bindOne(IDs::dspFxProgram);
+        dspFxParam1 = bindOne(IDs::dspFxParam1);
+        dspFxParam2 = bindOne(IDs::dspFxParam2);
+        dspBoardRouting = bindOne(IDs::dspBoardRouting);
+        postMixer = bindOne(IDs::postMixer);
+        inputConditioning = bindOne(IDs::inputConditioning);
 
         for (int row = 0; row < 12; ++row)
         {
@@ -97,6 +105,27 @@ struct ParameterCache {
     }
 
     bool bound = false;
+    board::BoardControl boardControls() const noexcept
+    {
+        board::BoardControl c;
+        c.model = loadInt(filterModel) == 1 ? board::Model::dspBoard : board::Model::classic;
+        c.effect = board::effectFromChoice(loadInt(dspFxProgram));
+        c.route = static_cast<board::Route>(std::clamp(loadInt(dspBoardRouting), 0, 4));
+        c.cv1 = board::BoardControl::nativeCv(std::clamp(loadInt(dspFxParam1), 0, 127) * 2);
+        c.cv2 = board::BoardControl::nativeCv(std::clamp(loadInt(dspFxParam2), 0, 63) * 4);
+        c.tempo = board::BoardControl::tempoCode(load(seqTempo));
+        c.resonance = board::BoardControl::nativeCv(static_cast<int>(std::lround(load(filterResonance) * 254)));
+        if (c.postDcaFilter() && c.resonance != 0)
+            c.cutoff = board::BoardControl::cutoffCode(load(filterCutoff));
+        return c;
+    }
+    std::atomic<float>* filterModel = nullptr;
+    std::atomic<float>* dspFxProgram = nullptr;
+    std::atomic<float>* dspFxParam1 = nullptr;
+    std::atomic<float>* dspFxParam2 = nullptr;
+    std::atomic<float>* dspBoardRouting = nullptr;
+    std::atomic<float>* postMixer = nullptr;
+    std::atomic<float>* inputConditioning = nullptr;
     std::atomic<float>* master = nullptr;
     std::atomic<float>* osc1Shape = nullptr;
     std::atomic<float>* osc1Param = nullptr;

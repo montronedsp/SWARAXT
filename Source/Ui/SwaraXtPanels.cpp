@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "Ui/SwaraXtPanels.h"
+#include "Ui/SwaraXtBoardPanel.h"
 
 #include <cmath>
 
@@ -281,7 +282,7 @@ void SwaraXtModulePanel::paint(juce::Graphics& g)
         paintSplitDivider(g, static_cast<float>(getWidth()), label.getBounds().toFloat(),
                           actionBounds.toFloat());
     };
-    paintDivider(title_);
+    paintDivider(title_, primaryActionBounds_);
     if (secondaryHeaderVisible_)
         paintDivider(secondaryTitle_, secondaryActionBounds_);
 }
@@ -289,6 +290,12 @@ void SwaraXtModulePanel::paint(juce::Graphics& g)
 void SwaraXtModulePanel::setSecondaryActionBounds(juce::Rectangle<int> bounds)
 {
     secondaryActionBounds_ = bounds;
+    repaint();
+}
+
+void SwaraXtModulePanel::setPrimaryActionBounds(juce::Rectangle<int> bounds)
+{
+    primaryActionBounds_ = bounds;
     repaint();
 }
 
@@ -570,6 +577,7 @@ MainPanel::MainPanel()
 {
     modulationView_ = std::make_unique<ModPanel>();
     sequencerView_ = std::make_unique<SeqPanel>();
+    boardView_ = std::make_unique<BoardPanel>();
     addAndMakeVisible(sourceModule_);
     addAndMakeVisible(mixModule_);
     addAndMakeVisible(filterModule_);
@@ -630,6 +638,11 @@ MainPanel::MainPanel()
 
     for (int i = kFilterCutoff; i <= kFilterMod; ++i)
         filterModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(i)]);
+    filterModule_.body().addChildComponent(*boardView_);
+    filterModule_.addAndMakeVisible(boardViewButton_);
+    boardViewButton_.getProperties().set("swaraxtSecondaryAction", true);
+    boardViewButton_.setTooltip("Filter / DSP Board and effects controls");
+    boardViewButton_.onClick = [this] { setBoardEditorView(!showingBoard_); };
 
     envModule_.body().addAndMakeVisible(env1Trace_);
     envModule_.body().addAndMakeVisible(env2Trace_);
@@ -722,6 +735,7 @@ void MainPanel::attach(SwaraXtAudioProcessor& processor)
     lfo2Trace_.bind(apvts, swaraxt::IDs::lfo2Wave, swaraxt::IDs::lfo2Rate);
     modulationView_->attach(processor);
     sequencerView_->attach(processor);
+    boardView_->attach(apvts);
     attached_ = true;
 }
 
@@ -742,6 +756,15 @@ void MainPanel::lookAndFeelChanged()
                              Palette::skin().secondaryText);
     seqViewButton_.setColour(juce::TextButton::textColourOnId,
                              Palette::skin().primaryText);
+    boardViewButton_.setColour(juce::TextButton::textColourOffId, Palette::skin().secondaryText);
+    boardViewButton_.setColour(juce::TextButton::textColourOnId, Palette::skin().primaryText);
+}
+
+void MainPanel::setBoardEditorView(bool visible)
+{
+    showingBoard_ = visible;
+    boardViewButton_.setToggleState(visible, juce::dontSendNotification);
+    reflow();
 }
 
 void MainPanel::setLocalViews(bool modulation, bool sequencer)
@@ -881,7 +904,12 @@ void MainPanel::reflow()
     layoutRow(mix, { selectors_[kMixOperator].get(), selectors_[kSubShape].get() }, 5);
 
     auto filter = filterModule_.body().getLocalBounds();
-    knobs_[kFilterKey]->setVisible(true);
+    boardViewButton_.setBounds(259, 1, 48, 18);
+    filterModule_.setPrimaryActionBounds(boardViewButton_.getBounds());
+    boardView_->setBounds(filter);
+    boardView_->setVisible(showingBoard_);
+    for (int i = kFilterCutoff; i <= kFilterMod; ++i)
+        knobs_[static_cast<size_t>(i)]->setVisible(!showingBoard_);
     layoutRow(filter, { knobs_[kFilterCutoff].get(), knobs_[kFilterResonance].get(),
                         knobs_[kFilterEnv].get(), knobs_[kFilterKey].get(),
                         knobs_[kFilterMod].get() }, 3);

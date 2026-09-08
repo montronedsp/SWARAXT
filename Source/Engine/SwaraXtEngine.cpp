@@ -41,6 +41,8 @@ constexpr double kMaxDcDrainSeconds = 25.0;
 SwaraXtEngine::SwaraXtEngine()
 {
     patchBridge_.bind(part_);
+    constexpr double twoPi = 6.28318530717958647692;
+    vcaCvCoeff_ = static_cast<float>(1.0 - std::exp(-twoPi * kSmr4VcaCvCutoffHz / kInternalSampleRate));
 }
 
 void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
@@ -56,8 +58,11 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
 
     // Filter always runs at the Shruthi internal rate (pre-SRC).
     filter_.prepare(kInternalSampleRate);
+    smr4Input_.prepare(kInternalSampleRate);
     qualityRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.002 * kInternalSampleRate)));
     masterRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.004 * kInternalSampleRate)));
+    postMixerRampSamples_ = masterRampSamples_;
+    conditioningRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.003 * kInternalSampleRate)));
     snapFilterQuality();
     snapMasterOnApply_ = true;
     prepared_ = true;
@@ -81,10 +86,17 @@ void SwaraXtEngine::reset()
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
+    smr4Input_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
     snapMasterOnApply_ = true;
+    vcaCvState_ = 0.0f;
+    snapPostMixerGain(1.0f);
+    conditioningMix_ = 0.0f;
+    conditioningMixTarget_ = 0.0f;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
+    resetBoardState();
     dormant_ = true;
     drainingToDormant_ = false;
     dcDrainingToDormant_ = false;
@@ -99,11 +111,17 @@ void SwaraXtEngine::reset()
 
 void SwaraXtEngine::resetResampler() noexcept
 {
+    resetBoardState();
     audioRing_.Init();
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
+    vcaCvState_ = 0.0f;
+    smr4Input_.reset();
+    snapPostMixerGain(postMixerGainTarget_);
+    conditioningMix_ = conditioningMixTarget_;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
     dormant_ = part_.voice().amplitude_envelope_dead() && part_.voice().vca() == 0;
     drainingToDormant_ = false;
     dcDrainingToDormant_ = false;
@@ -159,6 +177,32 @@ void SwaraXtEngine::applyParameters()
     {
         setMasterTarget(master);
     }
+    const float postMixerDb = juce::jlimit(-18.0f, 0.0f,
+        ParameterCache::load(parameterCache_->postMixer));
+    const float postMixerLinear = postMixerDb >= 0.0f ? 1.0f
+        : std::pow(10.0f, postMixerDb / 20.0f);
+    if (dormant_)
+        snapPostMixerGain(postMixerLinear);
+    else
+        setPostMixerTarget(postMixerLinear);
+    const float conditioningTarget =
+        ParameterCache::loadInt(parameterCache_->inputConditioning) != 0 ? 1.0f : 0.0f;
+    if (conditioningTarget != conditioningMixTarget_)
+    {
+        conditioningMixTarget_ = conditioningTarget;
+        if (dormant_)
+        {
+            conditioningMix_ = conditioningMixTarget_;
+            conditioningMixIncrement_ = 0.0f;
+            conditioningMixRemaining_ = 0;
+        }
+        else
+        {
+            conditioningMixRemaining_ = juce::jmax(1, conditioningRampSamples_);
+            conditioningMixIncrement_ = (conditioningMixTarget_ - conditioningMix_)
+                / static_cast<float>(conditioningMixRemaining_);
+        }
+    }
     filterCutoffHz_ = ParameterCache::load(parameterCache_->filterCutoff);
     filterResonance_ = ParameterCache::load(parameterCache_->filterResonance);
     filterEnvAmount_ = ParameterCache::load(parameterCache_->filterEnvAmount);
@@ -175,6 +219,87 @@ void SwaraXtEngine::applyParameters()
     lfoDivision_[1] = juce::jlimit(0, 7, ParameterCache::loadInt(parameterCache_->lfo2Division));
     sequencerHostSync_ = ParameterCache::loadInt(parameterCache_->seqClockMode) != 0;
     sequencerSwing_ = juce::jlimit(0, 127, ParameterCache::loadInt(parameterCache_->seqSwing));
+
+    const auto nextBoard = parameterCache_->boardControls();
+    if (!requestedBoard_.sameTopology(nextBoard) || requestedBoard_.cv1 != nextBoard.cv1
+        || requestedBoard_.cv2 != nextBoard.cv2)
+        boardWake_ = nextBoard.model == board::Model::dspBoard || nextBoard.effect != board::Effect::off
+            || !activeBoard_.sameTopology(nextBoard);
+    requestedBoard_ = nextBoard;
+    if (snapBoardOnApply_)
+    {
+        activeBoard_ = requestedBoard_;
+        boardProcessor_.reset(activeBoard_.effect);
+        boardFadePhase_ = BoardFadePhase::stable;
+        boardGain_ = 1.0f;
+        boardFadeRemaining_ = 0;
+        snapBoardOnApply_ = false;
+    }
+    boardTailSeconds_.store(board::BoardProcessor::tailSeconds(activeBoard_), std::memory_order_relaxed);
+}
+
+void SwaraXtEngine::resetBoardState() noexcept
+{
+    boardProcessor_.reset();
+    activeBoard_ = {};
+    boardGain_ = 1.0f;
+    boardGainIncrement_ = 0.0f;
+    boardFadeRemaining_ = 0;
+    boardFadePhase_ = BoardFadePhase::stable;
+    snapBoardOnApply_ = true;
+    boardWake_ = false;
+    boardTailSeconds_.store(0.0, std::memory_order_relaxed);
+}
+
+void SwaraXtEngine::updateBoardAtBlockBoundary() noexcept
+{
+    constexpr int ramp = 120; // Approximately 3ms each side, native-rate invariant.
+    if (boardFadePhase_ == BoardFadePhase::switchPending)
+    {
+        const bool changedModel = activeBoard_.model != requestedBoard_.model;
+        activeBoard_ = requestedBoard_;
+        boardProcessor_.reset(activeBoard_.effect);
+        if (changedModel && activeBoard_.model == board::Model::classic) filter_.reset();
+        boardFadePhase_ = BoardFadePhase::fadeIn;
+        boardFadeRemaining_ = ramp;
+        boardGainIncrement_ = 1.0f / static_cast<float>(ramp);
+    }
+    if (!activeBoard_.sameTopology(requestedBoard_) && boardFadePhase_ != BoardFadePhase::fadeOut)
+    {
+        boardFadePhase_ = BoardFadePhase::fadeOut;
+        boardFadeRemaining_ = ramp;
+        boardGainIncrement_ = -boardGain_ / static_cast<float>(ramp);
+    }
+    boardWake_ = false;
+}
+
+float SwaraXtEngine::nextBoardGain() noexcept
+{
+    if (boardFadeRemaining_ > 0)
+    {
+        boardGain_ += boardGainIncrement_;
+        if (--boardFadeRemaining_ == 0)
+        {
+            if (boardFadePhase_ == BoardFadePhase::fadeOut)
+            {
+                boardGain_ = 0.0f;
+                boardFadePhase_ = BoardFadePhase::switchPending;
+            }
+            else
+            {
+                boardGain_ = 1.0f;
+                boardFadePhase_ = BoardFadePhase::stable;
+            }
+        }
+    }
+    return boardGain_;
+}
+
+bool SwaraXtEngine::boardRequiresAudio() const noexcept
+{
+    return boardWake_ || boardFadePhase_ != BoardFadePhase::stable
+        || !activeBoard_.sameTopology(requestedBoard_)
+        || boardProcessor_.needsAudio(activeBoard_);
 }
 
 void SwaraXtEngine::resetHostState() noexcept
@@ -295,6 +420,48 @@ float SwaraXtEngine::nextMasterGain() noexcept
     return masterGainCurrent_;
 }
 
+void SwaraXtEngine::snapPostMixerGain(float linear) noexcept
+{
+    postMixerGainTarget_ = linear;
+    postMixerGainCurrent_ = linear;
+    postMixerGainIncrement_ = 0.0f;
+    postMixerSamplesRemaining_ = 0;
+}
+
+void SwaraXtEngine::setPostMixerTarget(float linear) noexcept
+{
+    if (linear == postMixerGainTarget_)
+        return;
+    postMixerGainTarget_ = linear;
+    postMixerSamplesRemaining_ = juce::jmax(1, postMixerRampSamples_);
+    postMixerGainIncrement_ = (linear - postMixerGainCurrent_)
+        / static_cast<float>(postMixerSamplesRemaining_);
+}
+
+float SwaraXtEngine::nextPostMixerGain() noexcept
+{
+    if (postMixerSamplesRemaining_ > 0)
+    {
+        postMixerGainCurrent_ += postMixerGainIncrement_;
+        --postMixerSamplesRemaining_;
+        if (postMixerSamplesRemaining_ == 0)
+            postMixerGainCurrent_ = postMixerGainTarget_;
+    }
+    return postMixerGainCurrent_;
+}
+
+float SwaraXtEngine::nextConditioningMix() noexcept
+{
+    if (conditioningMixRemaining_ > 0)
+    {
+        conditioningMix_ += conditioningMixIncrement_;
+        --conditioningMixRemaining_;
+        if (conditioningMixRemaining_ == 0)
+            conditioningMix_ = conditioningMixTarget_;
+    }
+    return conditioningMix_;
+}
+
 void SwaraXtEngine::snapFilterQuality() noexcept
 {
     const auto quality = static_cast<FilterQuality>(
@@ -362,6 +529,17 @@ float SwaraXtEngine::nextQualityGain() noexcept
     return qualityGain_;
 }
 
+float SwaraXtEngine::nextVcaCv(float target) noexcept
+{
+    // Analog-style one-pole on the VCA *control*, not a block-wide audio ramp.
+    // Target is held for the native Shruthi control block; the state responds
+    // sample-by-sample at the native audio rate.
+    vcaCvState_ += vcaCvCoeff_ * (target - vcaCvState_);
+    if (! std::isfinite(vcaCvState_))
+        vcaCvState_ = 0.0f;
+    return vcaCvState_;
+}
+
 void SwaraXtEngine::updateFilterFromShruthi()
 {
     const auto& voice = part_.voice();
@@ -385,6 +563,19 @@ void SwaraXtEngine::updateFilterFromShruthi()
     p.noteNumber = lastNote_;
     p.drive = 1.0f;
     filter_.setParams(p);
+    if (activeBoard_.model == board::Model::dspBoard || activeBoard_.effect != board::Effect::off)
+    {
+        const double modOctaves = static_cast<double>(p.envAmount) * p.envValue
+            + static_cast<double>(p.modAmount) * p.modValue + p.matrixCutoffOctaves;
+        const auto hz = CutoffMapper{}.mapCutoffHz(p.cutoffHz, p.keyTrack, p.noteNumber, modOctaves);
+        activeBoard_.cutoff = board::BoardControl::cutoffCode(hz);
+        activeBoard_.resonance = board::BoardControl::nativeCv(static_cast<int>(std::lround(p.resonance * 254)));
+        activeBoard_.cv1 = board::BoardControl::nativeCv(voice.cv_1());
+        activeBoard_.cv2 = board::BoardControl::nativeCv(voice.cv_2());
+        activeBoard_.dca = board::BoardControl::nativeCv(voice.vca());
+        activeBoard_.tempo = boardTempo_;
+    }
+    boardTailSeconds_.store(board::BoardProcessor::tailSeconds(activeBoard_), std::memory_order_relaxed);
 }
 
 void SwaraXtEngine::dispatchMidi(const PendingMidi& event)
@@ -498,6 +689,7 @@ void SwaraXtEngine::renderInternalBlock()
     cpuProfile_.nativeVoiceNanoseconds += static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(ProfileClock::now() - voiceStart).count());
 #endif
+    updateBoardAtBlockBoundary();
     applyPendingFilterQuality();
     updateFilterFromShruthi();
 
@@ -527,45 +719,103 @@ void SwaraXtEngine::renderInternalBlock()
     }
 #endif
 
-    // Shruthi updates its VCA at the native control-block cadence. Interpolate
-    // adjacent control points here so the audio VCA does not introduce a step;
-    // the envelope state and its filter-modulation value remain unchanged.
+    // Shruthi updates Voice::vca() at the native control-block cadence. Hold
+    // that as the analog VCA CV *target* for the whole block, then reconstruct
+    // the SMR4 ~1.25 kHz control one-pole sample-by-sample. Do not restore the
+    // old SWARA full-block linear interpolation between successive targets.
     const float vcaTarget = static_cast<float>(vca) / 255.0f;
-    const float vcaIncrement = read > 0
-        ? (vcaTarget - previousVcaGain_) / static_cast<float>(read)
-        : 0.0f;
-    float vcaGain = previousVcaGain_;
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     const auto filterStart = ProfileClock::now();
 #endif
-    for (int i = 0; i < read; ++i)
+    const bool unmodifiedClassic = activeBoard_.model == board::Model::classic
+        && activeBoard_.effect == board::Effect::off && boardFadePhase_ == BoardFadePhase::stable;
+    if (unmodifiedClassic)
     {
-        vcaGain += vcaIncrement;
-        float filtered = temp[i];
-        filtered = filter_.processSample(filtered);
-        if (! std::isfinite(filtered))
-            filtered = 0.0f;
-        const float out = filtered * vcaGain * nextMasterGain() * nextQualityGain();
+        for (int i = 0; i < read; ++i)
+        {
+            float mixer = temp[i] * nextPostMixerGain();
+            if (! std::isfinite(mixer))
+                mixer = 0.0f;
+            const float mix = nextConditioningMix();
+            const float coupled = smr4Input_.process(mixer);
+            float filtered = mixer + mix * (coupled - mixer);
+            filtered = filter_.processSample(filtered);
+            if (! std::isfinite(filtered))
+                filtered = 0.0f;
+            const float vcaGain = nextVcaCv(vcaTarget);
+            const float out = filtered * vcaGain * nextMasterGain() * nextQualityGain();
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
-        capture.postShruthiMixer[i] = temp[i];
-        capture.filterOutput[i] = filtered;
-        capture.postVca[i] = out;
-        capture.vcaGain[i] = vcaGain;
+            capture.postShruthiMixer[i] = temp[i];
+            capture.filterOutput[i] = filtered;
+            capture.postVca[i] = out;
+            capture.vcaTarget[i] = vcaTarget;
+            capture.vcaGain[i] = vcaGain;
 #endif
-        internalQueue_.push(std::isfinite(out) ? out : 0.0f);
+            internalQueue_.push(std::isfinite(out) ? out : 0.0f);
+        }
+    }
+    else
+    {
+        board::FloatBlock processed{};
+        float hardwareMix[kAudioBlockSize] {};
+        for (int i = 0; i < read; ++i)
+        {
+            const auto index = static_cast<std::size_t>(i);
+            float mixer = temp[i] * nextPostMixerGain();
+            if (! std::isfinite(mixer))
+                mixer = 0.0f;
+            const float mix = nextConditioningMix();
+            const float coupled = smr4Input_.process(mixer);
+            hardwareMix[index] = mix;
+            if (activeBoard_.model == board::Model::classic)
+            {
+                const auto filtered = filter_.processSample(mixer + mix * (coupled - mixer));
+                const float vcaGain = nextVcaCv(vcaTarget);
+                processed[index] = std::isfinite(filtered) ? filtered * vcaGain : 0.0f;
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+                capture.vcaGain[i] = vcaGain;
+#endif
+            }
+            else
+            {
+                processed[index] = mixer;
+                nextVcaCv(vcaTarget);
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+                capture.vcaGain[i] = vcaTarget;
+#endif
+            }
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+            capture.postShruthiMixer[i] = temp[i];
+            capture.vcaTarget[i] = vcaTarget;
+#endif
+        }
+        if (activeBoard_.model == board::Model::dspBoard)
+            boardProcessor_.processBoard(processed, activeBoard_, hardwareMix);
+        else boardProcessor_.processClassicFx(processed, activeBoard_);
+        for (int i = 0; i < read; ++i)
+        {
+            const auto index = static_cast<std::size_t>(i);
+            const float masterGain = nextMasterGain();
+            const float qualityGain = nextQualityGain();
+            const float out = processed[index] * masterGain
+                * (activeBoard_.model == board::Model::classic ? qualityGain : 1.0f) * nextBoardGain();
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+            capture.filterOutput[i] = processed[index];
+            capture.postVca[i] = out;
+#endif
+            internalQueue_.push(std::isfinite(out) ? out : 0.0f);
+        }
     }
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     cpuProfile_.filterNanoseconds += static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(ProfileClock::now() - filterStart).count());
     cpuProfile_.filterSamplesProcessed += static_cast<uint64_t>(read);
 #endif
-    if (read > 0)
-        previousVcaGain_ = vcaTarget;
-
-    if (read > 0 && vcaTarget == 0.0f && previousVcaGain_ == 0.0f
-        && part_.voice().amplitude_envelope_dead())
+    if (read > 0 && vcaTarget == 0.0f && vcaCvState_ < (1.0f / 512.0f)
+        && part_.voice().amplitude_envelope_dead() && !boardRequiresAudio())
     {
-        // Give the reader enough future zeros to drain the final VCA ramp
+        vcaCvState_ = 0.0f;
+        // Give the reader enough future zeros to drain reconstruction state
         // without extrapolating past the queue. One kernel length is what it
         // takes for the reconstruction window to move completely past the last
         // real sample, so the tail is never truncated. The heavy voice and
@@ -588,6 +838,7 @@ void SwaraXtEngine::renderInternalBlock()
 bool SwaraXtEngine::voiceRequiresAudio() const noexcept
 {
     return ! part_.voice().amplitude_envelope_dead()
+        || boardRequiresAudio()
         || part_.voice().vca() != 0
         || patchRequiresAudioSource();
 }
@@ -630,8 +881,13 @@ void SwaraXtEngine::updateDormantWakeState()
     filter_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
+    vcaCvState_ = 0.0f;
+    smr4Input_.reset();
     snapMasterOnApply_ = true;
+    snapPostMixerGain(postMixerGainTarget_);
+    conditioningMix_ = conditioningMixTarget_;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
     dormantNativeSamples_ = 0.0;
 }
 
@@ -646,10 +902,15 @@ void SwaraXtEngine::enterDormant() noexcept
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
+    smr4Input_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
+    vcaCvState_ = 0.0f;
     snapMasterOnApply_ = true;
+    snapPostMixerGain(postMixerGainTarget_);
+    conditioningMix_ = conditioningMixTarget_;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
 }
 
 void SwaraXtEngine::advanceDormantControl()
@@ -659,6 +920,10 @@ void SwaraXtEngine::advanceDormantControl()
     {
         dormantNativeSamples_ -= static_cast<double>(kAudioBlockSize);
         part_.ProcessControlBlock();
+        // CV modulation continues while silent, including the looper's record
+        // switch and post-DCA resonance. Classic/Off retains its old idle path.
+        if (activeBoard_.model == board::Model::dspBoard || activeBoard_.effect != board::Effect::off)
+            updateFilterFromShruthi();
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
         ++cpuProfile_.dormantControlBlocksAdvanced;
 #endif
@@ -690,6 +955,8 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         return;
 
     collectMidiEvents(midi, startSample, numSamples);
+    boardTempo_ = board::BoardControl::tempoCode(sequencerHostSync_ && transport.hasHostTransport
+        ? transport.bpm : static_cast<double>(requestedBoard_.tempo));
     updateHostLfoRates(transport.bpm);
     prepareHostClock(transport, numSamples);
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS

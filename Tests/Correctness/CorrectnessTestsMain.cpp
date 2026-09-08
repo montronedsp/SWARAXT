@@ -483,7 +483,7 @@ void testJuce9ParameterMetadataCompatibility()
 {
     SwaraXtAudioProcessor proc;
     const auto& parameters = proc.getParameters();
-    expect(parameters.size() == 88, "JUCE 9 preserves the host-visible parameter count");
+    expect(parameters.size() == 95, "88 existing parameters plus five Board and two mix appends");
 
     std::set<std::string> parameterIds;
     for (const auto* parameter : parameters)
@@ -491,8 +491,10 @@ void testJuce9ParameterMetadataCompatibility()
         expect(parameter != nullptr, "parameter list contains no null entries");
         if (parameter != nullptr)
         {
-            expect(parameter->getVersionHint() == 1,
-                   "all existing parameters preserve version hint 1");
+            const int index = parameter->getParameterIndex();
+            const int expectedHint = (index >= 88 && index < 93) ? 2 : 1;
+            expect(parameter->getVersionHint() == expectedHint,
+                   "existing hints stay 1; Board appends use 2; new mix IDs use 1");
             const auto* withId = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameter);
             expect(withId != nullptr, "all existing parameters retain stable string IDs");
             if (withId != nullptr)
@@ -552,6 +554,24 @@ void testJuce9ParameterMetadataCompatibility()
                    < 0.01f,
                "cutoff text parser is preserved");
     }
+
+    const auto* postMixer = dynamic_cast<const juce::AudioParameterFloat*>(
+        proc.getApvts().getParameter(swaraxt::IDs::postMixer));
+    expect(postMixer != nullptr, "Post Mixer is an AudioParameterFloat");
+    if (postMixer != nullptr)
+    {
+        const auto* base = static_cast<const juce::AudioProcessorParameter*>(postMixer);
+        expect(postMixer->getNormalisableRange().start == -18.0f, "Post Mixer min is -18 dB");
+        expect(postMixer->getNormalisableRange().end == 0.0f, "Post Mixer max is 0 dB");
+        expect(std::abs(postMixer->convertFrom0to1(base->getDefaultValue())) < 1.0e-6f,
+               "Post Mixer default is 0 dB");
+        expect(postMixer->convertFrom0to1(1.0f) == 0.0f, "Post Mixer cannot boost");
+    }
+    const auto* conditioning = dynamic_cast<const juce::AudioParameterChoice*>(
+        proc.getApvts().getParameter(swaraxt::IDs::inputConditioning));
+    expect(conditioning != nullptr && conditioning->choices.size() == 2
+               && conditioning->getIndex() == 0,
+           "Input Conditioning is RAW/HARDWARE defaulting to RAW");
 }
 
 void testPwmDutyAndParity()

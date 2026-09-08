@@ -378,6 +378,7 @@ swaraxt_add_shruthi_timing_target(SwaraXTModulationNeutralityTests 3)
 swaraxt_add_shruthi_timing_target(SwaraXTStreamingSrcTests 4)
 swaraxt_add_shruthi_timing_target(SwaraXTChunkContinuityTests 5)
 swaraxt_add_shruthi_timing_target(SwaraXTEnvelopeRegressionTests 6)
+swaraxt_add_shruthi_timing_target(SwaraXTVcaHoldTests 7)
 
 swaraxt_add_plugin_console_test(SwaraXTCutoffRefineTests Filter/CutoffRefineTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTGuiSyncTests GuiSync/GuiSyncTestsMain.cpp)
@@ -390,6 +391,9 @@ swaraxt_add_plugin_console_test(SwaraXTCorrectnessTests Correctness/CorrectnessT
 target_compile_definitions(SwaraXTCorrectnessTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
 
 swaraxt_add_plugin_console_test(SwaraXTSmoothingAuditTests Smoothing/SmoothingAuditTestsMain.cpp)
+
+swaraxt_add_plugin_console_test(SwaraXTConditioningTests Conditioning/ConditioningTestsMain.cpp)
+target_compile_definitions(SwaraXTConditioningTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
 
 # SRC quality study harnesses (research only; not registered with add_test).
 function(swaraxt_add_src_quality_target target taps)
@@ -425,3 +429,5 @@ endfunction()
 swaraxt_add_src_quality_target(SwaraXTSrcStudyHermite 0)
 swaraxt_add_src_quality_target(SwaraXTSrcStudyFir64 64)
 swaraxt_add_src_quality_target(SwaraXTSrcStudyFir96 96)
+
+add_subdirectory(DspBoard)

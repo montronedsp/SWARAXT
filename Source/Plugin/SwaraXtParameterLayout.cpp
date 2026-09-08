@@ -222,6 +222,31 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         intParam(IDs::arpGate, "Sequencer Division", 0, 11, 7)));
 
+    // Append only: existing host indices and normalized domains are unchanged.
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { IDs::filterModel, 2 }, "Filter Model",
+        juce::StringArray { "Classic", "DSP Board" }, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { IDs::dspFxProgram, 2 }, "DSP FX",
+        juce::StringArray { "Off", "Distortion", "Crush", "Comb +", "Comb -", "Ring Mod",
+            "Delay", "Delay FB", "Delay Dub", "Crush Delay FB", "Crush Delay Dub",
+            "Delay 1/16", "Delay 1/12", "Delay 1/8", "Delay 3/16", "Looper", "Pitch" }, 0));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID { IDs::dspFxParam1, 2 }, "DSP FX Control 1", 0, 127, 64));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID { IDs::dspFxParam2, 2 }, "DSP FX Control 2", 0, 63, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { IDs::dspBoardRouting, 2 }, "DSP Board Routing",
+        juce::StringArray { "LP > FX", "HP > FX", "FX > LP", "FX > HP", "FX Only" }, 0));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { IDs::postMixer, 1 }, "Post Mixer",
+        juce::NormalisableRange<float> { -18.0f, 0.0f, 0.1f, 1.0f }, 0.0f,
+        juce::AudioParameterFloatAttributes {}.withStringFromValueFunction(
+            [](float value, int) { return juce::String(value, 1) + " dB"; })));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { IDs::inputConditioning, 1 }, "Input Conditioning",
+        juce::StringArray { "RAW", "HARDWARE" }, 0));
+
     return { params.begin(), params.end() };
 }
 
