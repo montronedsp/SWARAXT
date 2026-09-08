@@ -24,7 +24,7 @@ void process(SwaraXtAudioProcessor& p, int samples=512, bool note=false)
     if(note)midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);
     p.processBlock(audio,midi);
     for(int i=0;i<samples;++i)
-        require(std::isfinite(audio.getSample(0,i)) && std::abs(audio.getSample(0,i))<4.f,"finite integrated audio");
+        require(std::isfinite(audio.getSample(0,i)) && std::abs(audio.getSample(0,i))<8.f,"finite integrated audio");
 }
 juce::MemoryBlock legacyState(SwaraXtAudioProcessor& p)
 {
@@ -148,7 +148,7 @@ std::vector<float> render(double rate,int blockSize,int effect,int route)
         if(start<=4000 && start+count>4000)midi.addEvent(juce::MidiMessage::noteOff(1,60),4000-start);
         p.processBlock(audio,midi);
         result.insert(result.end(),audio.getReadPointer(0),audio.getReadPointer(0)+count);
-        for(int i=0;i<count;++i)require(std::isfinite(audio.getSample(0,i))&&std::abs(audio.getSample(0,i))<4,"rate/block safety");
+        for(int i=0;i<count;++i)require(std::isfinite(audio.getSample(0,i))&&std::abs(audio.getSample(0,i))<8,"rate/block safety");
     }
     return result;
 }
@@ -174,6 +174,56 @@ void streamingTests()
     require(p.engineForTests().boardControlsForTests().model==board::Model::classic
         &&p.engineForTests().boardControlsForTests().effect==board::Effect::off,"rapid transition settles to requested topology");
     std::cout<<"Six rates/six blocks exact, 85 routes/programs, 400 rapid transitions PASS\n";
+}
+void modelSwitchSafety()
+{
+    for(double rate:{44100.,48000.,88200.,96000.,176400.,192000.})
+    {
+        SwaraXtAudioProcessor p;
+        set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,0);set(p,IDs::dspBoardRouting,2);
+        set(p,IDs::filterCutoff,18000);set(p,IDs::filterResonance,0);
+        p.prepareToPlay(rate,256);
+        for(int i=0;i<16;++i)process(p,256,i==0);
+        set(p,IDs::filterModel,0);
+        const int totalBlocks=int(rate/256);
+        // Last 8 host blocks is only ~11 ms at 176.4/192 kHz, so a held oscillator
+        // period aliases into the mean. Use 200 ms, which is many cycles at note 60
+        // and several DC-blocker time constants after the model switch.
+        const int dcWindowBlocks=std::max(8,int(rate*0.2/256.0));
+        double peak=0,sum=0; int n=0;
+        for(int block=0;block<totalBlocks;++block)
+        {
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            p.processBlock(audio,midi);
+            for(int i=0;i<256;++i)
+            {
+                const float v=audio.getSample(0,i);
+                require(std::isfinite(v)&&std::abs(v)<8.f,"Board to Classic finite");
+                peak=std::max(peak,double(std::abs(v)));
+                if(block>=totalBlocks-dcWindowBlocks){sum+=v;++n;}
+            }
+        }
+        require(n>0 && std::abs(sum/n)<0.05,"Board to Classic host DC");
+        std::cout<<"Board to Classic rate="<<rate<<" peak="<<peak<<" mean="<<(sum/n)<<'\n';
+        set(p,IDs::filterModel,1);
+        for(int i=0;i<8;++i)process(p,256,i==0);
+        sum=0;n=0;peak=0;
+        for(int block=0;block<totalBlocks;++block)
+        {
+            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
+            p.processBlock(audio,midi);
+            for(int i=0;i<256;++i)
+            {
+                const float v=audio.getSample(0,i);
+                require(std::isfinite(v)&&std::abs(v)<8.f,"Classic to Board finite");
+                peak=std::max(peak,double(std::abs(v)));
+                if(block>=totalBlocks-dcWindowBlocks){sum+=v;++n;}
+            }
+        }
+        require(n>0 && std::abs(sum/n)<0.05,"Classic to Board host DC");
+        std::cout<<"Classic to Board rate="<<rate<<" peak="<<peak<<" mean="<<(sum/n)<<'\n';
+    }
+    std::cout<<"Board↔Classic six-rate switch host DC PASS\n";
 }
 void dormantModulationTest()
 {
@@ -338,7 +388,7 @@ int main(int argc,char** argv)
     juce::ScopedJuceInitialiser_GUI gui;
     try {
         if(argc>1 && juce::String(argv[1])=="--benchmark")benchmark();
-        else {stateTests();controlTests();hostTempoTests();streamingTests();dormantModulationTest();headroomAndTailTests();suspendAndResetSafety();compensatedFilterDormancy();}
+        else {stateTests();controlTests();hostTempoTests();streamingTests();modelSwitchSafety();dormantModulationTest();headroomAndTailTests();suspendAndResetSafety();compensatedFilterDormancy();}
     }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     return 0;

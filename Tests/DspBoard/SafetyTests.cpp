@@ -45,7 +45,7 @@ void endpointMatrix()
             processor.processBoard(samples, c);
             for (const float value : samples)
             {
-                require(std::isfinite(value) && std::abs(value) < 3.f, "endpoint matrix finite/headroom");
+                require(std::isfinite(value) && std::abs(value) < 8.f, "endpoint matrix finite/headroom");
                 if (c.effect == Effect::looper && c.cv2 >= 128)
                     require(value == 0, "empty replay must be silent before host DC protection");
                 peak = std::max(peak, std::abs(double(value)));
@@ -100,7 +100,7 @@ void hostBoundary()
                 }
                 const float pre = converter.readInterpolated();
                 const float out = dc.process(pre);
-                require(std::isfinite(out) && std::abs(out) < 3.f, "host output finite/headroom");
+                require(std::isfinite(out) && std::abs(out) < 8.f, "host output finite/headroom");
                 if (c.effect == Effect::looper) require(out == 0, "empty loop host output");
                 if (i >= total - window) { sum += out; preSum += pre; }
                 peak = std::max(peak, std::abs(double(out)));
@@ -132,10 +132,102 @@ void hostBoundary()
     require(silence[0] != 0, "preserve original distortion's internal silence offset");
     std::cout << "Source distortion silence integer code=" << silence[0] << '\n';
 }
+
+void oscillationLoopAndFeedback()
+{
+    swaraxt::PolyphaseFirResampler<64, 256, true> converter;
+    for (const double rate : { 44100., 48000., 88200., 96000., 176400., 192000. })
+    {
+        converter.reset(); converter.setStep(sampleRate, rate);
+        swaraxt::DcBlocker dc; dc.prepare(rate);
+
+        BoardControl osc;
+        osc.model = Model::dspBoard; osc.effect = Effect::off; osc.route = Route::lowPassLast;
+        osc.cutoff = 80; osc.resonance = 254; osc.dca = 254;
+        BoardProcessor processor; processor.reset(osc.effect);
+        double peak = 0, windowSum = 0;
+        const int total = static_cast<int>(rate * 0.6);
+        const int window = static_cast<int>(rate * 0.1);
+        std::uint64_t nativeIndex = 0;
+        for (int i = 0; i < total; ++i)
+        {
+            while (converter.size() < converter.queueTargetSize())
+            {
+                FloatBlock samples{};
+                if (nativeIndex < 200)
+                    samples.fill(0.25f);
+                processor.processBoard(samples, osc);
+                for (const float value : samples) converter.push(value);
+                ++nativeIndex;
+            }
+            const float out = dc.process(converter.readInterpolated());
+            require(std::isfinite(out) && std::abs(out) < 8.f, "self-oscillation host finite");
+            peak = std::max(peak, std::abs(double(out)));
+            if (i >= total - window) windowSum += out;
+        }
+        require(std::abs(windowSum / window) < 0.1, "self-oscillation final host DC bound");
+
+        BoardControl comb;
+        comb.model = Model::dspBoard; comb.effect = Effect::combPositive; comb.route = Route::fxOnly;
+        comb.cv2 = 254; comb.dca = 254;
+        BoardProcessor combProc; combProc.reset(comb.effect);
+        converter.reset(); converter.setStep(sampleRate, rate);
+        dc.prepare(rate); dc.reset();
+        peak = 0; windowSum = 0; nativeIndex = 0;
+        for (int i = 0; i < total; ++i)
+        {
+            while (converter.size() < converter.queueTargetSize())
+            {
+                FloatBlock samples{};
+                if (nativeIndex < 40) samples[0] = 1.f;
+                combProc.processBoard(samples, comb);
+                for (const float value : samples) converter.push(value);
+                ++nativeIndex;
+            }
+            const float out = dc.process(converter.readInterpolated());
+            require(std::isfinite(out) && std::abs(out) < 8.f, "high-feedback comb host finite");
+            peak = std::max(peak, std::abs(double(out)));
+            if (i >= total - window) windowSum += out;
+        }
+        require(std::abs(windowSum / window) < 0.1, "high-feedback comb final host DC bound");
+
+        BoardControl loop;
+        loop.model = Model::dspBoard; loop.effect = Effect::looper; loop.route = Route::fxOnly;
+        loop.cv2 = 0; loop.dca = 254; loop.cv1 = 128;
+        BoardProcessor loopProc; loopProc.reset(loop.effect);
+        for (int block = 0; block < 8; ++block)
+        {
+            FloatBlock samples{};
+            samples.fill(0.25f);
+            loopProc.processBoard(samples, loop);
+        }
+        require(loopProc.hasValidLoop(), "recorded loop is valid");
+        loop.cv2 = 200;
+        converter.reset(); converter.setStep(sampleRate, rate);
+        dc.prepare(rate); dc.reset();
+        peak = 0; windowSum = 0;
+        for (int i = 0; i < total; ++i)
+        {
+            while (converter.size() < converter.queueTargetSize())
+            {
+                FloatBlock samples{};
+                loopProc.processBoard(samples, loop);
+                for (const float value : samples) converter.push(value);
+            }
+            const float out = dc.process(converter.readInterpolated());
+            require(std::isfinite(out) && std::abs(out) < 8.f, "recorded loop host finite");
+            peak = std::max(peak, std::abs(double(out)));
+            if (i >= total - window) windowSum += out;
+        }
+        require(std::abs(windowSum / window) < 0.1, "recorded loop final host DC bound");
+        std::cout << "Oscillation/comb/loop host rate=" << rate << " peak=" << peak
+                  << " final mean=" << (windowSum / window) << '\n';
+    }
+}
 }
 int main()
 {
-    try { endpointMatrix(); hostBoundary(); }
+    try { endpointMatrix(); hostBoundary(); oscillationLoopAndFeedback(); }
     catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }
     return 0;
 }

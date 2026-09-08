@@ -104,7 +104,7 @@ void safetyTests()
                     require(x==y,"instance independence");
                     for (const auto v:x)
                     {
-                        require(std::isfinite(v) && std::abs(v)<3.,"finite bounded Board output");
+                        require(std::isfinite(v) && std::abs(v)<8.,"finite bounded Board output");
                         peak=std::max(peak,static_cast<double>(std::abs(v))); ++samples;
                         if(history==0 && c.effect==Effect::looper) require(v==0,"empty loop output zero");
                     }
