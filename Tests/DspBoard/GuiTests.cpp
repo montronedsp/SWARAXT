@@ -63,7 +63,8 @@ void testEditor()
     editor.setBoardEditorViewForTests(true);
     require(values(p)==initial,"editor construction/view is observational");
     require(panel.modelCombo().getNumItems()==2 && panel.fxCombo().getNumItems()==17
-        && panel.routeCombo().getNumItems()==5,"complete parameter-derived choice lists");
+        && panel.routeCombo().getNumItems()==5 && panel.conditioningCombo().getNumItems()==2,
+        "complete parameter-derived choice lists");
     require(!visibleInEditor(panel.routeCombo()),"Classic hides Board route");
     require(!panel.control1().isVisible()&&!panel.control2().isVisible(),"Off hides FX controls");
     for(auto skin:{ui::SkinId::pastel,ui::SkinId::midnightGold,ui::SkinId::neonCobalt,ui::SkinId::jungle,ui::SkinId::rossocorsa})
@@ -72,9 +73,10 @@ void testEditor()
         for(auto size:{ui::GuiSize::small,ui::GuiSize::medium,ui::GuiSize::large})
         {
             editor.setGuiSizeForTests(size);
-            for(auto* combo:{&panel.modelCombo(),&panel.fxCombo(),&panel.routeCombo()})
+            for(auto* combo:{&panel.modelCombo(),&panel.fxCombo(),&panel.routeCombo(),&panel.conditioningCombo()})
                 checkCombo(*combo,editor.mixOperatorComboForTests());
             require(!panel.modelCombo().getParentComponent()->getBounds().intersects(panel.fxCombo().getParentComponent()->getBounds()),"model and FX selectors separate");
+            require(!panel.modelCombo().getParentComponent()->getBounds().intersects(panel.conditioningCombo().getParentComponent()->getBounds()),"model and input conditioning separate");
             require(!panel.control1().getBounds().intersects(panel.control2().getBounds()),"FX knobs separate");
             for(int model=0;model<2;++model)
             {

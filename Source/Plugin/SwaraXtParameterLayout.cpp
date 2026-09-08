@@ -238,6 +238,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { IDs::dspBoardRouting, 2 }, "DSP Board Routing",
         juce::StringArray { "LP > FX", "HP > FX", "FX > LP", "FX > HP", "FX Only" }, 0));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { IDs::postMixer, 1 }, "Post Mixer",
+        juce::NormalisableRange<float> { -18.0f, 0.0f, 0.1f, 1.0f }, 0.0f,
+        juce::AudioParameterFloatAttributes {}.withStringFromValueFunction(
+            [](float value, int) { return juce::String(value, 1) + " dB"; })));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { IDs::inputConditioning, 1 }, "Input Conditioning",
+        juce::StringArray { "RAW", "HARDWARE" }, 0));
 
     return { params.begin(), params.end() };
 }

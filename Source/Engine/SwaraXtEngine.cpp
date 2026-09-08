@@ -58,8 +58,11 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
 
     // Filter always runs at the Shruthi internal rate (pre-SRC).
     filter_.prepare(kInternalSampleRate);
+    smr4Input_.prepare(kInternalSampleRate);
     qualityRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.002 * kInternalSampleRate)));
     masterRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.004 * kInternalSampleRate)));
+    postMixerRampSamples_ = masterRampSamples_;
+    conditioningRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.003 * kInternalSampleRate)));
     snapFilterQuality();
     snapMasterOnApply_ = true;
     prepared_ = true;
@@ -83,10 +86,16 @@ void SwaraXtEngine::reset()
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
+    smr4Input_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
     snapMasterOnApply_ = true;
     vcaCvState_ = 0.0f;
+    snapPostMixerGain(1.0f);
+    conditioningMix_ = 0.0f;
+    conditioningMixTarget_ = 0.0f;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
     resetBoardState();
     dormant_ = true;
     drainingToDormant_ = false;
@@ -108,6 +117,11 @@ void SwaraXtEngine::resetResampler() noexcept
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     dcBlocker_.reset();
     vcaCvState_ = 0.0f;
+    smr4Input_.reset();
+    snapPostMixerGain(postMixerGainTarget_);
+    conditioningMix_ = conditioningMixTarget_;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
     dormant_ = part_.voice().amplitude_envelope_dead() && part_.voice().vca() == 0;
     drainingToDormant_ = false;
     dcDrainingToDormant_ = false;
@@ -162,6 +176,32 @@ void SwaraXtEngine::applyParameters()
     else
     {
         setMasterTarget(master);
+    }
+    const float postMixerDb = juce::jlimit(-18.0f, 0.0f,
+        ParameterCache::load(parameterCache_->postMixer));
+    const float postMixerLinear = postMixerDb >= 0.0f ? 1.0f
+        : std::pow(10.0f, postMixerDb / 20.0f);
+    if (dormant_)
+        snapPostMixerGain(postMixerLinear);
+    else
+        setPostMixerTarget(postMixerLinear);
+    const float conditioningTarget =
+        ParameterCache::loadInt(parameterCache_->inputConditioning) != 0 ? 1.0f : 0.0f;
+    if (conditioningTarget != conditioningMixTarget_)
+    {
+        conditioningMixTarget_ = conditioningTarget;
+        if (dormant_)
+        {
+            conditioningMix_ = conditioningMixTarget_;
+            conditioningMixIncrement_ = 0.0f;
+            conditioningMixRemaining_ = 0;
+        }
+        else
+        {
+            conditioningMixRemaining_ = juce::jmax(1, conditioningRampSamples_);
+            conditioningMixIncrement_ = (conditioningMixTarget_ - conditioningMix_)
+                / static_cast<float>(conditioningMixRemaining_);
+        }
     }
     filterCutoffHz_ = ParameterCache::load(parameterCache_->filterCutoff);
     filterResonance_ = ParameterCache::load(parameterCache_->filterResonance);
@@ -378,6 +418,48 @@ float SwaraXtEngine::nextMasterGain() noexcept
             masterGainCurrent_ = masterGainTarget_;
     }
     return masterGainCurrent_;
+}
+
+void SwaraXtEngine::snapPostMixerGain(float linear) noexcept
+{
+    postMixerGainTarget_ = linear;
+    postMixerGainCurrent_ = linear;
+    postMixerGainIncrement_ = 0.0f;
+    postMixerSamplesRemaining_ = 0;
+}
+
+void SwaraXtEngine::setPostMixerTarget(float linear) noexcept
+{
+    if (linear == postMixerGainTarget_)
+        return;
+    postMixerGainTarget_ = linear;
+    postMixerSamplesRemaining_ = juce::jmax(1, postMixerRampSamples_);
+    postMixerGainIncrement_ = (linear - postMixerGainCurrent_)
+        / static_cast<float>(postMixerSamplesRemaining_);
+}
+
+float SwaraXtEngine::nextPostMixerGain() noexcept
+{
+    if (postMixerSamplesRemaining_ > 0)
+    {
+        postMixerGainCurrent_ += postMixerGainIncrement_;
+        --postMixerSamplesRemaining_;
+        if (postMixerSamplesRemaining_ == 0)
+            postMixerGainCurrent_ = postMixerGainTarget_;
+    }
+    return postMixerGainCurrent_;
+}
+
+float SwaraXtEngine::nextConditioningMix() noexcept
+{
+    if (conditioningMixRemaining_ > 0)
+    {
+        conditioningMix_ += conditioningMixIncrement_;
+        --conditioningMixRemaining_;
+        if (conditioningMixRemaining_ == 0)
+            conditioningMix_ = conditioningMixTarget_;
+    }
+    return conditioningMix_;
 }
 
 void SwaraXtEngine::snapFilterQuality() noexcept
@@ -651,7 +733,12 @@ void SwaraXtEngine::renderInternalBlock()
     {
         for (int i = 0; i < read; ++i)
         {
-            float filtered = temp[i];
+            float mixer = temp[i] * nextPostMixerGain();
+            if (! std::isfinite(mixer))
+                mixer = 0.0f;
+            const float mix = nextConditioningMix();
+            const float coupled = smr4Input_.process(mixer);
+            float filtered = mixer + mix * (coupled - mixer);
             filtered = filter_.processSample(filtered);
             if (! std::isfinite(filtered))
                 filtered = 0.0f;
@@ -670,12 +757,19 @@ void SwaraXtEngine::renderInternalBlock()
     else
     {
         board::FloatBlock processed{};
+        float hardwareMix[kAudioBlockSize] {};
         for (int i = 0; i < read; ++i)
         {
             const auto index = static_cast<std::size_t>(i);
+            float mixer = temp[i] * nextPostMixerGain();
+            if (! std::isfinite(mixer))
+                mixer = 0.0f;
+            const float mix = nextConditioningMix();
+            const float coupled = smr4Input_.process(mixer);
+            hardwareMix[index] = mix;
             if (activeBoard_.model == board::Model::classic)
             {
-                const auto filtered = filter_.processSample(temp[i]);
+                const auto filtered = filter_.processSample(mixer + mix * (coupled - mixer));
                 const float vcaGain = nextVcaCv(vcaTarget);
                 processed[index] = std::isfinite(filtered) ? filtered * vcaGain : 0.0f;
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
@@ -684,7 +778,7 @@ void SwaraXtEngine::renderInternalBlock()
             }
             else
             {
-                processed[index] = temp[i];
+                processed[index] = mixer;
                 nextVcaCv(vcaTarget);
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
                 capture.vcaGain[i] = vcaTarget;
@@ -695,7 +789,8 @@ void SwaraXtEngine::renderInternalBlock()
             capture.vcaTarget[i] = vcaTarget;
 #endif
         }
-        if (activeBoard_.model == board::Model::dspBoard) boardProcessor_.processBoard(processed, activeBoard_);
+        if (activeBoard_.model == board::Model::dspBoard)
+            boardProcessor_.processBoard(processed, activeBoard_, hardwareMix);
         else boardProcessor_.processClassicFx(processed, activeBoard_);
         for (int i = 0; i < read; ++i)
         {
@@ -787,7 +882,12 @@ void SwaraXtEngine::updateDormantWakeState()
     snapFilterQuality();
     dcBlocker_.reset();
     vcaCvState_ = 0.0f;
+    smr4Input_.reset();
     snapMasterOnApply_ = true;
+    snapPostMixerGain(postMixerGainTarget_);
+    conditioningMix_ = conditioningMixTarget_;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
     dormantNativeSamples_ = 0.0;
 }
 
@@ -802,10 +902,15 @@ void SwaraXtEngine::enterDormant() noexcept
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
+    smr4Input_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
     vcaCvState_ = 0.0f;
     snapMasterOnApply_ = true;
+    snapPostMixerGain(postMixerGainTarget_);
+    conditioningMix_ = conditioningMixTarget_;
+    conditioningMixIncrement_ = 0.0f;
+    conditioningMixRemaining_ = 0;
 }
 
 void SwaraXtEngine::advanceDormantControl()

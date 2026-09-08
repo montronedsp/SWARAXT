@@ -65,6 +65,8 @@ static constexpr const char* dspFxProgram = "dsp.fx";
 static constexpr const char* dspFxParam1 = "dsp.param1";
 static constexpr const char* dspFxParam2 = "dsp.param2";
 static constexpr const char* dspBoardRouting = "dsp.route";
+static constexpr const char* postMixer = "mix.postMixer";
+static constexpr const char* inputConditioning = "mix.inputConditioning";
 }  // namespace IDs
 
 juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout();

@@ -15,6 +15,7 @@ class AudioBuffer;
 }  // namespace juce
 
 #include "Engine/Filter/SwaraXtFilter.h"
+#include "Engine/Filter/Smr4InputCoupling.h"
 #include "Engine/DspBoard/BoardProcessor.h"
 #include "Engine/HostTransport.h"
 #include "Engine/ParameterCache.h"
@@ -204,6 +205,10 @@ class SwaraXtEngine {
     float nextMasterGain() noexcept;
     float nextQualityGain() noexcept;
     float nextVcaCv(float target) noexcept;
+    void setPostMixerTarget(float linear) noexcept;
+    void snapPostMixerGain(float linear) noexcept;
+    float nextPostMixerGain() noexcept;
+    float nextConditioningMix() noexcept;
     void updateHostLfoRates(double bpm) noexcept;
     void prepareHostClock(const HostTransportSnapshot& transport, int numSamples) noexcept;
     void resetHostState() noexcept;
@@ -221,6 +226,7 @@ class SwaraXtEngine {
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
+    Smr4InputCoupling smr4Input_;
     board::BoardProcessor boardProcessor_;
     board::BoardControl requestedBoard_, activeBoard_;
     static_assert(std::atomic<double>::is_always_lock_free, "Host tail publication must be realtime lock-free");
@@ -259,6 +265,16 @@ class SwaraXtEngine {
     bool snapMasterOnApply_ = true;
     float vcaCvState_ = 0.0f;
     float vcaCvCoeff_ = 0.0f;
+    float postMixerGainCurrent_ = 1.0f;
+    float postMixerGainTarget_ = 1.0f;
+    float postMixerGainIncrement_ = 0.0f;
+    int postMixerRampSamples_ = 1;
+    int postMixerSamplesRemaining_ = 0;
+    float conditioningMix_ = 0.0f;
+    float conditioningMixTarget_ = 0.0f;
+    float conditioningMixIncrement_ = 0.0f;
+    int conditioningMixRemaining_ = 0;
+    int conditioningRampSamples_ = 1;
     float filterCutoffHz_ = 8000.0f;
     float filterResonance_ = 0.2f;
     float filterEnvAmount_ = 0.35f;

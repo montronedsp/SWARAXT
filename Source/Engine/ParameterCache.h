@@ -77,6 +77,8 @@ struct ParameterCache {
         dspFxParam1 = bindOne(IDs::dspFxParam1);
         dspFxParam2 = bindOne(IDs::dspFxParam2);
         dspBoardRouting = bindOne(IDs::dspBoardRouting);
+        postMixer = bindOne(IDs::postMixer);
+        inputConditioning = bindOne(IDs::inputConditioning);
 
         for (int row = 0; row < 12; ++row)
         {
@@ -122,6 +124,8 @@ struct ParameterCache {
     std::atomic<float>* dspFxParam1 = nullptr;
     std::atomic<float>* dspFxParam2 = nullptr;
     std::atomic<float>* dspBoardRouting = nullptr;
+    std::atomic<float>* postMixer = nullptr;
+    std::atomic<float>* inputConditioning = nullptr;
     std::atomic<float>* master = nullptr;
     std::atomic<float>* osc1Shape = nullptr;
     std::atomic<float>* osc1Param = nullptr;

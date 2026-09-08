@@ -28,10 +28,13 @@ void BoardProcessor::processEffects(Block& samples, const BoardControl& c) noexc
     }
     effects_.process(samples, c.effect, c.cv1, c.cv2, c.tempo);
 }
-void BoardProcessor::processBoard(FloatBlock& samples, const BoardControl& c) noexcept
+void BoardProcessor::processBoard(FloatBlock& samples, const BoardControl& c,
+                                 const float* hardwareMix) noexcept
 {
     Block integer{};
-    for (std::size_t i = 0; i < blockSize; ++i) integer[i] = arithmetic::fromAdc(input_.process(samples[i]));
+    for (std::size_t i = 0; i < blockSize; ++i)
+        integer[i] = arithmetic::fromAdc(input_.process(samples[i],
+            hardwareMix != nullptr ? hardwareMix[i] : 1.0f));
     const bool first = c.route == Route::lowPassFirst || c.route == Route::highPassFirst;
     const bool hp = c.route == Route::highPassFirst || c.route == Route::highPassLast;
     if (first) filter_.process(integer, c.cutoff, c.resonance, hp);

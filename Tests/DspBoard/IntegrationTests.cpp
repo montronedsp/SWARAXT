@@ -31,7 +31,7 @@ juce::MemoryBlock legacyState(SwaraXtAudioProcessor& p)
     juce::MemoryBlock bytes;p.getStateInformation(bytes);
     auto xml=juce::AudioProcessor::getXmlFromBinary(bytes.getData(),static_cast<int>(bytes.getSize()));
     auto tree=juce::ValueTree::fromXml(*xml);
-    for(const auto* id:{IDs::filterModel,IDs::dspFxProgram,IDs::dspFxParam1,IDs::dspFxParam2,IDs::dspBoardRouting})
+    for(const auto* id:{IDs::filterModel,IDs::dspFxProgram,IDs::dspFxParam1,IDs::dspFxParam2,IDs::dspBoardRouting,IDs::postMixer,IDs::inputConditioning})
         tree.removeChild(tree.getChildWithProperty("id",id),nullptr);
     juce::AudioProcessor::copyXmlToBinary(*tree.createXml(),bytes);
     return bytes;
@@ -42,8 +42,8 @@ void stateTests()
     require(p.getNumPrograms()==76,"factory count");
     require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==0,"Classic Off default");
     const int count=p.getParameters().size();
-    int index=count-5;
-    for(const auto* id:{IDs::filterModel,IDs::dspFxProgram,IDs::dspFxParam1,IDs::dspFxParam2,IDs::dspBoardRouting})
+    int index=count-7;
+    for(const auto* id:{IDs::filterModel,IDs::dspFxProgram,IDs::dspFxParam1,IDs::dspFxParam2,IDs::dspBoardRouting,IDs::postMixer,IDs::inputConditioning})
     {
         auto* parameter=dynamic_cast<juce::RangedAudioParameter*>(p.getParameters()[index++]);
         require(parameter != nullptr && parameter->paramID==id,"append-only parameter order");

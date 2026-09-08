@@ -16,14 +16,23 @@ public:
         if (!std::isfinite(x)) return 128;
         return static_cast<std::uint8_t>(std::clamp(std::floor(128 + 128 * x), 0.0, 255.0));
     }
-    std::uint8_t process(float sample) noexcept
+    // Schematic C10/R14 + 8-pole Chebyshev-style SOS + board-level mapping.
+    // hardwareMix=1 is the analog pre-ADC path; 0 keeps ADC quantize only.
+    double analogProcess(double in) noexcept
     {
-        const double in = std::isfinite(sample) ? sample : 0.0;
         // C10/R14 input coupling, 0.339 Hz, distinct from final host DC protection.
         constexpr double pole = 0.999945745790407;
         coupling_ = (1.0 + pole) * 0.5 * (in - previousInput_) + pole * coupling_;
         previousInput_ = in;
-        const double x = response_.process(coupling_, inputSos) * inputGain;
+        return response_.process(coupling_, inputSos) * inputGain;
+    }
+    std::uint8_t process(float sample, float hardwareMix = 1.0f) noexcept
+    {
+        const double in = std::isfinite(sample) ? sample : 0.0;
+        const double analog = analogProcess(in);
+        const double mix = hardwareMix <= 0.0f ? 0.0 : hardwareMix >= 1.0f ? 1.0
+            : static_cast<double>(hardwareMix);
+        const double x = in + mix * (analog - in);
         ++samples_;
         if (x < -1 || x >= 1) ++clipped_;
         return quantize(x);

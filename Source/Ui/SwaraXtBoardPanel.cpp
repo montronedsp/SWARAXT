@@ -6,8 +6,8 @@
 namespace swaraxt::ui {
 BoardPanel::BoardPanel()
 {
-    for (auto* selector : { &model_, &fx_, &route_ }) addAndMakeVisible(*selector);
-    for (auto* control : { &control1_, &control2_ }) addAndMakeVisible(*control);
+    for (auto* selector : { &model_, &conditioning_, &fx_, &route_ }) addAndMakeVisible(*selector);
+    for (auto* control : { &postMixer_, &control1_, &control2_ }) addAndMakeVisible(*control);
     addChildComponent(replay_);
     replay_.setTooltip("Unchecked: record. Checked: replay. Recorded audio is transient and is cleared on preset/state load.");
     model_.combo().addListener(this);
@@ -33,8 +33,10 @@ void BoardPanel::attach(juce::AudioProcessorValueTreeState& apvts)
         return std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(apvts, id, combo);
     };
     modelAttachment_ = attachChoice(model_.combo(), IDs::filterModel);
+    conditioningAttachment_ = attachChoice(conditioning_.combo(), IDs::inputConditioning);
     fxAttachment_ = attachChoice(fx_.combo(), IDs::dspFxProgram);
     routeAttachment_ = attachChoice(route_.combo(), IDs::dspBoardRouting);
+    postMixerAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, IDs::postMixer, postMixer_.slider());
     control1Attachment_ = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, IDs::dspFxParam1, control1_.slider());
     control2Attachment_ = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, IDs::dspFxParam2, control2_.slider());
     // ParameterAttachment uses RAW values. The existing 0..63 domain maps to
@@ -49,18 +51,23 @@ void BoardPanel::attach(juce::AudioProcessorValueTreeState& apvts)
     replayAttachment_->sendInitialUpdate();
     control1_.slider().setDoubleClickReturnValue(true, 64);
     control2_.slider().setDoubleClickReturnValue(true, 0);
+    postMixer_.slider().setDoubleClickReturnValue(true, 0.0);
     refreshContext();
 }
 
 void BoardPanel::resized()
 {
     auto top = getLocalBounds().removeFromTop(35);
-    model_.setBounds(top.removeFromLeft(105));
-    top.removeFromLeft(5);
+    model_.setBounds(top.removeFromLeft(78));
+    top.removeFromLeft(4);
+    conditioning_.setBounds(top.removeFromLeft(78));
+    top.removeFromLeft(4);
     fx_.setBounds(top);
     auto bottom = getLocalBounds().withTrimmedTop(40);
-    route_.setBounds(bottom.removeFromLeft(105));
-    bottom.removeFromLeft(5);
+    route_.setBounds(bottom.removeFromLeft(78));
+    bottom.removeFromLeft(4);
+    postMixer_.setBounds(bottom.removeFromLeft(70));
+    bottom.removeFromLeft(4);
     control1_.setBounds(bottom.removeFromLeft((bottom.getWidth() - 4) / 2));
     bottom.removeFromLeft(4);
     control2_.setBounds(bottom);

@@ -123,6 +123,9 @@ target_compile_definitions(SwaraXTCorrectnessTests PRIVATE SWARAXT_ENABLE_SHRUTH
 
 swaraxt_add_plugin_console_test(SwaraXTSmoothingAuditTests Smoothing/SmoothingAuditTestsMain.cpp)
 
+swaraxt_add_plugin_console_test(SwaraXTConditioningTests Conditioning/ConditioningTestsMain.cpp)
+target_compile_definitions(SwaraXTConditioningTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+
 # SRC quality study harnesses (research only; not registered with add_test).
 function(swaraxt_add_src_quality_target target taps)
     juce_add_console_app(${target} PRODUCT_NAME "${target}")

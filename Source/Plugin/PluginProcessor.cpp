@@ -535,7 +535,8 @@ void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInByte
             // Legacy states must not inherit an active Board/FX configuration.
             for (const auto* id : { swaraxt::IDs::filterModel, swaraxt::IDs::dspFxProgram,
                                    swaraxt::IDs::dspFxParam1, swaraxt::IDs::dspFxParam2,
-                                   swaraxt::IDs::dspBoardRouting })
+                                   swaraxt::IDs::dspBoardRouting, swaraxt::IDs::postMixer,
+                                   swaraxt::IDs::inputConditioning })
             {
                 if (!tree.getChildWithProperty("id", id).isValid())
                 {

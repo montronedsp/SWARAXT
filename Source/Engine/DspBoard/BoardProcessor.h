@@ -10,7 +10,8 @@ using FloatBlock = std::array<float, blockSize>;
 class BoardProcessor {
 public:
     void reset(Effect nextEffect = Effect::off) noexcept;
-    void processBoard(FloatBlock& samples, const BoardControl& controls) noexcept;
+    void processBoard(FloatBlock& samples, const BoardControl& controls,
+                      const float* hardwareMix = nullptr) noexcept;
     void processClassicFx(FloatBlock& samples, const BoardControl& controls) noexcept;
     bool hasValidLoop() const noexcept { return effects_.hasRecordedLoop(); }
     const BoardInputModel& inputModel() const noexcept { return input_; }

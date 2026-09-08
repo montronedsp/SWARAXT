@@ -2,6 +2,7 @@
 #include "Engine/DspBoard/BoardProcessor.h"
 #include <complex>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -72,6 +73,11 @@ void responseTests()
         require(BoardInputModel::quantize((code-128)/128.)==code,"all ADC retained codes");
     require(BoardInputModel::quantize(-2)==0 && BoardInputModel::quantize(2)==255,"ADC clipping");
     require(BoardInputModel::quantize(std::numeric_limits<double>::quiet_NaN())==128,"ADC finite guard");
+    BoardInputModel raw;
+    require(raw.process(0.5f,0.f)==BoardInputModel::quantize(0.5),"Board RAW retains ADC quantize without analog mix");
+    BoardInputModel hardware;
+    const auto hardwareCode=hardware.process(0.5f,1.f);
+    require(hardwareCode!=BoardInputModel::quantize(0.5),"Board HARDWARE analog SOS changes the ADC input");
 }
 void safetyTests()
 {
