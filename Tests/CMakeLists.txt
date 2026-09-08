@@ -431,3 +431,24 @@ swaraxt_add_src_quality_target(SwaraXTSrcStudyFir64 64)
 swaraxt_add_src_quality_target(SwaraXTSrcStudyFir96 96)
 
 add_subdirectory(DspBoard)
+
+# Cross-build classic+/main parity dump. Invoked manually, not registered with CTest.
+juce_add_console_app(SwaraXTParityDump PRODUCT_NAME "SwaraXTParityDump")
+juce_generate_juce_header(SwaraXTParityDump)
+target_sources(SwaraXTParityDump PRIVATE Parity/ParityDumpMain.cpp ${SWARAXT_ALL_PLUGIN_SOURCES})
+target_compile_definitions(SwaraXTParityDump
+    PRIVATE
+        SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0)
+target_link_libraries(SwaraXTParityDump
+    PRIVATE
+        SwaraXTFonts
+        juce::juce_audio_utils
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+swaraxt_enable_warnings(SwaraXTParityDump)
+swaraxt_configure_shruthi_target(SwaraXTParityDump)
