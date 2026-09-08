@@ -41,6 +41,8 @@ constexpr double kMaxDcDrainSeconds = 25.0;
 SwaraXtEngine::SwaraXtEngine()
 {
     patchBridge_.bind(part_);
+    constexpr double twoPi = 6.28318530717958647692;
+    vcaCvCoeff_ = static_cast<float>(1.0 - std::exp(-twoPi * kSmr4VcaCvCutoffHz / kInternalSampleRate));
 }
 
 void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
@@ -83,8 +85,8 @@ void SwaraXtEngine::reset()
     filter_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
     snapMasterOnApply_ = true;
+    vcaCvState_ = 0.0f;
     resetBoardState();
     dormant_ = true;
     drainingToDormant_ = false;
@@ -105,7 +107,7 @@ void SwaraXtEngine::resetResampler() noexcept
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
+    vcaCvState_ = 0.0f;
     dormant_ = part_.voice().amplitude_envelope_dead() && part_.voice().vca() == 0;
     drainingToDormant_ = false;
     dcDrainingToDormant_ = false;
@@ -445,6 +447,17 @@ float SwaraXtEngine::nextQualityGain() noexcept
     return qualityGain_;
 }
 
+float SwaraXtEngine::nextVcaCv(float target) noexcept
+{
+    // Analog-style one-pole on the VCA *control*, not a block-wide audio ramp.
+    // Target is held for the native Shruthi control block; the state responds
+    // sample-by-sample at the native audio rate.
+    vcaCvState_ += vcaCvCoeff_ * (target - vcaCvState_);
+    if (! std::isfinite(vcaCvState_))
+        vcaCvState_ = 0.0f;
+    return vcaCvState_;
+}
+
 void SwaraXtEngine::updateFilterFromShruthi()
 {
     const auto& voice = part_.voice();
@@ -624,14 +637,11 @@ void SwaraXtEngine::renderInternalBlock()
     }
 #endif
 
-    // Shruthi updates its VCA at the native control-block cadence. Interpolate
-    // adjacent control points here so the audio VCA does not introduce a step;
-    // the envelope state and its filter-modulation value remain unchanged.
+    // Shruthi updates Voice::vca() at the native control-block cadence. Hold
+    // that as the analog VCA CV *target* for the whole block, then reconstruct
+    // the SMR4 ~1.25 kHz control one-pole sample-by-sample. Do not restore the
+    // old SWARA full-block linear interpolation between successive targets.
     const float vcaTarget = static_cast<float>(vca) / 255.0f;
-    const float vcaIncrement = read > 0
-        ? (vcaTarget - previousVcaGain_) / static_cast<float>(read)
-        : 0.0f;
-    float vcaGain = previousVcaGain_;
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     const auto filterStart = ProfileClock::now();
 #endif
@@ -641,16 +651,17 @@ void SwaraXtEngine::renderInternalBlock()
     {
         for (int i = 0; i < read; ++i)
         {
-            vcaGain += vcaIncrement;
             float filtered = temp[i];
             filtered = filter_.processSample(filtered);
             if (! std::isfinite(filtered))
                 filtered = 0.0f;
+            const float vcaGain = nextVcaCv(vcaTarget);
             const float out = filtered * vcaGain * nextMasterGain() * nextQualityGain();
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
             capture.postShruthiMixer[i] = temp[i];
             capture.filterOutput[i] = filtered;
             capture.postVca[i] = out;
+            capture.vcaTarget[i] = vcaTarget;
             capture.vcaGain[i] = vcaGain;
 #endif
             internalQueue_.push(std::isfinite(out) ? out : 0.0f);
@@ -661,17 +672,27 @@ void SwaraXtEngine::renderInternalBlock()
         board::FloatBlock processed{};
         for (int i = 0; i < read; ++i)
         {
-            vcaGain += vcaIncrement;
             const auto index = static_cast<std::size_t>(i);
             if (activeBoard_.model == board::Model::classic)
             {
                 const auto filtered = filter_.processSample(temp[i]);
+                const float vcaGain = nextVcaCv(vcaTarget);
                 processed[index] = std::isfinite(filtered) ? filtered * vcaGain : 0.0f;
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+                capture.vcaGain[i] = vcaGain;
+#endif
             }
-            else processed[index] = temp[i];
+            else
+            {
+                processed[index] = temp[i];
+                nextVcaCv(vcaTarget);
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+                capture.vcaGain[i] = vcaTarget;
+#endif
+            }
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
             capture.postShruthiMixer[i] = temp[i];
-            capture.vcaGain[i] = vcaGain;
+            capture.vcaTarget[i] = vcaTarget;
 #endif
         }
         if (activeBoard_.model == board::Model::dspBoard) boardProcessor_.processBoard(processed, activeBoard_);
@@ -695,13 +716,11 @@ void SwaraXtEngine::renderInternalBlock()
         std::chrono::duration_cast<std::chrono::nanoseconds>(ProfileClock::now() - filterStart).count());
     cpuProfile_.filterSamplesProcessed += static_cast<uint64_t>(read);
 #endif
-    if (read > 0)
-        previousVcaGain_ = vcaTarget;
-
-    if (read > 0 && vcaTarget == 0.0f && previousVcaGain_ == 0.0f
+    if (read > 0 && vcaTarget == 0.0f && vcaCvState_ < (1.0f / 512.0f)
         && part_.voice().amplitude_envelope_dead() && !boardRequiresAudio())
     {
-        // Give the reader enough future zeros to drain the final VCA ramp
+        vcaCvState_ = 0.0f;
+        // Give the reader enough future zeros to drain reconstruction state
         // without extrapolating past the queue. One kernel length is what it
         // takes for the reconstruction window to move completely past the last
         // real sample, so the tail is never truncated. The heavy voice and
@@ -767,7 +786,7 @@ void SwaraXtEngine::updateDormantWakeState()
     filter_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
+    vcaCvState_ = 0.0f;
     snapMasterOnApply_ = true;
     dormantNativeSamples_ = 0.0;
 }
@@ -785,7 +804,7 @@ void SwaraXtEngine::enterDormant() noexcept
     filter_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    previousVcaGain_ = 0.0f;
+    vcaCvState_ = 0.0f;
     snapMasterOnApply_ = true;
 }
 

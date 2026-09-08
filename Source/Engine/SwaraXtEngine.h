@@ -63,6 +63,10 @@ class SwaraXtEngine {
     static constexpr double kInternalSampleRate = 20000000.0 / 510.0;
     static constexpr int kAudioBlockSize = 40;
     static constexpr int kMaxPendingMidi = 512;
+    // Original SMR4 analysis §1.2: MCU CVs update at ~976 Hz as PWM and are
+    // reconstructed by a one-pole near 1.25 kHz (assembly: 33 nF control caps).
+    // This is the VCA CV path, not the cutoff scaler 1/(2π R19 C11)=861.7 Hz.
+    static constexpr double kSmr4VcaCvCutoffHz = 1250.0;
 
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
     struct DebugBlockCapture {
@@ -71,6 +75,7 @@ class SwaraXtEngine {
         float postShruthiMixer[kAudioBlockSize] {};
         float filterOutput[kAudioBlockSize] {};
         float postVca[kAudioBlockSize] {};
+        float vcaTarget[kAudioBlockSize] {};
         float vcaGain[kAudioBlockSize] {};
         int samples = 0;
         uint32_t nativeBlockIndex = 0;
@@ -198,6 +203,7 @@ class SwaraXtEngine {
     void snapMasterGain(float value) noexcept;
     float nextMasterGain() noexcept;
     float nextQualityGain() noexcept;
+    float nextVcaCv(float target) noexcept;
     void updateHostLfoRates(double bpm) noexcept;
     void prepareHostClock(const HostTransportSnapshot& transport, int numSamples) noexcept;
     void resetHostState() noexcept;
@@ -251,7 +257,8 @@ class SwaraXtEngine {
     int masterRampSamples_ = 1;
     int masterSamplesRemaining_ = 0;
     bool snapMasterOnApply_ = true;
-    float previousVcaGain_ = 0.0f;
+    float vcaCvState_ = 0.0f;
+    float vcaCvCoeff_ = 0.0f;
     float filterCutoffHz_ = 8000.0f;
     float filterResonance_ = 0.2f;
     float filterEnvAmount_ = 0.35f;
