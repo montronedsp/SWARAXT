@@ -23,11 +23,21 @@
 #include "avrlib/random.h"
 #include "shruthi/audio_out.h"
 #include "shruthi/envelope.h"
-#include "shruthi/oscillator.h"
 #include "shruthi/patch.h"
+#include "shruthi/voice_allocator.h"
+
+#ifndef SWARAXT_USE_AVRLIB_HD_VOICE
+#define SWARAXT_USE_AVRLIB_HD_VOICE 0
+#endif
+
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+#include "avrlib_hd/voice.h"
+#else
+#include "shruthi/envelope.h"
+#include "shruthi/oscillator.h"
 #include "shruthi/sub_oscillator.h"
 #include "shruthi/transient_generator.h"
-#include "shruthi/voice_allocator.h"
+#endif
 
 namespace shruthi {
 
@@ -83,7 +93,13 @@ class Voice {
   inline uint8_t modulation_source(uint8_t i) const {
     return modulation_sources_[i];
   }
-  bool amplitude_envelope_dead() const { return envelope_[1].dead(); }
+  bool amplitude_envelope_dead() const {
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+    return hd_voice_.amplitude_envelope_dead();
+#else
+    return envelope_[1].dead();
+#endif
+  }
   uint8_t modulation_destination(uint8_t i) const {
     return modulation_destinations_[i];
   }
@@ -102,14 +118,16 @@ class Voice {
     pitch_bass_note_ = bass_note;
   }
 
+#if !SWARAXT_USE_AVRLIB_HD_VOICE
   Envelope* mutable_envelope(uint8_t i) { return &envelope_[i]; }
+#endif
   void RefreshEnvelopeRatesFromPatch();
   void TriggerEnvelope(uint8_t stage);
   void TriggerEnvelope(uint8_t index, uint8_t stage);
 
   void ControlChange(uint8_t controller, uint8_t value);
   void Aftertouch(uint8_t value) {
-    modulation_sources_[MOD_SRC_AFTERTOUCH] = value << 1;
+    modulation_sources_[MOD_SRC_AFTERTOUCH] = static_cast<uint8_t>(value << 1);
   }
   void PitchBend(uint16_t value);
   void ResetAllControllers();
@@ -120,27 +138,51 @@ class Voice {
   int16_t debug_destination14(uint8_t i) const { return dst_[i]; }
   uint32_t debug_process_block_count() const { return debug_process_block_count_; }
   uint16_t debug_oscillator_increment(uint8_t index) const {
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+    return hd_voice_.oscillator(index == 0 ? 0 : 1)->phase_increment_for_tests();
+#else
     return index == 0 ? osc_1_.phase_increment_for_tests()
                       : osc_2_.phase_increment_for_tests();
+#endif
   }
   uint8_t debug_oscillator_secondary_parameter(uint8_t index) const {
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+    return hd_voice_.oscillator(index == 0 ? 0 : 1)
+        ->secondary_parameter_for_tests();
+#else
     return index == 0 ? osc_1_.secondary_parameter_for_tests()
                       : osc_2_.secondary_parameter_for_tests();
+#endif
   }
   uint8_t debug_oscillator_shape(uint8_t index) const {
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+    return hd_voice_.oscillator(index == 0 ? 0 : 1)->shape_for_tests();
+#else
     return index == 0 ? osc_1_.shape_for_tests() : osc_2_.shape_for_tests();
+#endif
   }
 #endif
 
  private:
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+  void InitHdVoice();
+  void MirrorHdPatchFromPart();
+  void SyncHdRandomFromClassic();
+  void SyncClassicRandomFromHd();
+  void CopySourcesToHd();
+  void CopyHdStateToVoice();
+  void WriteHdOutputToRing();
+#else
   inline void LoadSources() __attribute__((always_inline));
   inline void ProcessModulationMatrix() __attribute__((always_inline));
   inline void UpdateDestinations() __attribute__((always_inline));
   inline void RenderOscillators() __attribute__((always_inline));
+#endif
 
-  // Envelope generators.
+#if !SWARAXT_USE_AVRLIB_HD_VOICE
   Envelope envelope_[kNumEnvelopes];
   uint8_t disable_envelope_auto_retriggering_[kNumEnvelopes] {};
+#endif
   uint8_t gate_ = 0;
   int16_t dst_[kNumModulationDestinations] {};
   int16_t cutoff_matrix_delta_ = 0;
@@ -163,12 +205,14 @@ class Voice {
   // in the modulation destinations enum.
   int8_t modulation_destinations_[kNumModulationDestinations] {};
 
+#if !SWARAXT_USE_AVRLIB_HD_VOICE
   uint8_t buffer_[kAudioBlockSize] {};
   uint8_t osc2_buffer_[kAudioBlockSize] {};
   uint8_t sync_state_[kAudioBlockSize] {};
   uint8_t no_sync_[kAudioBlockSize] {};
   uint8_t dummy_sync_state_[kAudioBlockSize] {};
   uint8_t trigger_count_ = 0;
+#endif
 
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
   uint8_t debug_osc1_buffer_[kAudioBlockSize] {};
@@ -180,11 +224,21 @@ class Voice {
   Part* part_ = nullptr;
   HostAudioRing* audio_out_ = nullptr;
   avrlib::Random* random_ = nullptr;
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+  avrlib_hd::Random hd_random_;
+  avrlib_hd::HdVoice hd_voice_;
+  avrlib_hd::OscillatorTables hd_osc_tables_{};
+  avrlib_hd::EnvelopeTables hd_env_tables_{};
+  avrlib_hd::HdVoiceTables hd_voice_tables_{};
+  avrlib_hd::HdVoicePatch hd_patch_{};
+  avrlib_hd::HdVoiceSystemSettings hd_sys_{};
+#else
   Oscillator osc_1_;
   Oscillator osc_2_;
   SubOscillator sub_osc_;
   TransientGenerator transient_generator_;
   uint8_t user_wavetable_[kUserWavetableSize + 1] {};
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(Voice);
 };

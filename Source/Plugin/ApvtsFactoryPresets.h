@@ -29,7 +29,7 @@ class ApvtsFactoryPresets {
 
             if (auto* asFloat = dynamic_cast<juce::AudioParameterFloat*>(parameter))
             {
-                *asFloat = params[i].value;
+                *asFloat = static_cast<float>(params[i].value);
                 continue;
             }
             if (auto* asInt = dynamic_cast<juce::AudioParameterInt*>(parameter))

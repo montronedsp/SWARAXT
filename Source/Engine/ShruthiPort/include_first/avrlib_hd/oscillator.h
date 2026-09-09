@@ -180,6 +180,8 @@ class HdOscillator {
   uint32_t phase_for_tests() const { return phase_; }
   uint8_t parameter_for_tests() const { return parameter_; }
   uint8_t secondary_parameter_for_tests() const { return secondary_parameter_; }
+  uint8_t shape_for_tests() const { return shape_; }
+  uint16_t phase_increment_for_tests() const { return last_increment_integral_; }
 
  private:
   // Classic integer primitives, replicated exactly (avrlib/op.h). All faithful
@@ -303,6 +305,7 @@ class HdOscillator {
 
   uint8_t* user_wavetable_ = nullptr;
   Random* random_ = nullptr;
+  uint16_t last_increment_integral_ = 0;
 
   AVRLIB_HD_DISALLOW_COPY_AND_ASSIGN(HdOscillator);
 };
@@ -763,8 +766,10 @@ inline void HdOscillator::RenderFilteredNoise(
     if (si != nullptr && *si++) {
       rng_state = state_.no.rng_reset_value;
     }
-    rng_state = static_cast<uint16_t>(
-        (rng_state >> 1) ^ (-(rng_state & 1) & 0xb400));
+    const uint16_t feedback = (rng_state & 1u) != 0u
+                                  ? static_cast<uint16_t>(0xb400)
+                                  : static_cast<uint16_t>(0);
+    rng_state = static_cast<uint16_t>((rng_state >> 1) ^ feedback);
     uint8_t noise = static_cast<uint8_t>(rng_state >> 8);
     lp = U8Mix(lp, noise, filter_coefficient);
     uint8_t sample;
@@ -948,6 +953,7 @@ inline void HdOscillator::RenderNaiveFull(
     const uint8_t* sync_input, uint8_t* sync_output) {
   shape_ = shape;
   note_ = note;
+  last_increment_integral_ = static_cast<uint16_t>((increment >> 8) & 0xffffu);
   if (shape_ == kRealSquare) {
     if (parameter_ == 0) {
       RenderSimple(kFamilySquare, false, note_, increment, parameter_,

@@ -301,11 +301,33 @@ class HdVoice {
     return modulation_destinations_[i];
   }
 
+  void import_modulation_sources(const uint8_t* src) {
+    std::memcpy(modulation_sources_, src, sizeof(modulation_sources_));
+  }
+  void export_modulation_sources(uint8_t* dst) const {
+    std::memcpy(dst, modulation_sources_, sizeof(modulation_sources_));
+  }
+  void export_modulation_destinations(int8_t* dst) const {
+    std::memcpy(dst, modulation_destinations_,
+                sizeof(modulation_destinations_));
+  }
+  void export_dst(int16_t* dst) const {
+    std::memcpy(dst, dst_, sizeof(dst_));
+  }
+
+  void RefreshEnvelopeRates(const HdVoicePatch& patch) {
+    envelope_[0].Update(patch.env[0].attack, patch.env[0].decay,
+                        patch.env[0].sustain, patch.env[0].release);
+    envelope_[1].Update(patch.env[1].attack, patch.env[1].decay,
+                        patch.env[1].sustain, patch.env[1].release);
+  }
+
   HdOscillator* mutable_oscillator(int i) { return &osc_[i]; }
+  const HdOscillator* oscillator(int i) const { return &osc_[i]; }
 
   // Accessors for parity testing.
   const uint8_t* output_buffer() const { return output_; }
-  const uint8_t* osc1_buffer() const { return buffer_; }
+  const uint8_t* osc1_buffer() const { return osc1_premix_; }
   const uint8_t* osc2_buffer() const { return osc2_buffer_; }
   const uint8_t* sync_state_buffer() const { return sync_state_; }
   int16_t debug_destination14(uint8_t i) const { return dst_[i]; }
@@ -319,6 +341,29 @@ class HdVoice {
     RenderOscillators(patch, sys);
     RenderMixer(patch);
   }
+
+  void ProcessControlBlock(const HdVoicePatch& patch,
+                           const HdVoiceSystemSettings& sys) {
+    LoadSources(patch, sys);
+    ProcessModulationMatrix(patch);
+    UpdateDestinations(patch, sys);
+  }
+
+  void TriggerEnvelope(uint8_t stage) {
+    envelope_[0].Trigger(stage);
+    envelope_[1].Trigger(stage);
+  }
+
+  void TriggerEnvelope(uint8_t index, uint8_t stage) {
+    envelope_[index].Trigger(stage);
+  }
+
+  bool amplitude_envelope_dead() const { return envelope_[1].dead(); }
+  int16_t cutoff_matrix_delta() const { return cutoff_matrix_delta_; }
+  int16_t resonance_matrix_delta() const { return resonance_matrix_delta_; }
+  int16_t pitch_value() const { return pitch_value_; }
+  uint8_t gate() const { return gate_; }
+  uint8_t volume() const { return volume_; }
 
  private:
   // =========================================================================
@@ -622,8 +667,10 @@ class HdVoice {
     int16_t* ep = &dst_[kModDestAttack1];
     for (int i = 0; i < 2; ++i) {
       envelope_[i].Update(
-          Clip(U15ShiftRight7(static_cast<uint16_t>(ep[0])) - attack_mod,
-               0, 127),
+          static_cast<uint8_t>(Clip(
+              static_cast<int16_t>(U15ShiftRight7(static_cast<uint16_t>(ep[0]))) -
+                  attack_mod,
+              0, 127)),
           U15ShiftRight7(static_cast<uint16_t>(ep[1])),
           U15ShiftRight7(static_cast<uint16_t>(ep[2])),
           U15ShiftRight7(static_cast<uint16_t>(ep[3])));
@@ -726,6 +773,7 @@ class HdVoice {
         }
       }
     }
+    std::memcpy(osc1_premix_, buffer_, kAudioBlockSize);
   }
 
   // =========================================================================
@@ -888,6 +936,7 @@ class HdVoice {
   int8_t modulation_destinations_[kNumModulationDestinations]{};
 
   uint8_t buffer_[kAudioBlockSize]{};
+  uint8_t osc1_premix_[kAudioBlockSize]{};
   uint8_t osc2_buffer_[kAudioBlockSize]{};
   uint8_t sync_state_[kAudioBlockSize]{};
   uint8_t no_sync_[kAudioBlockSize]{};

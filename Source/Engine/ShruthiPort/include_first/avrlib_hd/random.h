@@ -28,7 +28,11 @@ class Random {
   }
 
   void Update() {
-    lfsr_ = static_cast<uint16_t>((lfsr_ >> 1) ^ (-(lfsr_ & 1) & 0xb400));
+    // Classic Galois LFSR: xor 0xb400 when the outgoing LSB is 1.
+    // Express the AVR `-(lfsr & 1) & 0xb400` idiom with a defined mask.
+    const uint16_t feedback = (lfsr_ & 1u) != 0u ? static_cast<uint16_t>(0xb400)
+                                                 : static_cast<uint16_t>(0);
+    lfsr_ = static_cast<uint16_t>((lfsr_ >> 1) ^ feedback);
   }
 
   uint16_t state() const {

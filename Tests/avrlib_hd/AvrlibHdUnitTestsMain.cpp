@@ -45,7 +45,9 @@ inline uint8_t ref_u8mix4(uint8_t a, uint8_t b, uint8_t ga, uint8_t gb) {
 }
 
 inline uint16_t ref_lfsr_update(uint16_t& s) {
-  s = static_cast<uint16_t>((s >> 1) ^ (-(s & 1) & 0xb400));
+  const uint16_t feedback = (s & 1u) != 0u ? static_cast<uint16_t>(0xb400)
+                                           : static_cast<uint16_t>(0);
+  s = static_cast<uint16_t>((s >> 1) ^ feedback);
   return s;
 }
 

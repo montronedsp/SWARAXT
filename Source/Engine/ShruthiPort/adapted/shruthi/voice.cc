@@ -20,22 +20,259 @@
 
 #include "shruthi/voice.h"
 
+#include <cstring>
 #include <string.h>
 
 #include "avrlib/resources_manager.h"
 #include "shruthi/audio_out.h"
 #include "shruthi/midi_dispatcher.h"
-#include "shruthi/oscillator.h"
 #include "shruthi/parameter.h"
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4100 4244 4245 4838)
+#endif
+#include "shruthi/part.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+#include "shruthi/resources.h"
 #include "shruthi/storage.h"
-#include "shruthi/sub_oscillator.h"
-#include "shruthi/transient_generator.h"
 #include "avrlib/random.h"
 #include "avrlib/op.h"
+
+#if !SWARAXT_USE_AVRLIB_HD_VOICE
+#include "shruthi/oscillator.h"
+#include "shruthi/sub_oscillator.h"
+#include "shruthi/transient_generator.h"
+#endif
 
 using namespace avrlib;
 
 namespace shruthi {
+
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+
+void Voice::InitHdVoice() {
+  hd_osc_tables_.waveform_table =
+      reinterpret_cast<const uint8_t* const*>(waveform_table);
+  hd_osc_tables_.sine = wav_res_sine;
+  hd_osc_tables_.waves = wav_res_waves;
+  hd_osc_tables_.wavetables = wav_res_wavetables;
+  hd_osc_tables_.fm_frequency_ratios = lut_res_fm_frequency_ratios;
+  hd_osc_tables_.vowel_data = wav_res_vowel_data;
+  hd_osc_tables_.formant_sine = wav_res_formant_sine;
+  hd_osc_tables_.formant_square = wav_res_formant_square;
+  hd_osc_tables_.bandlimited_triangle_0 = wav_res_bandlimited_triangle_0;
+
+  hd_env_tables_.portamento_increments = lut_res_env_portamento_increments;
+  hd_env_tables_.env_expo = wav_res_env_expo;
+
+  hd_voice_tables_.oscillator_increments = lut_res_oscillator_increments;
+  hd_voice_tables_.portamento_increments = lut_res_env_portamento_increments;
+  hd_voice_tables_.distortion = wav_res_distortion;
+
+  if (random_ != nullptr) {
+    hd_random_.Seed(random_->state());
+  }
+  hd_voice_.Init(&hd_random_);
+  hd_voice_.set_tables(&hd_voice_tables_);
+  hd_voice_.set_envelope_tables(hd_env_tables_);
+  hd_voice_.mutable_oscillator(0)->set_tables(hd_osc_tables_);
+  hd_voice_.mutable_oscillator(1)->set_tables(hd_osc_tables_);
+  hd_voice_.set_user_wavetable(
+      wav_res_waves, avrlib_hd::HdOscillator::kUserWavetableSize);
+  pitch_value_ = hd_voice_.pitch_value();
+}
+
+void Voice::MirrorHdPatchFromPart() {
+  const Patch& p = part_->patch_;
+  for (int i = 0; i < 2; ++i) {
+    hd_patch_.osc[i].shape = p.osc[i].shape;
+    hd_patch_.osc[i].parameter = p.osc[i].parameter;
+    hd_patch_.osc[i].range = p.osc[i].range;
+    hd_patch_.osc[i].option = p.osc[i].option;
+  }
+  hd_patch_.mix_balance = p.mix_balance;
+  hd_patch_.mix_sub_osc = p.mix_sub_osc;
+  hd_patch_.mix_noise = p.mix_noise;
+  hd_patch_.mix_sub_osc_shape = p.mix_sub_osc_shape;
+  hd_patch_.filter_cutoff = p.filter_cutoff;
+  hd_patch_.filter_resonance = p.filter_resonance;
+  hd_patch_.filter_env = p.filter_env;
+  hd_patch_.filter_lfo = p.filter_lfo;
+  hd_patch_.filter_cutoff_2 = p.filter_cutoff_2;
+  hd_patch_.filter_resonance_2 = p.filter_resonance_2;
+  hd_patch_.filter_1_mode = p.filter_1_mode_;
+  for (int i = 0; i < 2; ++i) {
+    hd_patch_.env[i].attack = p.env[i].attack;
+    hd_patch_.env[i].decay = p.env[i].decay;
+    hd_patch_.env[i].sustain = p.env[i].sustain;
+    hd_patch_.env[i].release = p.env[i].release;
+  }
+  for (int i = 0; i < kModulationMatrixSize; ++i) {
+    hd_patch_.mod[i].amount = p.modulation_matrix.modulation[i].amount;
+    hd_patch_.mod[i].source =
+        static_cast<uint8_t>(p.modulation_matrix.modulation[i].source);
+    hd_patch_.mod[i].destination =
+        static_cast<uint8_t>(p.modulation_matrix.modulation[i].destination);
+  }
+  for (int i = 0; i < 2; ++i) {
+    hd_patch_.ops[i].op = p.ops_[i].op;
+    hd_patch_.ops[i].operands[0] = p.ops_[i].operands[0];
+    hd_patch_.ops[i].operands[1] = p.ops_[i].operands[1];
+  }
+  const SystemSettings& s = part_->system_settings_;
+  hd_sys_.expansion_filter_board =
+      static_cast<uint8_t>(s.expansion_filter_board);
+  hd_sys_.octave = static_cast<int8_t>(s.octave);
+  hd_sys_.master_tuning = static_cast<int8_t>(s.master_tuning);
+}
+
+void Voice::SyncHdRandomFromClassic() {
+  if (random_ != nullptr) {
+    hd_random_.Seed(random_->state());
+  }
+}
+
+void Voice::SyncClassicRandomFromHd() {
+  if (random_ != nullptr) {
+    random_->Seed(hd_random_.state());
+  }
+}
+
+void Voice::CopySourcesToHd() {
+  hd_voice_.import_modulation_sources(modulation_sources_);
+  hd_voice_.set_volume(volume_);
+  hd_voice_.set_bass_note(pitch_bass_note_);
+}
+
+void Voice::CopyHdStateToVoice() {
+  hd_voice_.export_modulation_sources(modulation_sources_);
+  hd_voice_.export_modulation_destinations(modulation_destinations_);
+  hd_voice_.export_dst(dst_);
+  cutoff_matrix_delta_ = hd_voice_.cutoff_matrix_delta();
+  resonance_matrix_delta_ = hd_voice_.resonance_matrix_delta();
+  pitch_value_ = hd_voice_.pitch_value();
+  gate_ = hd_voice_.gate();
+  volume_ = hd_voice_.volume();
+}
+
+void Voice::WriteHdOutputToRing() {
+  const uint8_t* out = hd_voice_.output_buffer();
+  for (int i = 0; i < kAudioBlockSize; ++i) {
+    audio_out_->Overwrite(out[i]);
+  }
+}
+
+void Voice::PitchBend(uint16_t value) {
+  modulation_sources_[MOD_SRC_PITCH_BEND] = U14ShiftRight6(value);
+}
+
+void Voice::ResetAllControllers() {
+  modulation_sources_[MOD_SRC_VALUE_4] = 4;
+  modulation_sources_[MOD_SRC_VALUE_8] = 8;
+  modulation_sources_[MOD_SRC_VALUE_16] = 16;
+  modulation_sources_[MOD_SRC_VALUE_32] = 32;
+  modulation_sources_[MOD_SRC_PITCH_BEND] = 128;
+  modulation_sources_[MOD_SRC_WHEEL] = 0;
+  modulation_sources_[MOD_SRC_OFFSET] = 255;
+  volume_ = 255;
+  hd_voice_.ResetAllControllers();
+}
+
+void Voice::ControlChange(uint8_t controller, uint8_t value) {
+  value <<= 1;
+  switch (controller) {
+    case midi::kAssignableCcA:
+      modulation_sources_[MOD_SRC_CC_A] = value;
+      break;
+    case midi::kAssignableCcB:
+      modulation_sources_[MOD_SRC_CC_B] = value;
+      break;
+    case midi::kModulationWheelJoystickMsb:
+      modulation_sources_[MOD_SRC_CC_C] = value;
+      break;
+    case midi::kFootPedalMsb:
+      modulation_sources_[MOD_SRC_CC_D] = value;
+      break;
+    case midi::kModulationWheelMsb:
+      modulation_sources_[MOD_SRC_WHEEL] = value;
+      break;
+    case midi::kVolume:
+      volume_ = value;
+      break;
+  }
+}
+
+void Voice::Init(Part* part, HostAudioRing* audio_out, avrlib::Random* random) {
+  part_ = part;
+  audio_out_ = audio_out;
+  random_ = random;
+  InitHdVoice();
+  ResetAllControllers();
+  CopyHdStateToVoice();
+}
+
+void Voice::TriggerEnvelope(uint8_t stage) {
+  hd_voice_.TriggerEnvelope(stage);
+}
+
+void Voice::TriggerEnvelope(uint8_t index, uint8_t stage) {
+  hd_voice_.TriggerEnvelope(index, stage);
+}
+
+void Voice::RefreshEnvelopeRatesFromPatch() {
+  MirrorHdPatchFromPart();
+  hd_voice_.RefreshEnvelopeRates(hd_patch_);
+}
+
+void Voice::NoteOn(
+    uint16_t pitch,
+    uint8_t velocity,
+    uint8_t portamento,
+    bool trigger) {
+  const bool fired = trigger || hd_voice_.pitch_value() == 0;
+  CopySourcesToHd();
+  SyncHdRandomFromClassic();
+  MirrorHdPatchFromPart();
+  hd_voice_.NoteOn(pitch, velocity, portamento, trigger);
+  if (fired) {
+    part_->TriggerLfos();
+  }
+  SyncClassicRandomFromHd();
+  CopyHdStateToVoice();
+}
+
+void Voice::NoteOff() {
+  hd_voice_.NoteOff();
+  CopyHdStateToVoice();
+}
+
+void Voice::ProcessControlBlock() {
+  CopySourcesToHd();
+  SyncHdRandomFromClassic();
+  MirrorHdPatchFromPart();
+  hd_voice_.ProcessControlBlock(hd_patch_, hd_sys_);
+  SyncClassicRandomFromHd();
+  CopyHdStateToVoice();
+}
+
+void Voice::ProcessBlock() {
+  CopySourcesToHd();
+  SyncHdRandomFromClassic();
+  MirrorHdPatchFromPart();
+  hd_voice_.ProcessBlock(hd_patch_, hd_sys_);
+  SyncClassicRandomFromHd();
+  CopyHdStateToVoice();
+  WriteHdOutputToRing();
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+  std::memcpy(debug_osc1_buffer_, hd_voice_.osc1_buffer(), kAudioBlockSize);
+  std::memcpy(debug_osc2_buffer_, hd_voice_.osc2_buffer(), kAudioBlockSize);
+  ++debug_process_block_count_;
+#endif
+}
+
+#else
 
 void Voice::Init(Part* part, HostAudioRing* audio_out, avrlib::Random* random) {
   part_ = part;
@@ -663,5 +900,7 @@ void Voice::ProcessBlock() {
     audio_out_->Overwrite(U8Mix(buffer_[i], noise, mix_gain, noise_gain));
   }
 }
+
+#endif  // !SWARAXT_USE_AVRLIB_HD_VOICE
 
 }  // namespace shruthi

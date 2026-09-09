@@ -11,7 +11,7 @@ namespace swaraxt {
 
 struct ApvtsFactoryParam {
     const char* id;
-    float value;
+    double value;
 };
 
 struct ApvtsFactoryPreset {

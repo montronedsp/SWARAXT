@@ -49,14 +49,14 @@ Stats analyze(const std::vector<float>& x, double sample_rate) {
   return s;
 }
 
-constexpr uint32_t FrequencyToIncrement(double freq, uint32_t rate) {
-  double per_sample = (freq * 65536.0) / rate;
+constexpr uint32_t FrequencyToIncrement(double freq, double rate) {
+  const double per_sample = (freq * 65536.0) / rate;
   return static_cast<uint32_t>(per_sample * 256.0 + 0.5);
 }
 
 void testHdWavesWithinRange() {
   const double rate = 48000.0;
-  const int n = rate * 2;
+  const int n = static_cast<int>(rate * 2.0);
   std::vector<float> x(n);
   avrlib_hd::HdOscillator osc;
   for (avrlib_hd::OscWave wave :
@@ -86,7 +86,7 @@ void testHdWavesWithinRange() {
 
 void testHdSinePitchGrid() {
   const double rate = 48000.0;
-  const int n = rate;
+  const int n = static_cast<int>(rate);
   std::vector<float> x(n);
   avrlib_hd::HdOscillator osc;
   for (double freq : {55.0, 220.0, 1000.0, 5000.0, 12000.0}) {
@@ -113,7 +113,7 @@ void testHdPhaseProgression() {
 
 void testHdPulseDuty() {
   const double rate = 48000.0;
-  const int n = rate;
+  const int n = static_cast<int>(rate);
   std::vector<float> x(n);
   avrlib_hd::HdOscillator osc;
   const uint32_t inc = FrequencyToIncrement(98.0, rate);

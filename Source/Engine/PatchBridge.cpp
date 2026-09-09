@@ -147,7 +147,8 @@ void PatchBridge::applyCacheToEngine(const ParameterCache& cache)
 
     const auto boardControls = cache.boardControls();
     const bool boardCv = boardControls.model == board::Model::dspBoard || boardControls.effect != board::Effect::off;
-    settings->expansion_filter_board = boardCv ? shruthi::FILTER_BOARD_DSP : shruthi::FILTER_BOARD_LPF;
+    settings->expansion_filter_board = static_cast<uint8_t>(
+        boardCv ? shruthi::FILTER_BOARD_DSP : shruthi::FILTER_BOARD_LPF);
     if (boardCv)
     {
         // Voice::UpdateDestinations scales these to 14-bit bases BEFORE adding

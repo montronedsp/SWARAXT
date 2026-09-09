@@ -75,9 +75,9 @@ class Lfo {
         break;
 
       case LFO_WAVEFORM_TRIANGLE:
-        value = (phase_ & 0x8000) ?
-            phase_ >> 7 :
-            ~static_cast<uint8_t>(phase_ >> 7);
+        value = (phase_ & 0x8000)
+                    ? static_cast<uint8_t>(phase_ >> 7)
+                    : static_cast<uint8_t>(~static_cast<uint8_t>(phase_ >> 7));
         break;
 
       case LFO_WAVEFORM_SQUARE:
@@ -156,7 +156,7 @@ class Lfo {
     } else if (new_increment > 1040) {
       new_increment = 1040;
     }
-    phase_increment_ = new_increment;
+    phase_increment_ = static_cast<uint16_t>(new_increment);
     previous_phase_ = phi;
   }
 
