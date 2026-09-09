@@ -85,15 +85,13 @@ SWARA XT contains software derived from the Shruthi firmware by Emilie Gillet.
 
 SWARA XT is an independent project and is not an official Mutable Instruments product.
 
-## Source branches
+## Source
 
-### `classic`
+`main` is the canonical and supported SWARA XT source branch.
 
-`classic` is the frozen public reference for the historically faithful Shruthi-derived Classic engine. It stays at the validated Classic implementation and does not receive experimental HD development. Use it when you want the stable Classic port.
+This tree ships the validated Classic-compatible instrument (DSP Board, VCA CV, Post Mixer, RAW/HARDWARE conditioning) through the faithful `avrlib_hd` Voice path. Classic oscillator sources remain as a parity oracle and are not compiled into the shipping plugin. HD-quality renderers stay behind explicit HD modes and must not leak into Classic-compatible states.
 
-### `main`
-
-`main` is the active development branch. It receives current SWARA XT updates, and alternate or higher-resolution engine work is integrated and validated here. Behavior outside Classic may evolve between development releases. This tree ships Classic+ musical behavior (DSP Board, VCA CV, Post Mixer, RAW/HARDWARE conditioning) through the faithful `avrlib_hd` Voice path. Classic oscillator sources remain as a parity oracle and are not compiled into the shipping plugin. HD-quality renderers stay behind explicit HD modes and must not leak into Classic-compatible states.
+Historical development snapshots are retained separately for preservation and parity research.
 
 ---
 
