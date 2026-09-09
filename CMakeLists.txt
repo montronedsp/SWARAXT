@@ -23,8 +23,13 @@ set(SWARAXT_SHRUTHI_ROOT "${CMAKE_SOURCE_DIR}/third_party/shruthi-1")
 set(SWARAXT_SHRUTHI_ADAPTED_ROOT "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/adapted")
 set(SWARAXT_INCLUDE_FIRST "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/include_first")
 
+# Classic oscillator implementation is an oracle/parity object only.
+# Production compiles with SWARAXT_USE_AVRLIB_HD_VOICE=1 and renders through
+# avrlib_hd::HdVoice, so oscillator.cc is unreachable in the shipping plugin.
+set(SWARAXT_CLASSIC_OSCILLATOR_SOURCE
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/oscillator.cc")
+
 set(SWARAXT_SHRUTHI_SOURCES
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/oscillator.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/voice.cc"
     "${SWARAXT_SHRUTHI_ROOT}/shruthi/resources.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/part.cc"
@@ -129,7 +134,7 @@ endfunction()
 # warnings. Isolate those to the legacy TUs; do not suppress SWARA or avrlib_hd.
 set(SWARAXT_LEGACY_SHRUTHI_WARNING_SOURCES
     "${SWARAXT_SHRUTHI_ROOT}/shruthi/resources.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/oscillator.cc"
+    ${SWARAXT_CLASSIC_OSCILLATOR_SOURCE}
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/part.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/patch.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/parameter.cc"

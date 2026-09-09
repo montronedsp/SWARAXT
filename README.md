@@ -93,7 +93,7 @@ SWARA XT is an independent project and is not an official Mutable Instruments pr
 
 ### `main`
 
-`main` is the active development branch. It receives current SWARA XT updates, and alternate or higher-resolution engine work is integrated and validated here. Behavior outside Classic may evolve between development releases. This tree currently ships the Classic production engine, including the validated `classic+` DSP Board, VCA CV, Post Mixer, and input-conditioning path. The `avrlib_hd` faithful reference lives as in-tree infrastructure and tests, not as a user-selectable second engine. HD renderers stay behind explicit HD modes and must not leak into Classic-compatible states.
+`main` is the active development branch. It receives current SWARA XT updates, and alternate or higher-resolution engine work is integrated and validated here. Behavior outside Classic may evolve between development releases. This tree ships Classic+ musical behavior (DSP Board, VCA CV, Post Mixer, RAW/HARDWARE conditioning) through the faithful `avrlib_hd` Voice path. Classic oscillator sources remain as a parity oracle and are not compiled into the shipping plugin. HD-quality renderers stay behind explicit HD modes and must not leak into Classic-compatible states.
 
 ---
 

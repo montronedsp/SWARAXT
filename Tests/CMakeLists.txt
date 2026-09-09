@@ -41,7 +41,7 @@ add_test(NAME AvrlibHdResourceTests COMMAND AvrlibHdResourceTests)
 # Classic oscillator compiled with the classic flag set so the parity TU can
 # drive shruthi::Oscillator against HdOscillator::RenderNaive.
 add_library(AvrlibHdClassicOscObj STATIC
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/oscillator.cc"
+    ${SWARAXT_CLASSIC_OSCILLATOR_SOURCE}
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
 )
 swaraxt_configure_shruthi_target(AvrlibHdClassicOscObj)
@@ -275,6 +275,7 @@ add_test(NAME AvrlibHdFilterTests COMMAND AvrlibHdFilterTests)
 add_executable(SwaraXTTests
     SwaraXtTestsMain.cpp
     ${SWARAXT_SHRUTHI_SOURCES}
+    ${SWARAXT_CLASSIC_OSCILLATOR_SOURCE}
     ${SWARAXT_HOST_SOURCES}
 )
 set_target_properties(SwaraXTTests PROPERTIES OUTPUT_NAME SwaraXTUnitTests)
@@ -395,6 +396,8 @@ swaraxt_add_plugin_console_test(SwaraXTSequencerTests Sequencer/SequencerTestsMa
 
 swaraxt_add_plugin_console_test(SwaraXTCorrectnessTests Correctness/CorrectnessTestsMain.cpp)
 target_compile_definitions(SwaraXTCorrectnessTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+# Direct Classic Oscillator PWM/oracle checks; production plugin does not compile this TU.
+target_sources(SwaraXTCorrectnessTests PRIVATE ${SWARAXT_CLASSIC_OSCILLATOR_SOURCE})
 
 swaraxt_add_plugin_console_test(SwaraXTSmoothingAuditTests Smoothing/SmoothingAuditTestsMain.cpp)
 
