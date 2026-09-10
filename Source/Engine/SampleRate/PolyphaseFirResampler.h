@@ -17,7 +17,11 @@ namespace swaraxt {
 // The source clock stays at 20 MHz / 510. For hosts below that rate, setStep()
 // designs a lower cutoff with an explicit Kaiser transition before host Nyquist.
 // Rate configuration belongs to prepare; unchanged-rate resets/wakes reuse the
-// kernel without allocating or redesigning. See docs/HOST_SRC_SPECIFICATION.md.
+// kernel without allocating or redesigning. Production uses 256 taps/phases:
+// sampled passband error <0.001 dB through 19 kHz at/above native Fs. Below
+// native, passband ends at host/2 - 8*native/256; stopband starts at host/2
+// (sampled coefficient rejection >95 dB). HostSrcTests checks streamed images.
+// These are bounded test specifications, not universal near-Nyquist claims.
 //
 // The interface mirrors InternalSampleQueue so the engine can hold either
 // converter behind the same push/read protocol.

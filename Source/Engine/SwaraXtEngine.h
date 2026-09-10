@@ -38,7 +38,8 @@ namespace swaraxt {
 // quality study can build both engines from one source tree, and it is
 // deliberately not exposed as a parameter, preset field or GUI control.
 //
-// docs/HOST_SRC_SPECIFICATION.md specifies the current causal converter.
+// The production causal SRC adds 128 native samples to the filter's 256;
+// nominal FIR latency is 384 / (20e6 / 510) = 9.792 ms.
 #ifndef SWARAXT_SRC_FIR_TAPS
 #define SWARAXT_SRC_FIR_TAPS 256
 #endif
