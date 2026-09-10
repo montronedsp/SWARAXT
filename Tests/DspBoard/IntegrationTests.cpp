@@ -59,7 +59,8 @@ void stateTests()
     set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,15);set(p,IDs::dspFxParam2,63);
     p.setStateInformation(old.getData(),static_cast<int>(old.getSize()));process(p);
     require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==0,"old DAW state overrides current Board");
-    require(p.getTailLengthSeconds()==0,"Classic zero tail restored");
+    require(p.getTailLengthSeconds() >= FilterRateConverter::kLatency / SwaraXtEngine::kInternalSampleRate,
+        "Classic restore retains the required conversion tail");
     set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,15);set(p,IDs::dspFxParam1,99);set(p,IDs::dspFxParam2,0);set(p,IDs::dspBoardRouting,3);
     for(int i=0;i<8;++i)process(p,512,i==0);
     require(p.engineForTests().boardProcessorForTests().hasValidLoop(),"integrated loop record");
@@ -252,7 +253,8 @@ void dormantModulationTest()
     require(std::isinf(p.getTailLengthSeconds()),"replay advertises sustained tail");
     set(p,IDs::filterModel,0);set(p,IDs::dspFxProgram,0);
     for(int i=0;i<350;++i)process(p);
-    require(p.engineForTests().dormantForTests() && p.getTailLengthSeconds()==0,"Classic Off returns to original dormancy");
+    require(p.engineForTests().dormantForTests() && std::isfinite(p.getTailLengthSeconds()),
+        "Classic Off returns to dormancy and clears the autonomous replay tail");
     std::cout<<"Dormant CV modulation, silent record clock, autonomous replay PASS\n";
 }
 void headroomAndTailTests()

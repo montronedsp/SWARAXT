@@ -53,13 +53,22 @@ void SwaraXtAudioProcessor::parameterChanged(const juce::String& parameterID, fl
 
 void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    const double rate = sampleRate > 0.0 ? sampleRate : 44100.0;
+    if (! swaraxt::SwaraXtEngine::supportsHostSampleRate(sampleRate)) {
+        isPrepared_ = false;
+        setLatencySamples(0);
+        juce::Logger::writeToLog("SWARA XT: unsupported host sample rate " + juce::String(sampleRate)
+            + "; supported range is 8000..384000 Hz. Output is silent until a supported prepare.");
+        return;
+    }
+    const double rate = sampleRate;
     const int block = samplesPerBlock > 0 ? samplesPerBlock : 512;
 
     // Host session restore is complete once audio starts; program changes are intentional.
     hostSessionStateRestored_ = false;
 
     engine_.prepare(rate, block);
+    setLatencySamples(static_cast<int>(std::ceil(
+        swaraxt::SwaraXtEngine::kOutputLatencyNativeSamples * rate / swaraxt::SwaraXtEngine::kInternalSampleRate)));
 
     if (! engineInitialized_)
     {
@@ -143,7 +152,8 @@ juce::AudioProcessorEditor* SwaraXtAudioProcessor::createEditor()
 double SwaraXtAudioProcessor::getTailLengthSeconds() const
 {
     const auto controls = parameterCache_.boardControls();
-    return std::max(swaraxt::board::BoardProcessor::tailSeconds(controls), engine_.boardTailSeconds());
+    return swaraxt::SwaraXtEngine::kOutputLatencyNativeSamples / swaraxt::SwaraXtEngine::kInternalSampleRate
+        + std::max(swaraxt::board::BoardProcessor::tailSeconds(controls), engine_.boardTailSeconds());
 }
 
 void SwaraXtAudioProcessor::setCurrentProgram(int index)
@@ -543,7 +553,10 @@ void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInByte
                     const auto* parameter = apvts_.getParameter(id);
                     juce::ValueTree value("PARAM");
                     value.setProperty("id", id, nullptr);
-                    value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
+                    // Pre-conditioning states used RAW. Preserve that explicit
+                    // compatibility choice even though new instances use board mode.
+                    value.setProperty("value", juce::String(id) == swaraxt::IDs::inputConditioning
+                        ? 0.0f : parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
                     tree.addChild(value, -1, nullptr);
                 }
             }

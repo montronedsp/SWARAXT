@@ -26,14 +26,15 @@
 namespace avrlib_hd {
 
 // HD-neutral control set for the filter, in natural units. Committed values
-// map to the engine's swaraxt::SwaraXtFilterParams exactly as the live plugin
-// does (SwaraXtEngine::updateFilterFromShruthi):
+// map directly to swaraxt::SwaraXtFilterParams. This optional facade does not
+// calculate Shruthi control destinations. The production engine decodes the
+// final firmware cutoff/resonance CV; callers must supply that decoded result.
 //
 //   envValue            = clamp01(env_source / 255)
 //   modValue            = clamp((lfo2_source - 128) / 128, -1, 1)
-//   matrixCutoffOctaves = cutoff_matrix_delta / (12 * 128)
-//   matrixResonance     = resonance_matrix_delta / (255 * 64)
-//   resonance           = clamp01(panelResonance + matrixResonance)
+//   cutoff_hz          = clamp(20000 * 2^((final_cutoff_cv - 254) / 24), 10, 20000)
+//   resonance          = final_resonance_cv / 255
+//   matrix_*           = optional extra offsets, never the native matrix twice
 //   envAmount           = panelEnvAmount * 4    (up to ~4 octaves)
 //   modAmount           = panelModAmount * 2
 //   drive               = 1.0

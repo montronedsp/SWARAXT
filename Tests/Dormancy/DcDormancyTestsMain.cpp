@@ -196,7 +196,9 @@ bool testDormancyAtRate(double sampleRate)
         processor.processBlock(buffer, empty);
         if (! finite(buffer))
             return false;
-        sawDcDrain = sawDcDrain || engine.dcDrainingForTests();
+        // The board output pole may already settle the host DC state, making
+        // the DC-only phase shorter than this host block. Count actual work.
+        sawDcDrain = sawDcDrain || engine.cpuProfileForTests().dcDrainHostSamples > 0;
         for (int sample = 0; sample < blockSize; ++sample)
         {
             const float value = buffer.getSample(0, sample);
@@ -367,7 +369,7 @@ void testNaturalDormancyContinuityAndLongIdle()
         buffer.clear();
         processor.processBlock(buffer, empty);
         expect(finite(buffer), "natural dormancy transition remains finite");
-        sawDcDrain = sawDcDrain || engine.dcDrainingForTests();
+        sawDcDrain = sawDcDrain || engine.cpuProfileForTests().dcDrainHostSamples > 0;
         for (int sample = 0; sample < blockSize; ++sample)
         {
             const float value = buffer.getSample(0, sample);
@@ -404,6 +406,9 @@ void testWakeDuringDcTail()
     constexpr int blockSize = 64;
     SwaraXtAudioProcessor processor;
     configureFastEnvelope(processor);
+    // RAW leaves a measurable host-DC tail; HARDWARE's longer output-pole
+    // settling is covered above and can leave only one DC-only sample.
+    setParameter(processor, swaraxt::IDs::inputConditioning, 0);
     processor.prepareToPlay(sampleRate, blockSize);
     auto& engine = processor.engineForTests();
     juce::AudioBuffer<float> buffer(2, blockSize);

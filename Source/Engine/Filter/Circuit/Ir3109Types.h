@@ -46,6 +46,8 @@ struct Ir3109StageTraits
     double bufferGain = 1.0;
     double bufferOutputResistanceOhms = 100.0;
     double saturationSoftness = 1.0;
+    double differentialInputAttenuation = kOtaDifferentialInputAttenuation;
+    bool linearBufferToRails = false;
 };
 
 struct FilterCalibration

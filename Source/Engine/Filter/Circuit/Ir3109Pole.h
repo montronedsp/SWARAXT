@@ -114,7 +114,7 @@ class Ir3109Pole {
 
     double shapeOtaInput(double diffVolts) const noexcept
     {
-        const double attenuation = kOtaDifferentialInputAttenuation
+        const double attenuation = traits_.differentialInputAttenuation
                                  / clampFinite(traits_.saturationSoftness, 0.5, 2.0);
         const double differential = diffVolts * attenuation;
         const double pairCurrent = std::tanh(differential / (2.0 * kOtaThermalVoltageVolts));
@@ -124,6 +124,8 @@ class Ir3109Pole {
 
     double applyLoadSoftness(double signal) const noexcept
     {
+        if (traits_.linearBufferToRails)
+            return clampFinite(signal * traits_.bufferGain, -5.0, 5.0);
         // Passive and active loads differ only once the stage is driven hard.
         // With no explicit load impedance, the published current limits are not
         // converted into voltage clipping. This odd softening preserves DC.

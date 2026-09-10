@@ -6,17 +6,18 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <memory>
+#include <algorithm>
 
 namespace swaraxt {
 
 // Band-limited polyphase reconstruction filter for the native -> host rate
 // conversion.
 //
-// The Shruthi core always runs at 20 MHz / 510 (~39.2156 kHz) and every host
-// rate Swara XT supports is at or above 44.1 kHz, so this converter is only
-// ever an interpolator. That makes the anti-imaging cutoff a constant: native
-// Nyquist. The coefficient table is therefore host-rate independent and is
-// built once at construction; setStep() only changes the phase increment.
+// The source clock stays at 20 MHz / 510. For hosts below that rate, setStep()
+// designs a lower cutoff with an explicit Kaiser transition before host Nyquist.
+// Rate configuration belongs to prepare; unchanged-rate resets/wakes reuse the
+// kernel without allocating or redesigning. See docs/HOST_SRC_SPECIFICATION.md.
 //
 // The interface mirrors InternalSampleQueue so the engine can hold either
 // converter behind the same push/read protocol.
@@ -40,8 +41,9 @@ class PolyphaseFirResampler {
     // stopbandDb drives the Kaiser window; cutoffNyquist is in units of native
     // Nyquist (1.0 = 19607.84 Hz).
     explicit PolyphaseFirResampler(double stopbandDb = 100.0, double cutoffNyquist = 1.0)
+        : stopbandDb_(stopbandDb), requestedCutoff_(cutoffNyquist)
     {
-        design(stopbandDb, cutoffNyquist);
+        design(stopbandDb_, requestedCutoff_);
     }
 
     void reset() noexcept;
@@ -58,11 +60,11 @@ class PolyphaseFirResampler {
     float readInterpolated() noexcept;
     int size() const noexcept { return size_; }
 
-    // Delay from the newest queued input sample to the sample the next read
-    // will reconstruct, in native samples. This is the converter's group delay.
+    // Causal streaming delay in native samples, including startup. The engine
+    // must report it to the host rather than concealing it with future audio.
     static constexpr double groupDelayNativeSamples() noexcept
     {
-        return 0.5 * static_cast<double>(kTaps - 1);
+        return 0.5 * static_cast<double>(kTaps);
     }
 
     static constexpr std::size_t coefficientBytes() noexcept
@@ -77,8 +79,10 @@ class PolyphaseFirResampler {
 
     const float* coefficientRow(int phase) const noexcept
     {
-        return &coeff_[static_cast<std::size_t>(phase) * static_cast<std::size_t>(kTaps)];
+        return coeff_->data() + static_cast<std::size_t>(phase) * static_cast<std::size_t>(kTaps);
     }
+    double cutoffNyquist() const noexcept { return designedCutoff_; }
+    unsigned kernelDesignCount() const noexcept { return kernelDesignCount_; }
 
  private:
     void design(double stopbandDb, double cutoffNyquist);
@@ -89,13 +93,16 @@ class PolyphaseFirResampler {
         return data_[static_cast<std::size_t>((readIndex_ + index) & kCapacityMask)];
     }
 
-    std::array<float, static_cast<std::size_t>(kRows) * static_cast<std::size_t>(TapsPerPhase)> coeff_ {};
+    using Coefficients = std::array<float, static_cast<std::size_t>(kRows) * static_cast<std::size_t>(TapsPerPhase)>;
+    std::unique_ptr<Coefficients> coeff_ = std::make_unique<Coefficients>();
     std::array<float, kCapacity> data_ {};
     int readIndex_ = 0;
     int writeIndex_ = 0;
     int size_ = 0;
     double fraction_ = 0.0;
     double step_ = 1.0;
+    double stopbandDb_ = 100, requestedCutoff_ = 1, designedCutoff_ = 1;
+    unsigned kernelDesignCount_ = 0;
 };
 
 template <int T, int P, bool I>
@@ -118,6 +125,8 @@ double PolyphaseFirResampler<T, P, I>::besselI0(double x) noexcept
 template <int T, int P, bool I>
 void PolyphaseFirResampler<T, P, I>::design(double stopbandDb, double cutoffNyquist)
 {
+    designedCutoff_ = cutoffNyquist;
+    ++kernelDesignCount_;
     constexpr double kResamplerPi = 3.14159265358979323846;
 
     double beta = 0.0;
@@ -136,7 +145,7 @@ void PolyphaseFirResampler<T, P, I>::design(double stopbandDb, double cutoffNyqu
     {
         const double fraction = static_cast<double>(phase) / static_cast<double>(kPhases);
         double sum = 0.0;
-        float* row = &coeff_[static_cast<std::size_t>(phase) * static_cast<std::size_t>(kTaps)];
+        float* row = coeff_->data() + static_cast<std::size_t>(phase) * static_cast<std::size_t>(kTaps);
 
         for (int tap = 0; tap < kTaps; ++tap)
         {
@@ -174,20 +183,23 @@ void PolyphaseFirResampler<T, P, I>::reset() noexcept
     size_ = 0;
     fraction_ = 0.0;
 
-    // The kernel is centred kTaps/2 - 1 samples into its window. Priming that
-    // much silence makes the first output sample reconstruct the first input
-    // sample rather than skipping past it, so a note-on is neither delayed nor
-    // clipped of its attack, and the converter's own group delay never appears
-    // at the plugin output.
-    for (int i = 0; i < kTaps / 2 - 1; ++i)
+    // Silent causal history preserves the complete attack and gives the same
+    // T/2 delay at startup and during streaming. No unreported lookahead.
+    for (int i = 0; i < kTaps - 1; ++i)
         push(0.0f);
 }
 
 template <int T, int P, bool I>
 void PolyphaseFirResampler<T, P, I>::setStep(double internalRate, double hostRate) noexcept
 {
-    const double safeHost = hostRate > 1.0 ? hostRate : 44100.0;
-    const double safeInternal = internalRate > 1.0 ? internalRate : safeHost;
+    const double safeHost = std::isfinite(hostRate) && hostRate > 1.0 ? hostRate : 44100.0;
+    const double safeInternal = std::isfinite(internalRate) && internalRate > 1.0 ? internalRate : safeHost;
+    // A half-transition of 4 Fs/T places the 100 dB Kaiser stopband before
+    // the lower output Nyquist. Production T=256 supports hosts >= 8 kHz.
+    const double outputCutoff = safeHost < safeInternal
+        ? std::max(0.001, safeHost / safeInternal - 8.0 / kTaps) : 1.0;
+    const double desiredCutoff = std::min(requestedCutoff_, outputCutoff);
+    if (desiredCutoff != designedCutoff_) design(stopbandDb_, desiredCutoff);
     step_ = safeInternal / safeHost;
     if (! std::isfinite(step_) || step_ <= 0.0)
         step_ = 1.0;

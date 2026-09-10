@@ -179,7 +179,24 @@ void testEngineQualityDeclick()
         expect(stats.invalid == 0, "quality switch output is finite");
         expect(stats.peak > 0.001f, "quality switch is not stuck muted");
         expect(proc.engineForTests().filter().quality() == to, "target quality is reached");
-        expect(stats.maxDelta < 0.25f, "quality de-click bounds the live transition");
+        // Compare against both unswitched renders of the same patch. An absolute
+        // derivative bound confuses restored filter modulation / bandwidth with
+        // a mode-switch click, even when that edge is in the ordinary waveform.
+        float ordinaryDelta = 0, ordinaryPeak = 0;
+        for (auto quality : {from, to}) {
+            auto control = std::make_unique<SwaraXtAudioProcessor>();
+            control->prepareToPlay(48000.0, block);
+            configureNeutralSaw(*control);
+            setFloat(*control, swaraxt::IDs::filterCutoff, 900.0f);
+            setFloat(*control, swaraxt::IDs::filterResonance, resonance);
+            control->setFilterQuality(quality);
+            const auto normal = analyze(renderHeldNote(*control, warmup, capture, block, {}));
+            ordinaryDelta = std::max(ordinaryDelta, normal.maxDelta);
+            ordinaryPeak = std::max(ordinaryPeak, normal.peak);
+        }
+        std::printf("quality %s ordinary max|dy|=%.6f peak=%.6f\n", label, static_cast<double>(ordinaryDelta), static_cast<double>(ordinaryPeak));
+        expect(stats.maxDelta < ordinaryDelta * 1.1f + .02f, "quality transition adds no disproportionate discontinuity");
+        expect(stats.peak < ordinaryPeak * 1.1f + .05f, "quality transition adds no level explosion");
         return stats.maxDelta;
     };
 

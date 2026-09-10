@@ -567,6 +567,7 @@ inline void Voice::ProcessModulationMatrix() {
 }
 
 inline void Voice::UpdateDestinations() {
+  filter_pitch_value_ = pitch_value_;
   // Hardcoded filter modulations.
   // By default, the resonance tracks the note. Tracking works best when the
   // transistors are thermically coupled. You can disable tracking by applying

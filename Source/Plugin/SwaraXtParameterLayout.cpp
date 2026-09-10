@@ -85,7 +85,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         floatParam(IDs::filterEnvAmount, "Filter Env Amount", 0.0f, 1.0f, 0.35f, 0.0f)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
-        floatParam(IDs::filterKeyTracking, "Filter Key Track", 0.0f, 1.0f, 0.5f, 0.0f)));
+        floatParam(IDs::filterKeyTracking, "Filter Key Track Trim", 0.0f, 1.0f, 0.5f, 0.0f)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         floatParam(IDs::filterModAmount, "Filter Mod Amount", 0.0f, 1.0f, 0.0f, 0.0f)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
@@ -225,7 +225,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     // Append only: existing host indices and normalized domains are unchanged.
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { IDs::filterModel, 2 }, "Filter Model",
-        juce::StringArray { "Classic", "DSP Board" }, 0));
+        juce::StringArray { "Classic IR3109", "DSP Board" }, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { IDs::dspFxProgram, 2 }, "DSP FX",
         juce::StringArray { "Off", "Distortion", "Crush", "Comb +", "Comb -", "Ring Mod",
@@ -245,7 +245,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
             [](float value, int) { return juce::String(value, 1) + " dB"; })));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { IDs::inputConditioning, 1 }, "Input Conditioning",
-        juce::StringArray { "RAW", "HARDWARE" }, 0));
+        juce::StringArray { "RAW", "HARDWARE" }, 1));
 
     return { params.begin(), params.end() };
 }

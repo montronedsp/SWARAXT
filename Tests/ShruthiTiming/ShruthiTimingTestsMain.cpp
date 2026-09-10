@@ -41,13 +41,12 @@ namespace fs = std::filesystem;
 constexpr double kInternalRate = swaraxt::SwaraXtEngine::kInternalSampleRate;
 constexpr double kControlRateHz = kInternalRate / static_cast<double>(shruthi::kAudioBlockSize);
 constexpr double kHostRate = 44100.0;
-constexpr double kSmr4VcaCvCutoffHz = swaraxt::SwaraXtEngine::kSmr4VcaCvCutoffHz;
 constexpr int kNativeBlock = shruthi::kAudioBlockSize;
 constexpr int kOneSecondHostSamples = 44100;
 
-double smr4VcaCvCoeff()
+double ir3109VcaCvCoeff()
 {
-    return 1.0 - std::exp(-2.0 * juce::MathConstants<double>::pi * kSmr4VcaCvCutoffHz / kInternalRate);
+    return 1.0 - std::exp(-1.0 / (swaraxt::Ir3109BoardCore::kVcaCvTau * kInternalRate));
 }
 
 int gFailures = 0;
@@ -62,10 +61,6 @@ struct Metrics {
 };
 
 struct VcaBoundaryMetrics {
-    double heldAttackDelta = 0.0;
-    double interpolatedAttackDelta = 0.0;
-    double heldReleaseDelta = 0.0;
-    double interpolatedReleaseDelta = 0.0;
     double maximumGainStep = 0.0;
     double heldMaximumGainStep = 0.0;
     int transitionCount = 0;
@@ -99,37 +94,18 @@ struct ProcessorCapture {
 VcaBoundaryMetrics measureVcaBoundaries(const ProcessorCapture& capture)
 {
     VcaBoundaryMetrics result;
-    const size_t blocks = std::min(capture.controls.vca.size(),
-                                   capture.filter.size() / static_cast<size_t>(kNativeBlock));
-    for (size_t block = 1; block < blocks; ++block)
+    double previousTarget = 0, previousGain = 0;
+    // These are CV measurements, not a factorization of the complete nonlinear
+    // VCA/output path. Measure adjacent reconstructed samples, including the
+    // delayed transition, rather than comparing CV to an undelayed byte.
+    for (size_t sample = 0; sample < capture.vcaGain.size(); ++sample)
     {
-        const float previousTarget = static_cast<float>(capture.controls.vca[block - 1]) / 255.0f;
-        const float target = static_cast<float>(capture.controls.vca[block]) / 255.0f;
-        if (target == previousTarget)
-            continue;
-        ++result.transitionCount;
-
-        const size_t sample = block * static_cast<size_t>(kNativeBlock);
-        const double previousOutput = static_cast<double>(capture.filter[sample - 1]) * previousTarget;
-        const double heldOutput = static_cast<double>(capture.filter[sample]) * target;
-        const double interpolatedOutput = static_cast<double>(capture.postVca[sample]);
-        const double heldDelta = std::abs(heldOutput - previousOutput);
-        const double interpolatedDelta = std::abs(interpolatedOutput - previousOutput);
-        const double gainStep = std::abs(static_cast<double>(capture.vcaGain[sample]) - previousTarget);
-        result.maximumGainStep = std::max(result.maximumGainStep, gainStep);
-        result.heldMaximumGainStep = std::max(
-            result.heldMaximumGainStep,
-            std::abs(static_cast<double>(target) - static_cast<double>(previousTarget)));
-        if (target > previousTarget)
-        {
-            result.heldAttackDelta = std::max(result.heldAttackDelta, heldDelta);
-            result.interpolatedAttackDelta = std::max(result.interpolatedAttackDelta, interpolatedDelta);
-        }
-        else
-        {
-            result.heldReleaseDelta = std::max(result.heldReleaseDelta, heldDelta);
-            result.interpolatedReleaseDelta = std::max(result.interpolatedReleaseDelta, interpolatedDelta);
-        }
+        const double target = capture.vcaTarget[sample];
+        const double gain = capture.vcaGain[sample];
+        result.maximumGainStep = std::max(result.maximumGainStep, std::abs(gain - previousGain));
+        result.heldMaximumGainStep = std::max(result.heldMaximumGainStep, std::abs(target - previousTarget));
+        if (target != previousTarget) ++result.transitionCount;
+        previousTarget = target; previousGain = gain;
     }
     return result;
 }
@@ -1318,9 +1294,7 @@ void runEnvelopeRegression()
            "same-offset descending notes preserve insertion order");
 
     std::ofstream clickMetrics(artifactRoot() / "envelope_click_metrics.csv", std::ios::trunc);
-    clickMetrics << "waveform,held_note_on_delta,interpolated_note_on_delta,"
-                    "held_note_off_delta,interpolated_note_off_delta,held_gain_step,"
-                    "interpolated_gain_step,retrigger_gain_step\n";
+    clickMetrics << "waveform,held_target_step,reconstructed_cv_step,retrigger_cv_step\n";
     const int waveforms[] = {
         shruthi::WAVEFORM_SAW,
         shruthi::WAVEFORM_SQUARE,
@@ -1337,19 +1311,15 @@ void runEnvelopeRegression()
         const auto boundaries = measureVcaBoundaries(noteOff);
         const auto retriggerBoundaries = measureVcaBoundaries(retrigger);
         clickMetrics << waveformNames[waveformIndex] << ','
-                     << boundaries.heldAttackDelta << ','
-                     << boundaries.interpolatedAttackDelta << ','
-                     << boundaries.heldReleaseDelta << ','
-                     << boundaries.interpolatedReleaseDelta << ','
                      << boundaries.heldMaximumGainStep << ','
                      << boundaries.maximumGainStep << ','
                      << retriggerBoundaries.maximumGainStep << '\n';
         expect(boundaries.heldMaximumGainStep > 0.99,
                "minimum envelope exposes the original full-scale VCA control step");
-        expect(boundaries.maximumGainStep < 0.55 * boundaries.heldMaximumGainStep,
+        expect(boundaries.maximumGainStep <= ir3109VcaCvCoeff() + 1.e-6,
                "applied VCA CV is one-pole reconstructed, not a hard ZOH jump");
-        expect(boundaries.maximumGainStep > 3.0 / static_cast<double>(kNativeBlock),
-               "SMR4 VCA CV one-pole is faster than the old full-block linear ramp");
+        expect(boundaries.maximumGainStep > 2.0 / static_cast<double>(kNativeBlock),
+               "IR3109 VCA CV step follows board reconstruction rather than a full-block ramp");
         expect(retriggerBoundaries.maximumGainStep < 0.55 * retriggerBoundaries.heldMaximumGainStep
                || retriggerBoundaries.heldMaximumGainStep < 0.2,
                "retrigger also uses the hardware CV one-pole, not a hard ZOH jump");
@@ -1394,9 +1364,9 @@ void runEnvelopeRegression()
                           << audio.peak << ',' << audio.invalidCount << '\n';
             expect(boundaries.heldMaximumGainStep > 0.99,
                    "sample-rate/block matrix exercises a full VCA target transition");
-            expect(boundaries.maximumGainStep < 0.55 * boundaries.heldMaximumGainStep,
+            expect(boundaries.maximumGainStep <= ir3109VcaCvCoeff() + 1.e-6,
                    "VCA CV one-pole is sample-rate and host-block independent");
-            expect(boundaries.maximumGainStep > 3.0 / static_cast<double>(kNativeBlock),
+            expect(boundaries.maximumGainStep > 2.0 / static_cast<double>(kNativeBlock),
                    "VCA CV one-pole remains faster than the old full-block ramp");
             expect(audio.invalidCount == 0,
                    "VCA hold matrix remains finite");
@@ -1406,13 +1376,13 @@ void runEnvelopeRegression()
 
 void runVcaHold()
 {
-    const double coeff = smr4VcaCvCoeff();
+    const double coeff = ir3109VcaCvCoeff();
     expect(std::fabs(kInternalRate - (20000000.0 / 510.0)) < 1.0e-9, "native audio rate is 20e6/510");
     expect(kNativeBlock == 40, "native audio block is 40 samples");
     expect(kControlRateHz > 970.0 && kControlRateHz < 990.0,
            "Voice::vca() updates at the native control cadence");
-    expect(coeff > 0.17 && coeff < 0.20,
-           "1.25 kHz one-pole coefficient at the native rate is ~0.18 toward target");
+    expect(coeff > 0.07 && coeff < 0.08,
+           "IR3109 10k/33n CV response advances ~0.074 per native sample");
 
     const auto capture = renderEnvelopeEventCapture(
         48000.0, { 256 }, shruthi::WAVEFORM_TRIANGLE, 12000, -1);
@@ -1435,40 +1405,20 @@ void runVcaHold()
     {
         const float expected = static_cast<float>(capture.controls.vca[block]) / 255.0f;
         const size_t base = block * static_cast<size_t>(kNativeBlock);
-        float state = capture.vcaGain[base];
         expect(std::fabs(capture.vcaTarget[base] - expected) < 1.0e-6f,
                "vcaTarget is the stepped Shruthi control for the whole native block");
-        if (block > 0)
-        {
-            const float previous = capture.vcaGain[base - 1];
-            const float predictedFirst = previous
-                + static_cast<float>(coeff) * (expected - previous);
-            expect(std::fabs(capture.vcaGain[base] - predictedFirst) < 2.0e-5f,
-                   "VCA CV one-pole continues across the native-block boundary");
-            maxGainDelta = std::max(maxGainDelta,
-                std::fabs(static_cast<double>(capture.vcaGain[base]) - static_cast<double>(previous)));
-        }
         for (int i = 0; i < kNativeBlock; ++i)
         {
             const size_t index = base + static_cast<size_t>(i);
             expect(std::fabs(capture.vcaTarget[index] - expected) < 1.0e-6f,
                    "vcaTarget is constant for every sample in the native block");
-            if (i > 0)
-            {
-                const float predicted = state
-                    + static_cast<float>(coeff) * (expected - state);
-                expect(std::fabs(capture.vcaGain[index] - predicted) < 2.0e-5f,
-                       "applied vcaGain follows the SMR4 one-pole toward the held target");
-                const double delta = std::fabs(static_cast<double>(capture.vcaGain[index]) - static_cast<double>(state));
-                maxGainDelta = std::max(maxGainDelta, delta);
-                const float linear = capture.vcaGain[base]
-                    + (expected - capture.vcaGain[base]) * static_cast<float>(i)
-                        / static_cast<float>(kNativeBlock);
-                if (std::fabs(expected - capture.vcaGain[base]) > 0.5f && i == kNativeBlock / 2)
-                    expect(std::fabs(capture.vcaGain[index] - linear) > 0.05f,
-                           "applied gain is not the old SWARA full-block linear interpolation");
-                state = capture.vcaGain[index];
-            }
+            constexpr size_t delay = swaraxt::FilterRateConverter::kInputDelay;
+            const float delayedTarget = index >= delay ? capture.vcaTarget[index - delay] : 0;
+            const float previous = index > 0 ? capture.vcaGain[index - 1] : 0;
+            const float predicted = previous + static_cast<float>(coeff) * (delayedTarget - previous);
+            expect(std::fabs(capture.vcaGain[index] - predicted) < 2.0e-5f,
+                   "IR3109 CV follows held target after interpolation delay across block boundaries");
+            maxGainDelta = std::max(maxGainDelta, std::fabs(static_cast<double>(capture.vcaGain[index] - previous)));
         }
         if (expected == 0.0f) sawZero = true;
         if (expected > 0.5f) sawNonZero = true;
@@ -1479,10 +1429,10 @@ void runVcaHold()
            "capture includes attack, sustain and a later zero/release region");
     expect(maxGainDelta <= coeff + 1.0e-4,
            "no VCA gain sample step exceeds the hardware one-pole coefficient");
-    expect(maxGainDelta > 3.0 / static_cast<double>(kNativeBlock),
+    expect(maxGainDelta > 2.0 / static_cast<double>(kNativeBlock),
            "hardware one-pole remains faster than the old ~1 ms full-block ramp");
     expect(std::fabs(filterDc) < 0.05,
-           "pre-VCA Classic filter DC is not a large bias on this open-filter triangle case");
+           "completed Classic board output has no large bias on this triangle case");
     std::printf("VCA CV coeff=%.6f maxGainDelta=%.6f filterDC=%+.4e controlHz=%.3f\n",
                 coeff, maxGainDelta, filterDc, kControlRateHz);
 

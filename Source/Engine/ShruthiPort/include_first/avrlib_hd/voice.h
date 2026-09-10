@@ -362,6 +362,8 @@ class HdVoice {
   int16_t cutoff_matrix_delta() const { return cutoff_matrix_delta_; }
   int16_t resonance_matrix_delta() const { return resonance_matrix_delta_; }
   int16_t pitch_value() const { return pitch_value_; }
+  // Pitch used by the last control transaction, before oscillator glide advances.
+  int16_t filter_pitch_value() const { return filter_pitch_value_; }
   uint8_t gate() const { return gate_; }
   uint8_t volume() const { return volume_; }
 
@@ -597,6 +599,7 @@ class HdVoice {
   // =========================================================================
   void UpdateDestinations(const HdVoicePatch& patch,
                           const HdVoiceSystemSettings& sys) {
+    filter_pitch_value_ = pitch_value_;
     uint16_t cutoff = static_cast<uint16_t>(dst_[kModDestFilterCutoff]);
     if (patch.osc[0].option != kMixOpDuo) {
       if (sys.expansion_filter_board == kFilterBoardPvk) {
@@ -930,6 +933,7 @@ class HdVoice {
   int16_t pitch_increment_ = 0;
   int16_t pitch_target_ = 0;
   int16_t pitch_value_ = 0;
+  int16_t filter_pitch_value_ = 0;
   int16_t pitch_bass_note_ = 0;
 
   uint8_t modulation_sources_[kNumModulationSources]{};

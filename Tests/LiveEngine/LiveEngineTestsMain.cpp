@@ -46,7 +46,7 @@ float processNoteEnergy(SwaraXtAudioProcessor& proc, int blockSize, int blocks =
     if (blocks < 0)
     {
         // Tiny host blocks need more iterations for envelope/SRC to produce energy.
-        const int minSamples = 256;
+        const int minSamples = std::max(2048, proc.getLatencySamples() * 4);
         blocks = juce::jmax(8, (minSamples + blockSize - 1) / blockSize);
     }
 
@@ -111,7 +111,7 @@ void testSampleRateTransitions(SwaraXtAudioProcessor& proc)
             proc.prepareToPlay(sr, bs);
             // Repeat prepare at same rate.
             proc.prepareToPlay(sr, bs);
-            const float peak = processNoteEnergy(proc, bs, 6);
+            const float peak = processNoteEnergy(proc, bs);
             expect(peak > 1.0e-4f, "non-silent after rate change");
             expect(std::isfinite(peak), "finite after rate change");
             proc.releaseResources();
@@ -203,9 +203,10 @@ void testRenderEquivalence(SwaraXtAudioProcessor& proc)
     // Compare energy of identical timelines under different host chunkings.
     // Exact sample match is not required across independent prepare cycles with
     // global Shruthi RNG/state; require all paths produce comparable energy.
-    const float one = renderTimeline(proc, 128, { 128 });
-    const float two = renderTimeline(proc, 128, { 64, 64 });
-    const float three = renderTimeline(proc, 128, { 64, 63, 1 });
+    // Include the instrument's reported FIR latency and its complete attack.
+    const float one = renderTimeline(proc, 2048, { 128 });
+    const float two = renderTimeline(proc, 2048, { 64, 64 });
+    const float three = renderTimeline(proc, 2048, { 64, 63, 1 });
 
     expect(one > 1.0e-4f, "128-block energy");
     expect(two > 1.0e-4f, "64+64 energy");

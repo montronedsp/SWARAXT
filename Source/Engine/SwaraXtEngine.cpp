@@ -17,8 +17,6 @@ namespace {
 
 constexpr double kLfoBeatsPerCycle[] { 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 };
 
-constexpr float kShruthiCutoffUnitsPerOctave = 12.0f * 128.0f;
-constexpr float kShruthiDestinationFullScale = 255.0f * 64.0f;
 constexpr float kMinimumPanelCutoffHz = 10.0f;
 constexpr float kMaximumPanelCutoffHz = 20000.0f;
 
@@ -58,7 +56,6 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
 
     // Filter always runs at the Shruthi internal rate (pre-SRC).
     filter_.prepare(kInternalSampleRate);
-    smr4Input_.prepare(kInternalSampleRate);
     qualityRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.002 * kInternalSampleRate)));
     masterRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.004 * kInternalSampleRate)));
     postMixerRampSamples_ = masterRampSamples_;
@@ -86,11 +83,10 @@ void SwaraXtEngine::reset()
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
-    smr4Input_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
     snapMasterOnApply_ = true;
-    vcaCvState_ = 0.0f;
+    resetVcaReconstruction();
     snapPostMixerGain(1.0f);
     conditioningMix_ = 0.0f;
     conditioningMixTarget_ = 0.0f;
@@ -116,8 +112,7 @@ void SwaraXtEngine::resetResampler() noexcept
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     dcBlocker_.reset();
-    vcaCvState_ = 0.0f;
-    smr4Input_.reset();
+    resetVcaReconstruction();
     snapPostMixerGain(postMixerGainTarget_);
     conditioningMix_ = conditioningMixTarget_;
     conditioningMixIncrement_ = 0.0f;
@@ -240,6 +235,10 @@ void SwaraXtEngine::applyParameters()
 
 void SwaraXtEngine::resetBoardState() noexcept
 {
+    dspBoardDelay_.fill(0);
+    dspBoardDelayHead_ = 0;
+    dspBoardDelayRemaining_ = 0;
+    dspBoardPreviousInput_ = 0;
     boardProcessor_.reset();
     activeBoard_ = {};
     boardGain_ = 1.0f;
@@ -259,6 +258,10 @@ void SwaraXtEngine::updateBoardAtBlockBoundary() noexcept
         const bool changedModel = activeBoard_.model != requestedBoard_.model;
         activeBoard_ = requestedBoard_;
         boardProcessor_.reset(activeBoard_.effect);
+        dspBoardDelay_.fill(0);
+        dspBoardDelayHead_ = 0;
+        dspBoardDelayRemaining_ = 0;
+        dspBoardPreviousInput_ = 0;
         if (changedModel && activeBoard_.model == board::Model::classic) filter_.reset();
         boardFadePhase_ = BoardFadePhase::fadeIn;
         boardFadeRemaining_ = ramp;
@@ -299,12 +302,11 @@ bool SwaraXtEngine::boardRequiresAudio() const noexcept
 {
     return boardWake_ || boardFadePhase_ != BoardFadePhase::stable
         || !activeBoard_.sameTopology(requestedBoard_)
-        || boardProcessor_.needsAudio(activeBoard_);
+        || dspBoardDelayRemaining_ > 0 || boardProcessor_.needsAudio(activeBoard_);
 }
 
 void SwaraXtEngine::resetHostState() noexcept
 {
-    lastNote_ = 69.0f;
     hostTransportWasPlaying_ = false;
     hostClockNeedsAlignment_ = true;
     nextHostClockTick_ = 0;
@@ -546,22 +548,33 @@ void SwaraXtEngine::updateFilterFromShruthi()
     const float env1 = static_cast<float>(voice.modulation_source(shruthi::MOD_SRC_ENV_1)) / 255.0f;
     const float lfo2 = static_cast<float>(
         static_cast<int>(voice.modulation_source(shruthi::MOD_SRC_LFO_2)) - 128) / 128.0f;
-    const float matrixCutoffOctaves = static_cast<float>(voice.cutoff_matrix_delta())
-        / kShruthiCutoffUnitsPerOctave;
-    const float matrixResonance = static_cast<float>(voice.resonance_matrix_delta())
-        / kShruthiDestinationFullScale;
+    // The final firmware CV includes matrix, tracking, envelope, LFO and all
+    // original integer clipping. Decode it once; plugin controls only augment it.
+    const float nativeCutoffHz = 20000.0f * std::exp2(
+        (static_cast<float>(voice.cutoff()) - 254.0f) / 24.0f);
+    const float controlNote = static_cast<float>(voice.filter_pitch_value()) / 128.0f;
+    // Midpoint preserves firmware tracking exactly. This optional trim operates
+    // after firmware clipping and therefore cannot undo a saturated native CV.
+    const float trackingTrim = part_.patch().osc[0].option == shruthi::OP_DUO
+        ? 0.0f : (2.0f * filterKeyTrack_ - 1.0f) * (controlNote - 64.0f) / 12.0f;
 
     SwaraXtFilterParams p;
-    p.cutoffHz = filterCutoffHz_;
-    p.resonance = juce::jlimit(0.0f, 1.0f, filterResonance_ + matrixResonance);
-    p.keyTrack = filterKeyTrack_;
+    p.cutoffHz = juce::jlimit(10.0f, 20000.0f, nativeCutoffHz);
+    p.resonance = static_cast<float>(voice.resonance()) / 255.0f;
+    p.keyTrack = 0.0f;
     p.envAmount = filterEnvAmount_ * 4.0f; // up to ~4 octaves of env depth
     p.modAmount = filterModAmount_ * 2.0f;
     p.envValue = juce::jlimit(0.0f, 1.0f, env1);
     p.modValue = juce::jlimit(-1.0f, 1.0f, lfo2);
-    p.matrixCutoffOctaves = matrixCutoffOctaves;
-    p.noteNumber = lastNote_;
+    p.matrixCutoffOctaves = trackingTrim;
+    p.noteNumber = controlNote;
     p.drive = 1.0f;
+    const double extraOctaves = static_cast<double>(p.envAmount) * p.envValue
+        + static_cast<double>(p.modAmount) * p.modValue + p.matrixCutoffOctaves;
+    // Transport every native byte directly to the board CV domain. The RAW
+    // panel-Hz clamp is not authority for hardware cutoff reconstruction.
+    p.boardCutoffCvVolts = std::clamp((static_cast<double>(voice.cutoff())
+        + 24.0 * extraOctaves) * (5.0 / 255.0), 0.0, 5.0);
     filter_.setParams(p);
     if (activeBoard_.model == board::Model::dspBoard || activeBoard_.effect != board::Effect::off)
     {
@@ -594,7 +607,6 @@ void SwaraXtEngine::dispatchMidi(const PendingMidi& event)
         }
         else
         {
-            lastNote_ = static_cast<float>(event.data1);
             midiDispatcher_.NoteOn(channel, event.data1, event.data2);
         }
     }
@@ -719,10 +731,8 @@ void SwaraXtEngine::renderInternalBlock()
     }
 #endif
 
-    // Shruthi updates Voice::vca() at the native control-block cadence. Hold
-    // that as the analog VCA CV *target* for the whole block, then reconstruct
-    // the SMR4 ~1.25 kHz control one-pole sample-by-sample. Do not restore the
-    // old SWARA full-block linear interpolation between successive targets.
+    // Preserve the held native byte target. The selected analog path performs
+    // CV reconstruction and VCA multiplication before FIR decimation.
     const float vcaTarget = static_cast<float>(vca) / 255.0f;
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     const auto filterStart = ProfileClock::now();
@@ -737,13 +747,12 @@ void SwaraXtEngine::renderInternalBlock()
             if (! std::isfinite(mixer))
                 mixer = 0.0f;
             const float mix = nextConditioningMix();
-            const float coupled = smr4Input_.process(mixer);
-            float filtered = mixer + mix * (coupled - mixer);
-            filtered = filter_.processSample(filtered);
+            float filtered = filter_.processInstrumentSample(mixer, vcaTarget, mix);
             if (! std::isfinite(filtered))
                 filtered = 0.0f;
-            const float vcaGain = nextVcaCv(vcaTarget);
-            const float out = filtered * vcaGain * nextMasterGain() * nextQualityGain();
+            const float vcaGain = filter_.instrumentVcaControl();
+            vcaCvState_ = vcaGain;
+            const float out = filtered * nextMasterGain() * nextQualityGain();
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
             capture.postShruthiMixer[i] = temp[i];
             capture.filterOutput[i] = filtered;
@@ -765,13 +774,13 @@ void SwaraXtEngine::renderInternalBlock()
             if (! std::isfinite(mixer))
                 mixer = 0.0f;
             const float mix = nextConditioningMix();
-            const float coupled = smr4Input_.process(mixer);
             hardwareMix[index] = mix;
             if (activeBoard_.model == board::Model::classic)
             {
-                const auto filtered = filter_.processSample(mixer + mix * (coupled - mixer));
-                const float vcaGain = nextVcaCv(vcaTarget);
-                processed[index] = std::isfinite(filtered) ? filtered * vcaGain : 0.0f;
+                const auto filtered = filter_.processInstrumentSample(mixer, vcaTarget, mix);
+                const float vcaGain = filter_.instrumentVcaControl();
+                vcaCvState_ = vcaGain;
+                processed[index] = std::isfinite(filtered) ? filtered : 0.0f;
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
                 capture.vcaGain[i] = vcaGain;
 #endif
@@ -797,6 +806,19 @@ void SwaraXtEngine::renderInternalBlock()
             const auto index = static_cast<std::size_t>(i);
             const float masterGain = nextMasterGain();
             const float qualityGain = nextQualityGain();
+            if (activeBoard_.model == board::Model::dspBoard) {
+                const float delayed = dspBoardDelay_[dspBoardDelayHead_];
+                const float value = processed[index];
+                dspBoardDelay_[dspBoardDelayHead_] = value;
+                dspBoardDelayHead_ = (dspBoardDelayHead_ + 1) % dspBoardDelay_.size();
+                // Like BoardProcessor's tail observer, drain changes rather
+                // than a constant quantization bias. The host DC drain owns
+                // that bias once both the board and delay have settled.
+                dspBoardDelayRemaining_ = std::abs(value - dspBoardPreviousInput_) > 1.e-8f ? FilterRateConverter::kLatency
+                    : std::max(0, dspBoardDelayRemaining_ - 1);
+                dspBoardPreviousInput_ = value;
+                processed[index] = delayed;
+            }
             const float out = processed[index] * masterGain
                 * (activeBoard_.model == board::Model::classic ? qualityGain : 1.0f) * nextBoardGain();
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
@@ -812,6 +834,7 @@ void SwaraXtEngine::renderInternalBlock()
     cpuProfile_.filterSamplesProcessed += static_cast<uint64_t>(read);
 #endif
     if (read > 0 && vcaTarget == 0.0f && vcaCvState_ < (1.0f / 512.0f)
+        && (activeBoard_.model != board::Model::classic || !filter_.instrumentTailActive())
         && part_.voice().amplitude_envelope_dead() && !boardRequiresAudio())
     {
         vcaCvState_ = 0.0f;
@@ -881,8 +904,7 @@ void SwaraXtEngine::updateDormantWakeState()
     filter_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    vcaCvState_ = 0.0f;
-    smr4Input_.reset();
+    resetVcaReconstruction();
     snapMasterOnApply_ = true;
     snapPostMixerGain(postMixerGainTarget_);
     conditioningMix_ = conditioningMixTarget_;
@@ -902,10 +924,9 @@ void SwaraXtEngine::enterDormant() noexcept
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
-    smr4Input_.reset();
     snapFilterQuality();
     dcBlocker_.reset();
-    vcaCvState_ = 0.0f;
+    resetVcaReconstruction();
     snapMasterOnApply_ = true;
     snapPostMixerGain(postMixerGainTarget_);
     conditioningMix_ = conditioningMixTarget_;
@@ -920,10 +941,9 @@ void SwaraXtEngine::advanceDormantControl()
     {
         dormantNativeSamples_ -= static_cast<double>(kAudioBlockSize);
         part_.ProcessControlBlock();
-        // CV modulation continues while silent, including the looper's record
-        // switch and post-DCA resonance. Classic/Off retains its old idle path.
-        if (activeBoard_.model == board::Model::dspBoard || activeBoard_.effect != board::Effect::off)
-            updateFilterFromShruthi();
+        // The physical board reconstructs CV even when its VCA is closed.
+        updateFilterFromShruthi();
+        filter_.advanceDormantControls(kAudioBlockSize);
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
         ++cpuProfile_.dormantControlBlocksAdvanced;
 #endif

@@ -4,10 +4,12 @@
 #pragma once
 
 #include "Engine/Filter/Circuit/Ir3109Pole.h"
+#include "Engine/Filter/Circuit/Ir3109BoardCore.h"
 #include "Engine/Filter/Circuit/Ir3109Types.h"
 #include "Engine/Filter/Circuit/ResonanceNetwork.h"
 #include "Engine/Filter/Control/CutoffMapper.h"
 #include "Engine/Filter/FilterQuality.h"
+#include "Engine/Filter/FilterRateConverter.h"
 
 #include <array>
 #include <cmath>
@@ -30,6 +32,9 @@ struct SwaraXtFilterParams
     float envValue = 0.0f; // 0..1
     float modValue = 0.0f; // bipolar-ish -1..1
     float matrixCutoffOctaves = 0.0f;
+    // Explicit firmware-derived board CV; negative selects the diagnostic Hz
+    // interface. This avoids RAW's 20 kHz panel clamp truncating CV byte 255.
+    double boardCutoffCvVolts = -1.0;
 };
 
 class SwaraXtFilter {
@@ -79,7 +84,14 @@ class SwaraXtFilter {
         stage3_.reset();
         stage4_.reset();
         resonance_.reset();
-        previousInput_ = 0.0f;
+        rateConverter_.reset();
+        boardCore_.reset();
+        rawVcaState_ = instrumentVcaGain_ = 0;
+        instrumentFlushRemaining_ = 0;
+        controlDelay_.fill(targetControl_);
+        controlHead_ = 0;
+        controlsNeedPrime_ = true;
+        activeControl_.cutoff = -1;
         if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
         {
             selfOscMetric_ = 0.0f;
@@ -98,7 +110,8 @@ class SwaraXtFilter {
             && params.modValue == params_.modValue
             && params.matrixCutoffOctaves == params_.matrixCutoffOctaves
             && params.noteNumber == params_.noteNumber
-            && params.drive == params_.drive)
+            && params.drive == params_.drive
+            && params.boardCutoffCvVolts == params_.boardCutoffCvVolts)
         {
             return;
         }
@@ -115,6 +128,7 @@ class SwaraXtFilter {
 #endif
 
     int oversamplingFactor() const noexcept { return oversampleFactor_; }
+    int latencySamples() const noexcept { return rateConverter_.latency(); }
     int solverIterationLimit() const noexcept { return solverIterationLimit_; }
     FilterQuality quality() const noexcept { return quality_; }
 
@@ -163,29 +177,80 @@ class SwaraXtFilter {
 
     float processSample(float in) noexcept
     {
+        return processWithControls(in, false, 1, 0);
+    }
+
+    // Complete analog path: VCA and output network are before anti-alias
+    // decimation. RAW selects the older core as an explicit SWARA diagnostic.
+    float processInstrumentSample(float in, float vcaTarget, float boardMix) noexcept
+    {
+        return processWithControls(in, true, vcaTarget, boardMix);
+    }
+    float instrumentVcaControl() const noexcept { return instrumentVcaGain_; }
+    bool instrumentTailActive() const noexcept { return instrumentFlushRemaining_ > 0; }
+    const Ir3109BoardCore& boardCoreForTests() const noexcept { return boardCore_; }
+    void advanceDormantControls(int nativeSamples) noexcept {
+        boardCore_.setTargets(targetControl_.cutoff, targetControl_.resonance, 0, targetControl_.boardCutoffCvVolts);
+        boardCore_.advanceControls(nativeSamples / hostSampleRate_);
+    }
+
+private:
+    float processWithControls(float in, bool instrument, float vcaTarget, float boardMix) noexcept
+    {
         const float input = clampFinite(in, -4.0f, 4.0f);
-        if (oversampleFactor_ <= 1)
-        {
-            previousInput_ = input;
-            return processCore(input);
+        auto target = targetControl_;
+        target.vca = vcaTarget;
+        target.boardMix = boardMix;
+        if (controlsNeedPrime_) {
+            // Reset may precede SetParams. Seed the silent prehistory from the
+            // first committed controls, never the previous render's patch.
+            // The VCA remains closed until its delayed first target arrives.
+            auto initial = target;
+            initial.vca = 0;
+            controlDelay_.fill(initial);
+            boardCore_.setTargets(initial.cutoff, initial.resonance, 0, initial.boardCutoffCvVolts);
+            boardCore_.reset();
+            controlsNeedPrime_ = false;
         }
-
-        double sum = 0.0;
-        const double start = previousInput_;
-        for (int i = 0; i < oversampleFactor_; ++i)
-        {
-            const double t = static_cast<double>(i + 1) / static_cast<double>(oversampleFactor_);
-            const float subInput = static_cast<float>(start + (static_cast<double>(input) - start) * t);
-            sum += static_cast<double>(processCore(subInput));
+        // Align held native controls with the interpolation filter's delay.
+        const auto control = oversampleFactor_ > 1 ? controlDelay_[controlHead_] : target;
+        controlDelay_[controlHead_] = target;
+        controlHead_ = (controlHead_ + 1) % controlDelay_.size();
+        if (control.cutoff != activeControl_.cutoff || control.resonance != activeControl_.resonance) {
+            stage1_.setCutoffHz(control.cutoff);
+            stage2_.setCutoffHz(control.cutoff);
+            stage3_.setCutoffHz(control.cutoff);
+            stage4_.setCutoffHz(control.cutoff);
+            resonance_.setAmount(control.resonance);
         }
-
-        previousInput_ = input;
-        const float out = clampFinite(static_cast<float>(sum / static_cast<double>(oversampleFactor_)), -8.0f, 8.0f);
+        activeControl_ = control;
+        if (instrument) {
+            boardCore_.setTargets(control.cutoff, control.resonance, control.vca, control.boardCutoffCvVolts);
+            if (control.boardMix <= 0) boardCore_.advanceControls(1 / hostSampleRate_);
+        }
+        const float out = clampFinite(rateConverter_.process(input,
+            [this, instrument, control](float sample) noexcept {
+                if (!instrument) return processCore(sample);
+                rawVcaState_ += rawVcaAlpha_ * (control.vca - rawVcaState_);
+                if (control.vca == 0 && rawVcaState_ < 1.e-12) rawVcaState_ = 0;
+                const float hardware = control.boardMix > 0
+                    ? boardCore_.process(sample * control.drive, solverIterationLimit_) : 0;
+                const float raw = control.boardMix < 1 ? processCore(sample) * static_cast<float>(rawVcaState_) : 0;
+                return raw + control.boardMix * (hardware - raw);
+            }), -8.0f, 8.0f);
+        if (instrument) {
+            instrumentVcaGain_ = static_cast<float>((1 - control.boardMix) * rawVcaState_
+                + control.boardMix * boardCore_.vcaControl());
+            const bool active = vcaTarget > 0 || control.vca > 0 || instrumentVcaGain_ > 1.e-8f
+                || (control.boardMix > 0 && boardCore_.outputTailActive());
+            instrumentFlushRemaining_ = active ? FilterRateConverter::kSpan : std::max(0, instrumentFlushRemaining_ - 1);
+        }
         if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
             trace_.finalPluginOutput = out;
         return out;
     }
 
+public:
     void processBlock(float* samples, int n) noexcept
     {
         for (int i = 0; i < n; ++i)
@@ -223,13 +288,16 @@ class SwaraXtFilter {
 
     void applyOversampleFactor(int factor) noexcept
     {
-        const int clamped = factor < 1 ? 1 : (factor > 8 ? 8 : factor);
+        const int clamped = factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 4 ? 4 : 8;
         oversampleFactor_ = clamped;
+        rateConverter_.prepare(clamped);
         const double fs = hostSampleRate_ * static_cast<double>(oversampleFactor_);
         stage1_.setSampleRate(fs);
         stage2_.setSampleRate(fs);
         stage3_.setSampleRate(fs);
         stage4_.setSampleRate(fs);
+        boardCore_.prepare(fs);
+        rawVcaAlpha_ = 1 - std::exp(-2 * kPi * 1250 / fs);
     }
 
     void applyQualityConfiguration(bool forceOversample) noexcept
@@ -250,11 +318,8 @@ class SwaraXtFilter {
                                                    params_.noteNumber,
                                                    modOct);
         const double stageHz = mapper_.stageCutoffFromMusicalCutoff(musical);
-        stage1_.setCutoffHz(stageHz);
-        stage2_.setCutoffHz(stageHz);
-        stage3_.setCutoffHz(stageHz);
-        stage4_.setCutoffHz(stageHz);
-        resonance_.setAmount(params_.resonance);
+        targetControl_ = {stageHz, params_.resonance, params_.drive};
+        targetControl_.boardCutoffCvVolts = params_.boardCutoffCvVolts;
     }
 
     CascadeResult evaluateCascade(double inputVolts) const noexcept
@@ -368,7 +433,7 @@ class SwaraXtFilter {
     float processCore(float inPlugin) noexcept
     {
         Trace localTrace;
-        const double drive = clampFinite(static_cast<double>(params_.drive), 0.25, 4.0);
+        const double drive = clampFinite(static_cast<double>(activeControl_.drive), 0.25, 4.0);
         const double inV = static_cast<double>(inPlugin) * levels_.pluginFullScaleToVolts * drive;
 
         CascadeResult cascade;
@@ -429,7 +494,20 @@ class SwaraXtFilter {
     int oversampleFactor_ = 4;
     int solverIterationLimit_ = 4;
     FilterQuality quality_ = FilterQuality::normal;
-    float previousInput_ = 0.0f;
+    struct Control {
+        double cutoff = 1000;
+        float resonance = 0, drive = 1, vca = 0, boardMix = 0;
+        double boardCutoffCvVolts = -1;
+    };
+    Control targetControl_{}, activeControl_{};
+    std::array<Control, FilterRateConverter::kInputDelay> controlDelay_{};
+    size_t controlHead_ = 0;
+    bool controlsNeedPrime_ = true;
+    FilterRateConverter rateConverter_;
+    Ir3109BoardCore boardCore_;
+    double rawVcaState_ = 0, rawVcaAlpha_ = 1;
+    float instrumentVcaGain_ = 0;
+    int instrumentFlushRemaining_ = 0;
     float selfOscMetric_ = 0.0f;
 };
 

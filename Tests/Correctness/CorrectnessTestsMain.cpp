@@ -570,8 +570,8 @@ void testJuce9ParameterMetadataCompatibility()
     const auto* conditioning = dynamic_cast<const juce::AudioParameterChoice*>(
         proc.getApvts().getParameter(swaraxt::IDs::inputConditioning));
     expect(conditioning != nullptr && conditioning->choices.size() == 2
-               && conditioning->getIndex() == 0,
-           "Input Conditioning is RAW/HARDWARE defaulting to RAW");
+               && conditioning->getIndex() == 1,
+           "Input Conditioning is RAW/HARDWARE defaulting to the Classic board path");
 }
 
 void testPwmDutyAndParity()
@@ -769,7 +769,7 @@ void testSwaraFilterRouteSeparation()
     setPhysical(swaraxt::IDs::filterCutoff, 1000.0f);
     setPhysical(swaraxt::IDs::filterResonance, 0.5f);
     setPhysical(swaraxt::IDs::filterEnvAmount, 0.0f);
-    setPhysical(swaraxt::IDs::filterKeyTracking, 0.0f);
+    setPhysical(swaraxt::IDs::filterKeyTracking, 0.5f);
     setPhysical(swaraxt::IDs::filterModAmount, 1.0f);
     for (int row = 1; row <= shruthi::kModulationMatrixSize; ++row)
         setPhysical("mod.row" + juce::String(row) + ".amount", 0.0f);
@@ -786,8 +786,10 @@ void testSwaraFilterRouteSeparation()
     proc.processBlock(buffer, midi);
 
     const auto& cutoffParams = proc.engineForTests().filter().paramsForTests();
-    expect(std::abs(cutoffParams.matrixCutoffOctaves - (5100.0f / 1536.0f)) < 1.0e-6f,
-           "matrix cutoff uses Shruthi control units directly");
+    const auto& voice = proc.engineForTests().shruthiPart().voice();
+    expect(std::abs(cutoffParams.cutoffHz - std::clamp(20000.f * std::exp2((voice.cutoff() - 254.f) / 24.f), 10.f, 20000.f)) < 1.e-4f
+               && cutoffParams.matrixCutoffOctaves == 0,
+           "matrix cutoff is already included in final firmware CV, with no duplicate delta");
     const int lfo2 = proc.engineForTests().shruthiPart().voice().modulation_source(shruthi::MOD_SRC_LFO_2);
     expect(std::abs(cutoffParams.modValue - static_cast<float>(lfo2 - 128) / 128.0f) < 1.0e-6f,
            "Filter MOD is the dedicated centered LFO2 route");
@@ -800,8 +802,9 @@ void testSwaraFilterRouteSeparation()
     const auto& resonanceParams = proc.engineForTests().filter().paramsForTests();
     expect(std::abs(resonanceParams.matrixCutoffOctaves) < 1.0e-6f,
            "resonance routes do not leak into cutoff");
-    expect(std::abs(resonanceParams.resonance - (0.5f - 5100.0f / 16320.0f)) < 1.0e-6f,
-           "negative matrix resonance lowers the panel value");
+    expect(std::abs(resonanceParams.resonance - voice.resonance() / 255.f) < 1.0e-6f
+               && resonanceParams.resonance < .5f,
+           "negative matrix resonance consumes the final clipped firmware value");
 }
 
 void testLfoVisualizer()

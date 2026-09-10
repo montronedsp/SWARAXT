@@ -159,7 +159,8 @@ class HdEnvelope {
     return MixU8(table[p], table[p + 1], static_cast<uint8_t>(phase & 0xff));
   }
   static float MixF(float a, float b, float step) {
-    return a + (b - a) * (step * (1.0f / 255.0f));
+    // InterpolateF already returns a normalized curve position.
+    return a + (b - a) * step;
   }
   static float InterpolateF(const uint8_t* table, float phase) {
     int p = static_cast<int>(phase) >> 8;

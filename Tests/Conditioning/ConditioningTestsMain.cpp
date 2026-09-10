@@ -94,8 +94,8 @@ void parameterTests()
     require(post->get() == 0.0f, "default Post Mixer 0 dB");
     require(post->convertFrom0to1(1.0f) == 0.0f, "Post Mixer cannot boost");
     require(post->convertFrom0to1(0.0f) == -18.0f, "Post Mixer min is -18 dB");
-    require(cond->getIndex() == 0 && cond->choices[0] == "RAW" && cond->choices[1] == "HARDWARE",
-            "Input Conditioning default RAW");
+    require(cond->getIndex() == 1 && cond->choices[0] == "RAW" && cond->choices[1] == "HARDWARE",
+            "new instances default to the complete board; RAW remains available");
     const float six = std::pow(10.0f, -6.0f / 20.0f);
     const float twelve = std::pow(10.0f, -12.0f / 20.0f);
     const float eighteen = std::pow(10.0f, -18.0f / 20.0f);
@@ -123,6 +123,7 @@ void classicPostMixerAndConditioning()
 
     SwaraXtAudioProcessor min;
     set(min, IDs::postMixer, -18.0f);
+    set(min, IDs::inputConditioning, 0.0f);
     min.prepareToPlay(48000, 256);
     const auto c = renderHost(min, 40, 256, true);
     const double minRatio = rms(c, 2048) / std::max(1.0e-9, rms(a, 2048));
@@ -137,8 +138,7 @@ void classicPostMixerAndConditioning()
     const auto hwHost = renderHost(hardware, 40, 256, true);
     require(mean(hwHost, static_cast<int>(hwHost.size()) - 2048) < 0.05, "Classic HARDWARE host DC");
     require(cap.filter.size() > 100 && cap.mixer.size() == cap.filter.size(), "Classic taps recorded");
-    // SMR4 coupling is a ~0.34 Hz HPF, not a 16 kHz Chebyshev. Mixer and
-    // pre-VCA filter remain close at musical frequencies after settling.
+    // This tap is the completed IR3109 path, including reconstructed VCA.
     double mixerRms = 0, filterRms = 0;
     const int skip = static_cast<int>(cap.mixer.size() / 4);
     for (int i = skip; i < static_cast<int>(cap.mixer.size()); ++i)

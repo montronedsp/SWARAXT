@@ -401,6 +401,25 @@ target_sources(SwaraXTCorrectnessTests PRIVATE ${SWARAXT_CLASSIC_OSCILLATOR_SOUR
 
 swaraxt_add_plugin_console_test(SwaraXTSmoothingAuditTests Smoothing/SmoothingAuditTestsMain.cpp)
 
+swaraxt_add_plugin_console_test(SwaraXTArchitectureControlTests Architecture/FilterControlTests.cpp)
+target_compile_definitions(SwaraXTArchitectureControlTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+
+add_executable(SwaraXTFilterMultirateTests Architecture/FilterMultirateTests.cpp)
+target_include_directories(SwaraXTFilterMultirateTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+target_compile_definitions(SwaraXTFilterMultirateTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+swaraxt_enable_warnings(SwaraXTFilterMultirateTests)
+add_test(NAME SwaraXTFilterMultirateTests COMMAND SwaraXTFilterMultirateTests)
+
+add_executable(SwaraXTIR3109BoardTests Architecture/Ir3109BoardTests.cpp)
+target_include_directories(SwaraXTIR3109BoardTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings(SwaraXTIR3109BoardTests)
+add_test(NAME SwaraXTIR3109BoardTests COMMAND SwaraXTIR3109BoardTests)
+
+add_executable(SwaraXTHostSrcTests Architecture/HostSrcTests.cpp)
+target_include_directories(SwaraXTHostSrcTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings(SwaraXTHostSrcTests)
+add_test(NAME SwaraXTHostSrcTests COMMAND SwaraXTHostSrcTests)
+
 swaraxt_add_plugin_console_test(SwaraXTConditioningTests Conditioning/ConditioningTestsMain.cpp)
 target_compile_definitions(SwaraXTConditioningTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
 

@@ -15,7 +15,6 @@ class AudioBuffer;
 }  // namespace juce
 
 #include "Engine/Filter/SwaraXtFilter.h"
-#include "Engine/Filter/Smr4InputCoupling.h"
 #include "Engine/DspBoard/BoardProcessor.h"
 #include "Engine/HostTransport.h"
 #include "Engine/ParameterCache.h"
@@ -39,10 +38,9 @@ namespace swaraxt {
 // quality study can build both engines from one source tree, and it is
 // deliberately not exposed as a parameter, preset field or GUI control.
 //
-// docs/engineering/SRC_QUALITY_COMPARISON.md records why 64 taps is the
-// default on this branch.
+// docs/HOST_SRC_SPECIFICATION.md specifies the current causal converter.
 #ifndef SWARAXT_SRC_FIR_TAPS
-#define SWARAXT_SRC_FIR_TAPS 64
+#define SWARAXT_SRC_FIR_TAPS 256
 #endif
 #ifndef SWARAXT_SRC_FIR_PHASES
 #define SWARAXT_SRC_FIR_PHASES 256
@@ -62,11 +60,14 @@ using HostRateConverter = InternalSampleQueue;
 class SwaraXtEngine {
  public:
     static constexpr double kInternalSampleRate = 20000000.0 / 510.0;
+    static constexpr int kOutputLatencyNativeSamples = FilterRateConverter::kLatency + SWARAXT_SRC_FIR_TAPS / 2;
+    static bool supportsHostSampleRate(double rate) noexcept {
+        return std::isfinite(rate) && rate >= 8000.0 && rate <= 384000.0;
+    }
     static constexpr int kAudioBlockSize = 40;
     static constexpr int kMaxPendingMidi = 512;
-    // Original SMR4 analysis §1.2: MCU CVs update at ~976 Hz as PWM and are
-    // reconstructed by a one-pole near 1.25 kHz (assembly: 33 nF control caps).
-    // This is the VCA CV path, not the cutoff scaler 1/(2π R19 C11)=861.7 Hz.
+    // Legacy SWARA control observer only; this is not a board-derived constant.
+    // Classic IR3109 uses Ir3109BoardCore::kVcaCvTau (10k * 33n = 330 us).
     static constexpr double kSmr4VcaCvCutoffHz = 1250.0;
 
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
@@ -74,10 +75,10 @@ class SwaraXtEngine {
         float rawOsc1[kAudioBlockSize] {};
         float rawOsc2[kAudioBlockSize] {};
         float postShruthiMixer[kAudioBlockSize] {};
-        float filterOutput[kAudioBlockSize] {};
+        float filterOutput[kAudioBlockSize] {}; // completed analog path, includes VCA in IR3109/RAW
         float postVca[kAudioBlockSize] {};
         float vcaTarget[kAudioBlockSize] {};
-        float vcaGain[kAudioBlockSize] {};
+        float vcaGain[kAudioBlockSize] {}; // reconstructed CV at final oversampled substep, before decimation
         int samples = 0;
         uint32_t nativeBlockIndex = 0;
         uint8_t lfo1 = 0;
@@ -226,7 +227,6 @@ class SwaraXtEngine {
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
-    Smr4InputCoupling smr4Input_;
     board::BoardProcessor boardProcessor_;
     board::BoardControl requestedBoard_, activeBoard_;
     static_assert(std::atomic<double>::is_always_lock_free, "Host tail publication must be realtime lock-free");
@@ -265,6 +265,14 @@ class SwaraXtEngine {
     bool snapMasterOnApply_ = true;
     float vcaCvState_ = 0.0f;
     float vcaCvCoeff_ = 0.0f;
+    // Equal latency for the optional DSP board, which bypasses the VCF FIRs.
+    std::array<float, FilterRateConverter::kLatency> dspBoardDelay_{};
+    size_t dspBoardDelayHead_ = 0;
+    int dspBoardDelayRemaining_ = 0;
+    float dspBoardPreviousInput_ = 0;
+    void resetVcaReconstruction() noexcept {
+        vcaCvState_ = 0;
+    }
     float postMixerGainCurrent_ = 1.0f;
     float postMixerGainTarget_ = 1.0f;
     float postMixerGainIncrement_ = 0.0f;
@@ -280,7 +288,6 @@ class SwaraXtEngine {
     float filterEnvAmount_ = 0.35f;
     float filterKeyTrack_ = 0.5f;
     float filterModAmount_ = 0.0f;
-    float lastNote_ = 69.0f;
     int midiChannel_ = 1;
     bool prepared_ = false;
     bool dormant_ = true;

@@ -58,8 +58,8 @@ void endpointMatrix()
 
 void hostBoundary()
 {
-    // Use the very same 64-tap/256-phase converter and blocker as the engine.
-    swaraxt::PolyphaseFirResampler<64, 256, true> converter;
+    // Use the same 256-tap/256-phase converter and blocker as production.
+    swaraxt::PolyphaseFirResampler<256, 256, true> converter;
     for (const double rate : { 44100., 48000., 88200., 96000., 176400., 192000. })
     for (int input = 0; input < 7; ++input)
     {
@@ -135,7 +135,7 @@ void hostBoundary()
 
 void oscillationLoopAndFeedback()
 {
-    swaraxt::PolyphaseFirResampler<64, 256, true> converter;
+    swaraxt::PolyphaseFirResampler<256, 256, true> converter;
     for (const double rate : { 44100., 48000., 88200., 96000., 176400., 192000. })
     {
         converter.reset(); converter.setStep(sampleRate, rate);

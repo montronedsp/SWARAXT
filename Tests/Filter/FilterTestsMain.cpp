@@ -687,10 +687,15 @@ void testReferenceAgreement()
     const auto input = sine(sampleRate, 330.0, 0.05, samples);
     double errSq = 0.0;
     double refSq = 0.0;
+    std::vector<double> referenceDelay(static_cast<size_t>(production.latencySamples()), 0.0);
+    size_t delayIndex = 0;
     for (float x : input)
     {
         const double a = production.processSample(x);
-        const double b = reference.process(x);
+        const double currentReference = reference.process(x);
+        const double b = referenceDelay[delayIndex];
+        referenceDelay[delayIndex] = currentReference;
+        delayIndex = (delayIndex + 1) % referenceDelay.size();
         errSq += (a - b) * (a - b);
         refSq += b * b;
     }

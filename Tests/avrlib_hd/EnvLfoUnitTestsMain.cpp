@@ -91,6 +91,22 @@ void testEnvelopeHdSegmentPath() {
   }
 }
 
+void testEnvelopeHdDecayUnits() {
+  avrlib_hd::HdEnvelope e;
+  e.set_tables(envTables());
+  e.Init();
+  e.Update(4, 4, 63, 4);
+  e.Trigger(avrlib_hd::kEnvelopeAttack);
+  for (int i = 0; i < 128 && e.stage() == avrlib_hd::kEnvelopeAttack; ++i)
+    e.RenderHd();
+  expect(e.stage() == avrlib_hd::kEnvelopeDecay, "HD reaches decay segment");
+  float value = 0.0f;
+  for (int i = 0; i < 32; ++i) value = e.RenderHd();
+  // Halfway through a linear synthetic decay from 1 to 126/255.
+  expect(value > 0.73f && value < 0.77f,
+         "HD normalized curve traverses the decay instead of sticking at its start");
+}
+
 void testEnvelopeFaithfulDeterminism() {
   avrlib_hd::HdEnvelope a;
   a.set_tables(envTables());
@@ -266,6 +282,7 @@ int main() {
   initTables();
   initWaveBank();
   testEnvelopeHdSegmentPath();
+  testEnvelopeHdDecayUnits();
   testEnvelopeFaithfulDeterminism();
   testLfoShapesBounded();
   testLfoFaithfulDeterminism();
