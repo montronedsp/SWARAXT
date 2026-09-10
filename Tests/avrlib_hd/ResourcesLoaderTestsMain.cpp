@@ -24,6 +24,7 @@ extern const uint8_t wav_res_formant_square[];
 extern const uint8_t wav_res_vowel_data[];
 extern const uint8_t wav_res_env_expo[];
 extern const uint8_t wav_res_waves[];
+extern const uint16_t lut_res_env_portamento_increments[];
 }  // namespace shruthi
 
 using shruthi::wav_res_formant_sine;
@@ -73,6 +74,22 @@ void convert_and_assert_exact(const uint8_t* src, uint32_t len, const char* name
       return;
     }
   }
+}
+
+void test_avr_flash_windows() {
+  // Independent checksums of the published v1.02 ROM windows, including bytes
+  // beyond the original C++ declarations. These reads must also pass ASan.
+  uint32_t vowel = 2166136261u;
+  for (int i = 0; i < 257; ++i)
+    vowel = (vowel ^ shruthi::wav_res_vowel_data[i]) * 16777619u;
+  CHECK(vowel == 0x9d58d3feu);
+  uint32_t envelope = 2166136261u;
+  for (int i = 0; i < 256; ++i) {
+    const uint16_t word = shruthi::lut_res_env_portamento_increments[i];
+    envelope = (envelope ^ (word & 255u)) * 16777619u;
+    envelope = (envelope ^ (word >> 8)) * 16777619u;
+  }
+  CHECK(envelope == 0xb9a17075u);
 }
 
 void test_conversion_exact() {
@@ -143,6 +160,7 @@ void test_sample_last_entry_clamp() {
 int main() {
   std::printf("AvrlibHdResourceTests start\n");
   test_conversion_exact();
+  test_avr_flash_windows();
   test_vowel_data_structure();
   test_lookup_integer();
   test_lookup_lerp();

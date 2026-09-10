@@ -19,7 +19,7 @@ add_test(NAME AvrlibHdUnitTests COMMAND AvrlibHdUnitTests)
 # the audited warning volume, so no -Werror here); consumed by the HD resource
 # tests and later by the HD engine.
 add_library(AvrlibHdResourceData STATIC
-    "${SWARAXT_SHRUTHI_ROOT}/shruthi/resources.cc"
+    "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
 )
 swaraxt_configure_shruthi_target(AvrlibHdResourceData)
 swaraxt_suppress_legacy_shruthi_warnings(AvrlibHdResourceData)
@@ -64,7 +64,7 @@ add_library(AvrlibHdClassicVoiceObj STATIC
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
     "${SWARAXT_SHRUTHI_ROOT}/shruthi/sequencer_settings.cc"
     "${SWARAXT_SHRUTHI_ROOT}/avrlib/string.cc"
-    "${SWARAXT_SHRUTHI_ROOT}/shruthi/resources.cc"
+    "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/audio_out.cc"
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/storage.cc"
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/display.cc"
