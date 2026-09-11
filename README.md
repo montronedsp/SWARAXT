@@ -87,12 +87,8 @@ SWARA XT is an independent project and is not an official Mutable Instruments pr
 
 ## Source
 
-`main` is the canonical and supported SWARA XT source branch.
-
-This tree ships the validated Classic-compatible instrument (DSP Board, VCA CV, Post Mixer, RAW/HARDWARE conditioning) through the faithful `avrlib_hd` Voice path. Classic oscillator sources remain as a parity oracle and are not compiled into the shipping plugin. HD-quality renderers stay behind explicit HD modes and must not leak into Classic-compatible states.
-
-Historical development snapshots are retained separately for preservation and parity research.
+`main` is the canonical SWARA XT source branch.
 
 ---
 
-**SWARA XT 1.1.2 — MontroneDSP**
+**SWARA XT 1.2.2 — MontroneDSP**
