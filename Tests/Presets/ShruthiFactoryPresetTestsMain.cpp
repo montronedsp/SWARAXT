@@ -111,7 +111,7 @@ void verifyOverrideParity()
         for (std::size_t p = 0; p < overridePreset.paramCount; ++p)
         {
             const char* id = overridePreset.params[p].id;
-            const float expected = overridePreset.params[p].value;
+            const float expected = static_cast<float>(overridePreset.params[p].value);
             const float actual = getFloat(factoryProc, id);
             if (! nearlyEqual(actual, expected))
             {
@@ -152,7 +152,7 @@ void verifyUserFactoryParity()
         for (std::size_t p = 0; p < record.paramCount; ++p)
         {
             const float actual = getFloat(proc, record.params[p].id);
-            if (! nearlyEqual(actual, record.params[p].value))
+            if (! nearlyEqual(actual, static_cast<float>(record.params[p].value)))
             {
                 std::printf("FAIL: user %s param %s expected %g got %g\n",
                             record.displayName, record.params[p].id,

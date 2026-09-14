@@ -1081,7 +1081,7 @@ void testFmRangeSemantics()
         expect(voice.debug_oscillator_secondary_parameter(0) == range + 24
                    && voice.debug_oscillator_secondary_parameter(1) == range + 24,
                "FM range reaches the native secondary ratio parameter");
-        for (int oscillator = 0; oscillator < 2; ++oscillator)
+        for (uint8_t oscillator = 0; oscillator < 2; ++oscillator)
         {
             const auto increment = voice.debug_oscillator_increment(oscillator);
             if (range == -24)

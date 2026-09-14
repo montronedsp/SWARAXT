@@ -27,14 +27,7 @@
 #include "shruthi/audio_out.h"
 #include "shruthi/midi_dispatcher.h"
 #include "shruthi/parameter.h"
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4100 4244 4245 4838)
-#endif
 #include "shruthi/part.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 #include "shruthi/resources.h"
 #include "shruthi/storage.h"
 #include "avrlib/random.h"
@@ -606,7 +599,8 @@ inline void Voice::UpdateDestinations() {
     if (!modulation_destinations_[MOD_DST_TRIGGER_ENV_1]) {
       envelope_[0].Trigger(ATTACK);
     }
-    modulation_destinations_[MOD_DST_TRIGGER_ENV_1] = static_cast<int8_t>(255);
+    // Firmware stores 0xFF here; modulation_destination() reads it back as 255.
+    modulation_destinations_[MOD_DST_TRIGGER_ENV_1] = -1;
   } else {
     modulation_destinations_[MOD_DST_TRIGGER_ENV_1] = 0;
   }
@@ -615,7 +609,7 @@ inline void Voice::UpdateDestinations() {
     if (!modulation_destinations_[MOD_DST_TRIGGER_ENV_2]) {
       envelope_[1].Trigger(ATTACK);
     }
-    modulation_destinations_[MOD_DST_TRIGGER_ENV_2] = static_cast<int8_t>(255);
+    modulation_destinations_[MOD_DST_TRIGGER_ENV_2] = -1;
   } else {
     modulation_destinations_[MOD_DST_TRIGGER_ENV_2] = 0;
   }

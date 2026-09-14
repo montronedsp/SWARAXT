@@ -116,10 +116,10 @@ void testEnvelopeParity() {
     // Attack, sustain, release, retrigger (attack from level), release to
     // dead, then a final retrigger at the very end.
     std::vector<std::pair<int, uint8_t> > schedule;
-    schedule.push_back(std::make_pair(16, 1));
-    schedule.push_back(std::make_pair(500, 2));
-    schedule.push_back(std::make_pair(900, 1));
-    schedule.push_back(std::make_pair(1200, 2));
+    schedule.push_back(std::make_pair(16, uint8_t{1}));
+    schedule.push_back(std::make_pair(500, uint8_t{2}));
+    schedule.push_back(std::make_pair(900, uint8_t{1}));
+    schedule.push_back(std::make_pair(1200, uint8_t{2}));
     checkEnvCase(cases[i], cases[(i + 1) % 8], kBlocks, schedule);
   }
 }

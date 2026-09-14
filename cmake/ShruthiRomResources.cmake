@@ -13,20 +13,47 @@ if(NOT shruthi_resources MATCHES "SWARAXT_AVR_VOWEL_ROM_BYTES" OR
    NOT shruthi_resources MATCHES "SWARAXT_AVR_ENVELOPE_ROM_WORDS")
     message(FATAL_ERROR "Upstream Shruthi ROM resource declarations changed")
 endif()
+
+# Several upstream LUTs hold signed musical intervals inside unsigned AVR tables
+# (scale detunes, groove offsets, formant slopes). On AVR those negative literals
+# converted implicitly; hosted C++ treats the same initializer as narrowing.
+# Restate each literal as an explicit conversion to the table's own element type:
+# the stored two's-complement bit pattern is unchanged and now visible in source.
+function(swaraxt_rewrite_rom_resource_casts content_var)
+    set(content "${${content_var}}")
+    set(rewritten "")
+    set(cursor 0)
+    string(LENGTH "${content}" content_length)
+    while(cursor LESS content_length)
+        string(SUBSTRING "${content}" ${cursor} -1 tail)
+        if(NOT tail MATCHES "const prog_uint(8|16)_t [A-Za-z0-9_]+\\[\\] PROGMEM = \\{")
+            break()
+        endif()
+        set(element_type "prog_uint${CMAKE_MATCH_1}_t")
+        set(declaration "${CMAKE_MATCH_0}")
+        string(LENGTH "${declaration}" declaration_length)
+        string(FIND "${tail}" "${declaration}" declaration_offset)
+        math(EXPR body_offset "${declaration_offset} + ${declaration_length}")
+        string(SUBSTRING "${tail}" ${body_offset} -1 after_declaration)
+        string(FIND "${after_declaration}" "};" terminator_offset)
+        if(terminator_offset LESS 0)
+            break()
+        endif()
+        string(SUBSTRING "${tail}" 0 ${declaration_offset} prefix)
+        string(SUBSTRING "${after_declaration}" 0 ${terminator_offset} body)
+        string(REGEX REPLACE "(^|[^A-Za-z0-9_.])-([0-9]+)"
+            "\\1static_cast<${element_type}>(-\\2)" body "${body}")
+        string(APPEND rewritten "${prefix}${declaration}${body}};")
+        math(EXPR cursor "${cursor} + ${body_offset} + ${terminator_offset} + 2")
+    endwhile()
+    string(SUBSTRING "${content}" ${cursor} -1 remainder)
+    string(APPEND rewritten "${remainder}")
+    set(${content_var} "${rewritten}" PARENT_SCOPE)
+endfunction()
+
+swaraxt_rewrite_rom_resource_casts(shruthi_resources)
+
 set(SWARAXT_SHRUTHI_RESOURCE_SOURCE "${CMAKE_BINARY_DIR}/generated/shruthi_rom_resources.cc")
 file(CONFIGURE OUTPUT "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
     CONTENT "#include \"shruthi/rom_resource_extensions.h\"\n${shruthi_resources}" @ONLY)
 unset(shruthi_resources)
-
-# Explicit two's-complement casts for signed literals stored in unsigned AVR LUTs.
-# Preserves bit patterns for host compilation of the generated resources TU.
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-execute_process(
-    COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_SOURCE_DIR}/scripts/rewrite_rom_resource_casts.py"
-            "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
-    RESULT_VARIABLE swaraxt_rom_rewrite_rc
-)
-if(NOT swaraxt_rom_rewrite_rc EQUAL 0)
-    message(FATAL_ERROR "Failed to rewrite Shruthi ROM resource casts")
-endif()
