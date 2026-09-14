@@ -54,7 +54,7 @@ class SubOscillator {
       if (shape != 1) {
         v = static_cast<uint8_t>(phase_.integral >> 8) < pulse_width ? 0 : 255;
       } else {
-        uint8_t tri = phase_.integral >> 7;
+        uint8_t tri = static_cast<uint8_t>(phase_.integral >> 7);
         v = phase_.integral & 0x8000 ? tri : ~tri;
       }
       const uint8_t base = *buffer;

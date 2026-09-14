@@ -431,9 +431,9 @@ inline void Voice::LoadSources() {
     } else if (op == OP_CV_LAG_PROCESSOR) {
       y >>= 2;
       ++y;
-      uint16_t v = U8U8Mul(256 - y, modulation_sources_[MOD_SRC_OP_1 + i]);
+      uint16_t v = U8U8Mul(static_cast<uint8_t>(256 - y), modulation_sources_[MOD_SRC_OP_1 + i]);
       v += U8U8Mul(y, x);
-      modulation_sources_[MOD_SRC_OP_1 + i] = v >> 8;
+      modulation_sources_[MOD_SRC_OP_1 + i] = static_cast<uint8_t>(v >> 8);
     }
   }
 
@@ -606,7 +606,7 @@ inline void Voice::UpdateDestinations() {
     if (!modulation_destinations_[MOD_DST_TRIGGER_ENV_1]) {
       envelope_[0].Trigger(ATTACK);
     }
-    modulation_destinations_[MOD_DST_TRIGGER_ENV_1] = 255;
+    modulation_destinations_[MOD_DST_TRIGGER_ENV_1] = static_cast<int8_t>(255);
   } else {
     modulation_destinations_[MOD_DST_TRIGGER_ENV_1] = 0;
   }
@@ -615,7 +615,7 @@ inline void Voice::UpdateDestinations() {
     if (!modulation_destinations_[MOD_DST_TRIGGER_ENV_2]) {
       envelope_[1].Trigger(ATTACK);
     }
-    modulation_destinations_[MOD_DST_TRIGGER_ENV_2] = 255;
+    modulation_destinations_[MOD_DST_TRIGGER_ENV_2] = static_cast<int8_t>(255);
   } else {
     modulation_destinations_[MOD_DST_TRIGGER_ENV_2] = 0;
   }
@@ -629,7 +629,7 @@ inline void Voice::UpdateDestinations() {
   int16_t* envelope_parameters = &dst_[MOD_DST_ATTACK_1];
   for (int i = 0; i < kNumEnvelopes; ++i) {
     envelope_[i].Update(
-        Clip(U15ShiftRight7(envelope_parameters[0]) - attack_mod, 0, 127),
+        static_cast<uint8_t>(Clip(U15ShiftRight7(envelope_parameters[0]) - attack_mod, 0, 127)),
         U15ShiftRight7(envelope_parameters[1]),
         U15ShiftRight7(envelope_parameters[2]),
         U15ShiftRight7(envelope_parameters[3]));
@@ -691,7 +691,8 @@ inline void Voice::RenderOscillators() {
     }
     uint24_t increment;
     uint16_t pitch_lookup_index_integral = U16ShiftRight4(ref_pitch);
-    uint8_t pitch_lookup_index_fractional = U8ShiftLeft4(ref_pitch);
+    uint8_t pitch_lookup_index_fractional = U8ShiftLeft4(
+        static_cast<uint8_t>(ref_pitch));
     uint16_t increment16 = ResourcesManager::Lookup<uint16_t, uint16_t>(
         lut_res_oscillator_increments, pitch_lookup_index_integral);
     uint16_t increment16_next = ResourcesManager::Lookup<uint16_t, uint16_t>(

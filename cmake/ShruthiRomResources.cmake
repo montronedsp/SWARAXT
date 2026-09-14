@@ -17,3 +17,16 @@ set(SWARAXT_SHRUTHI_RESOURCE_SOURCE "${CMAKE_BINARY_DIR}/generated/shruthi_rom_r
 file(CONFIGURE OUTPUT "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
     CONTENT "#include \"shruthi/rom_resource_extensions.h\"\n${shruthi_resources}" @ONLY)
 unset(shruthi_resources)
+
+# Explicit two's-complement casts for signed literals stored in unsigned AVR LUTs.
+# Preserves bit patterns for host compilation of the generated resources TU.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/scripts/rewrite_rom_resource_casts.py"
+            "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
+    RESULT_VARIABLE swaraxt_rom_rewrite_rc
+)
+if(NOT swaraxt_rom_rewrite_rc EQUAL 0)
+    message(FATAL_ERROR "Failed to rewrite Shruthi ROM resource casts")
+endif()

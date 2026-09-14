@@ -43,7 +43,7 @@ set(SWARAXT_SHRUTHI_SOURCES
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/voice_allocator.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/midi_dispatcher.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
-    "${SWARAXT_SHRUTHI_ROOT}/avrlib/string.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/string.cc"
 )
 
 set(SWARAXT_HOST_SOURCES
@@ -131,57 +131,6 @@ function(swaraxt_configure_shruthi_target target)
     )
 endfunction()
 
-# Historical Shruthi firmware / AVR tables may emit intentional conversion
-# warnings. Isolate those to the legacy TUs; do not suppress SWARA or avrlib_hd.
-set(SWARAXT_LEGACY_SHRUTHI_WARNING_SOURCES
-    "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
-    ${SWARAXT_CLASSIC_OSCILLATOR_SOURCE}
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/part.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/patch.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/parameter.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/note_stack.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/clock.cc"
-    "${SWARAXT_SHRUTHI_ROOT}/shruthi/sequencer_settings.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/system_settings.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/voice_allocator.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/midi_dispatcher.cc"
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
-    "${SWARAXT_SHRUTHI_ROOT}/avrlib/string.cc"
-)
-
-set(SWARAXT_LEGACY_VOICE_SOURCE
-    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/voice.cc")
-
-function(swaraxt_suppress_legacy_shruthi_warnings target)
-    cmake_parse_arguments(ARG "SUPPRESS_VOICE" "" "" ${ARGN})
-    set(legacy_sources ${SWARAXT_LEGACY_SHRUTHI_WARNING_SOURCES})
-    if(ARG_SUPPRESS_VOICE)
-        list(APPEND legacy_sources ${SWARAXT_LEGACY_VOICE_SOURCE})
-    endif()
-    if(MSVC)
-        set(legacy_warning_opts /wd4244 /wd4267 /wd4305 /wd4309 /wd4716 /wd4838 /wd4100 /wd4245 /wd4458 /wd4702)
-    else()
-        set(legacy_warning_opts -Wno-sign-compare -Wno-unused-parameter)
-        if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-            list(APPEND legacy_warning_opts -Wno-c++11-narrowing)
-        endif()
-        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-            list(APPEND legacy_warning_opts -Wno-narrowing)
-        endif()
-    endif()
-    set(legacy_targets ${target})
-    foreach(suffix IN ITEMS _VST3 _Standalone _AU)
-        if(TARGET ${target}${suffix})
-            list(APPEND legacy_targets ${target}${suffix})
-        endif()
-    endforeach()
-    foreach(legacy_target IN LISTS legacy_targets)
-        set_property(SOURCE ${legacy_sources}
-            TARGET_DIRECTORY ${legacy_target}
-            APPEND PROPERTY COMPILE_OPTIONS ${legacy_warning_opts})
-    endforeach()
-endfunction()
-
 function(swaraxt_enable_avrlib_hd_voice target)
     target_compile_definitions(${target} PUBLIC SWARAXT_USE_AVRLIB_HD_VOICE=1)
 endfunction()
@@ -230,8 +179,8 @@ target_link_libraries(SwaraXT
 )
 
 swaraxt_enable_warnings(SwaraXT)
+swaraxt_enable_warnings_as_errors(SwaraXT)
 swaraxt_configure_shruthi_target(SwaraXT)
-swaraxt_suppress_legacy_shruthi_warnings(SwaraXT)
 swaraxt_enable_avrlib_hd_voice(SwaraXT)
 
 if(SWARA_BUILD_TESTS)

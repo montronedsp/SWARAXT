@@ -5,3 +5,12 @@ function(swaraxt_enable_warnings target)
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
 endfunction()
+
+# Warnings-as-errors for project-owned / HD translation units.
+function(swaraxt_enable_warnings_as_errors target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /WX)
+    else()
+        target_compile_options(${target} PRIVATE -Werror)
+    endif()
+endfunction()

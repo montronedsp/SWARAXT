@@ -15,14 +15,12 @@ else()
 endif()
 add_test(NAME AvrlibHdUnitTests COMMAND AvrlibHdUnitTests)
 
-# Classic Shruthi resource tables compiled with the classic flag set (they carry
-# the audited warning volume, so no -Werror here); consumed by the HD resource
-# tests and later by the HD engine.
+# Classic Shruthi resource tables (ROM rewrite emits explicit unsigned casts).
+# Consumed by the HD resource tests and by the HD engine.
 add_library(AvrlibHdResourceData STATIC
     "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
 )
 swaraxt_configure_shruthi_target(AvrlibHdResourceData)
-swaraxt_suppress_legacy_shruthi_warnings(AvrlibHdResourceData)
 
 add_executable(AvrlibHdResourceTests
     avrlib_hd/ResourcesLoaderTestsMain.cpp
@@ -45,7 +43,6 @@ add_library(AvrlibHdClassicOscObj STATIC
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
 )
 swaraxt_configure_shruthi_target(AvrlibHdClassicOscObj)
-swaraxt_suppress_legacy_shruthi_warnings(AvrlibHdClassicOscObj)
 target_link_libraries(AvrlibHdClassicOscObj PRIVATE AvrlibHdResourceData)
 
 # Classic voice/part/patch compiled with the classic flag set so the mod-matrix
@@ -63,7 +60,7 @@ add_library(AvrlibHdClassicVoiceObj STATIC
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/shruthi/midi_dispatcher.cc"
     "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/random.cc"
     "${SWARAXT_SHRUTHI_ROOT}/shruthi/sequencer_settings.cc"
-    "${SWARAXT_SHRUTHI_ROOT}/avrlib/string.cc"
+    "${SWARAXT_SHRUTHI_ADAPTED_ROOT}/avrlib/string.cc"
     "${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/audio_out.cc"
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/storage.cc"
@@ -71,7 +68,6 @@ add_library(AvrlibHdClassicVoiceObj STATIC
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/editor.cc"
 )
 swaraxt_configure_shruthi_target(AvrlibHdClassicVoiceObj)
-swaraxt_suppress_legacy_shruthi_warnings(AvrlibHdClassicVoiceObj SUPPRESS_VOICE)
 target_link_libraries(AvrlibHdClassicVoiceObj PRIVATE AvrlibHdResourceData)
 target_compile_definitions(AvrlibHdClassicVoiceObj
     PUBLIC SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
@@ -280,7 +276,6 @@ add_executable(SwaraXTTests
 )
 set_target_properties(SwaraXTTests PROPERTIES OUTPUT_NAME SwaraXTUnitTests)
 swaraxt_configure_shruthi_target(SwaraXTTests)
-swaraxt_suppress_legacy_shruthi_warnings(SwaraXTTests SUPPRESS_VOICE)
 swaraxt_enable_warnings(SwaraXTTests)
 add_test(NAME SwaraXTUnitTests COMMAND SwaraXTTests)
 
@@ -344,7 +339,6 @@ function(swaraxt_add_plugin_console_test target)
     )
     swaraxt_enable_warnings(${target})
     swaraxt_configure_shruthi_target(${target})
-    swaraxt_suppress_legacy_shruthi_warnings(${target})
     swaraxt_enable_avrlib_hd_voice(${target})
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
@@ -452,7 +446,6 @@ function(swaraxt_add_src_quality_target target taps)
     )
     swaraxt_enable_warnings(${target})
     swaraxt_configure_shruthi_target(${target})
-    swaraxt_suppress_legacy_shruthi_warnings(${target})
     swaraxt_enable_avrlib_hd_voice(${target})
     set_target_properties(${target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endfunction()
@@ -483,5 +476,4 @@ target_link_libraries(SwaraXTParityDump
         juce::juce_recommended_warning_flags)
 swaraxt_enable_warnings(SwaraXTParityDump)
 swaraxt_configure_shruthi_target(SwaraXTParityDump)
-swaraxt_suppress_legacy_shruthi_warnings(SwaraXTParityDump)
 swaraxt_enable_avrlib_hd_voice(SwaraXTParityDump)

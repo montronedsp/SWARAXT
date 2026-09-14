@@ -435,7 +435,7 @@ void Part::Clock(bool internal) {
       }
       if (limit != lfo_limit_[i]) {
         lfo_limit_[i] = limit;
-        lfo_increment_[i] = 65536 / limit;
+        lfo_increment_[i] = static_cast<uint16_t>(65536 / limit);
       }
       lfo_[i].set_target_phase(lfo_step_[i], lfo_increment_[i]);
     }
@@ -830,7 +830,7 @@ void Part::UpdateLfoRate(uint8_t i) {
       rate = 127;
     }
     phase_increment = ResourcesManager::Lookup<uint16_t, uint8_t>(
-        lut_res_lfo_increments, rate);
+        lut_res_lfo_increments, static_cast<uint8_t>(rate));
   }
   lfo_[i].Update(
       patch_.lfo[i].waveform,
@@ -878,11 +878,11 @@ void Part::ProcessBlockInternal(bool render_audio) {
   if (sequencer_settings_.internal_clock()) {
     clock_.Tick();
     if (clock_.Wrap(swing_amount_)) {
-      swing_amount_ = S8U8MulShift8(
-          ResourcesManager::Lookup<int16_t, uint8_t>(
+      swing_amount_ = static_cast<int8_t>(S8U8MulShift8(
+          static_cast<int8_t>(ResourcesManager::Lookup<int16_t, uint8_t>(
               LUT_RES_GROOVE_SWING + sequencer_settings_.seq_groove_template,
-              arp_seq_step_),
-          sequencer_settings_.seq_groove_amount) >> 1;
+              arp_seq_step_)),
+          sequencer_settings_.seq_groove_amount) >> 1);
       Clock(true);
       clock_.Update(sequencer_settings_.seq_tempo);
     }

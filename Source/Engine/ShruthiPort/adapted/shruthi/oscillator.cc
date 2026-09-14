@@ -189,10 +189,10 @@ void Oscillator::RenderInterpolatedWavetable(uint8_t* buffer) {
       2 + (pointer >> 8));
   uint8_t gain = pointer & 0xff;
   const prog_uint8_t* wave_1 = wav_res_waves + U8U8Mul(
-      wave_index_1,
+      static_cast<uint8_t>(wave_index_1),
       129);
   const prog_uint8_t* wave_2 = wav_res_waves + U8U8Mul(
-      wave_index_2,
+      static_cast<uint8_t>(wave_index_2),
       129);
   BEGIN_SAMPLE_LOOP_MORE_REGISTERS
     UPDATE_PHASE_MORE_REGISTERS
@@ -256,7 +256,9 @@ void Oscillator::RenderCzPulseReso(uint8_t* buffer) {
     if (phase.integral < 0x4000) {
       *buffer = result;
     } else if (phase.integral < 0x8000) {
-      *buffer = U8U8MulShift8(result, ~(phase.integral - 0x4000) >> 6);
+      *buffer = U8U8MulShift8(
+          result,
+          static_cast<uint8_t>(~(phase.integral - 0x4000) >> 6));
     } else {
       *buffer = 0;
     }
@@ -285,7 +287,7 @@ void Oscillator::RenderCzReso(uint8_t* buffer) {
       } else {
         window = (phase.integral & 0x8000) ?
               ~static_cast<uint8_t>(phase.integral >> 7) :
-              phase.integral >> 7;
+              static_cast<uint8_t>(phase.integral >> 7);
       }
       *buffer++ = U8U8MulShift8(carrier, window);
     }
@@ -365,8 +367,8 @@ void Oscillator::RenderVowel(uint8_t* buffer) {
   data_.vw.update = (data_.vw.update + 1) & 3;
   if (!data_.vw.update) {
     uint8_t offset_1 = U8ShiftRight4(parameter_);
-    offset_1 = U8U8Mul(offset_1, 7);
-    uint8_t offset_2 = offset_1 + 7;
+    offset_1 = static_cast<uint8_t>(U8U8Mul(offset_1, 7));
+    uint8_t offset_2 = static_cast<uint8_t>(offset_1 + 7);
     uint8_t balance = parameter_ & 15;
 
     // Interpolate formant frequencies.
