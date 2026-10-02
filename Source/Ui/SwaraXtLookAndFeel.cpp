@@ -122,6 +122,15 @@ void SwaraXtLookAndFeel::drawRotarySlider(juce::Graphics& g,
     g.fillPath(tick, juce::AffineTransform::rotation(angle).translated(centre.x, centre.y));
 }
 
+void SwaraXtLookAndFeel::drawCallOutBoxBackground(juce::CallOutBox&, juce::Graphics& g,
+                                                  const juce::Path& path, juce::Image&)
+{
+    g.setColour(Palette::panelRaised());
+    g.fillPath(path);
+    g.setColour(Palette::line());
+    g.strokePath(path, juce::PathStrokeType(1.5f));
+}
+
 void SwaraXtLookAndFeel::drawButtonBackground(juce::Graphics& g,
                                              juce::Button& button,
                                              const juce::Colour& backgroundColour,

@@ -79,7 +79,7 @@ bool ShruthiFactoryPresets::decodePatch(const std::uint8_t* bytes,
 }
 
 void ShruthiFactoryPresets::applyPatchToApvts(const shruthi::Patch& patch,
-                                              juce::AudioProcessorValueTreeState& apvts)
+                                              juce::AudioProcessorValueTreeState& apvts, bool preserveSequence)
 {
     setIntParam(apvts, IDs::osc1Shape, patch.osc[0].shape);
     setIntParam(apvts, IDs::osc1Param, patch.osc[0].parameter);
@@ -145,15 +145,18 @@ void ShruthiFactoryPresets::applyPatchToApvts(const shruthi::Patch& patch,
 
     setIntParam(apvts, IDs::perfGlide, 0);
     setIntParam(apvts, IDs::perfLegato, 0);
-    setIntParam(apvts, IDs::seqMode, 0);
-    setIntParam(apvts, IDs::seqClockMode, 0);
-    setIntParam(apvts, IDs::seqTempo, 120);
-    setIntParam(apvts, IDs::seqSwing, 0);
-    setIntParam(apvts, IDs::seqGate, 50);
-    setIntParam(apvts, IDs::arpDirection, 0);
-    setIntParam(apvts, IDs::arpPattern, 1);
-    setIntParam(apvts, IDs::arpOctaves, 1);
-    setIntParam(apvts, IDs::arpGate, 7);
+    if (!preserveSequence)
+    {
+        setIntParam(apvts, IDs::seqMode, 0);
+        setIntParam(apvts, IDs::seqClockMode, 0);
+        setIntParam(apvts, IDs::seqTempo, 120);
+        setIntParam(apvts, IDs::seqSwing, 0);
+        setIntParam(apvts, IDs::seqGate, 50);
+        setIntParam(apvts, IDs::arpDirection, 0);
+        setIntParam(apvts, IDs::arpPattern, 1);
+        setIntParam(apvts, IDs::arpOctaves, 1);
+        setIntParam(apvts, IDs::arpGate, 7);
+    }
     setFloatParam(apvts, IDs::master, 0.85f);
 }
 

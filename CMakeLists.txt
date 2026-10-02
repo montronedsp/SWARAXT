@@ -7,7 +7,7 @@ if(APPLE)
         "macOS architectures")
 endif()
 
-project(SwaraXT VERSION 1.2.2 LANGUAGES C CXX)
+project(SwaraXT VERSION 1.2.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -82,7 +82,7 @@ juce_add_binary_data(SwaraXTFonts
     SOURCES
         resources/Fonts/din1451alt.ttf
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/braid.svg"
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/company_wordmark.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Shared/montronedsp_wordmark.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/jam_ornament.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/midnight_backdrop.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/midnight_product_lockup.svg"
@@ -90,7 +90,6 @@ juce_add_binary_data(SwaraXTFonts
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/visualizer_frame.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/NeonCobalt/neon_backdrop.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/NeonCobalt/neon_braid.svg"
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/NeonCobalt/neon_company_wordmark.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/NeonCobalt/neon_jam_ornament.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/NeonCobalt/neon_mod_matrix_frame.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/NeonCobalt/neon_product_lockup.svg"

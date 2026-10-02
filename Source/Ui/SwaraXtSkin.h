@@ -14,6 +14,11 @@ namespace swaraxt::ui {
 
 enum class SkinId { midnightGold, neonCobalt, pastel, jungle, rossocorsa };
 enum class DecorationId { legacy, pcbTrace };
+enum class ManufacturerMark { montroneDspWordmark };
+struct ManufacturerMarkDefinition {
+    static constexpr ManufacturerMark defaultMark = ManufacturerMark::montroneDspWordmark;
+    static constexpr const char* displayName = "MontroneDSP Wordmark";
+};
 enum class GuiSize { small, medium, large };
 
 enum class AssetRole : size_t {

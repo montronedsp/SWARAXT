@@ -112,10 +112,8 @@ void testEditor()
     require(p.getApvts().getRawParameterValue(IDs::dspFxParam2)->load()==63,"replay toggle reaches native endpoint");
     snapshot(editor,"board-looper-large");
     editor.setModuleViewsForTests(false,true);
-    editor.setSequencerEditorViewForTests(true);
     require(!editor.modMatrixHeaderVisibleForTests(),"SEQ header isolation preserved");
     snapshot(editor,"board-sequence-large");
-    editor.setSequencerEditorViewForTests(false);
     require(!editor.modMatrixHeaderVisibleForTests(),"ARP header isolation preserved");
     snapshot(editor,"board-arp-large");
     juce::MemoryBlock state;p.getStateInformation(state);

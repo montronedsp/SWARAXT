@@ -9,6 +9,7 @@
 #include <cstring>
 
 #include "Plugin/ApvtsFactoryPresetData.h"
+#include "Plugin/SequenceParameters.h"
 
 namespace swaraxt {
 
@@ -16,13 +17,15 @@ class ApvtsFactoryPresets {
  public:
     static void applyParams(const ApvtsFactoryParam* params,
                             std::size_t count,
-                            juce::AudioProcessorValueTreeState& apvts) noexcept
+                            juce::AudioProcessorValueTreeState& apvts,
+                            bool preserveSequence = false) noexcept
     {
         if (params == nullptr || count == 0)
             return;
 
         for (std::size_t i = 0; i < count; ++i)
         {
+            if (preserveSequence && isSequenceParameter(params[i].id)) continue;
             auto* parameter = apvts.getParameter(params[i].id);
             if (parameter == nullptr)
                 continue;

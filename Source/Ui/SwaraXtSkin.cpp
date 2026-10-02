@@ -188,7 +188,7 @@ const SwaraXtSkin& SkinRegistry::midnightGold()
         midnightPalette(),
         {
             "midnight_backdrop_svg",
-            "company_wordmark_svg",
+            "montronedsp_wordmark_svg",
             "midnight_product_lockup_svg",
             "braid_svg",
             "jam_ornament_svg",
@@ -210,7 +210,7 @@ const SwaraXtSkin& SkinRegistry::neonCobalt()
         neonPalette(),
         {
             "neon_backdrop_svg",
-            "neon_company_wordmark_svg",
+            "montronedsp_wordmark_svg",
             "neon_product_lockup_svg",
             "neon_braid_svg",
             "neon_jam_ornament_svg",
@@ -227,7 +227,7 @@ const SwaraXtSkin& SkinRegistry::pastel()
 {
     static const SwaraXtSkin skin {
         SkinId::pastel, "pastel", "Pastel", pastelPalette(),
-        { "", "company_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
+        { "", "montronedsp_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
           "jam_ornament_svg", "mod_matrix_frame_svg", "visualizer_frame_svg",
           "vco1_header_svg", "vco2_header_svg" }
     };
@@ -238,7 +238,7 @@ const SwaraXtSkin& SkinRegistry::jungle()
 {
     static const SwaraXtSkin skin {
         SkinId::jungle, "jungle", "Jungle", junglePalette(),
-        { "", "company_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
+        { "", "montronedsp_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
           "jam_ornament_svg", "mod_matrix_frame_svg", "visualizer_frame_svg",
           "vco1_header_svg", "vco2_header_svg" }
     };
@@ -249,7 +249,7 @@ const SwaraXtSkin& SkinRegistry::rossocorsa()
 {
     static const SwaraXtSkin skin {
         SkinId::rossocorsa, "rossocorsa", "Rossocorsa", rossocorsaPalette(),
-        { "", "company_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
+        { "", "montronedsp_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
           "jam_ornament_svg", "mod_matrix_frame_svg", "visualizer_frame_svg",
           "vco1_header_svg", "vco2_header_svg" }
     };
@@ -292,16 +292,28 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
         const auto* resourceName = skin.resourceNames[i];
         const auto* data = resourceName != nullptr && resourceName[0] != '\0'
             ? BinaryData::getNamedResource(resourceName, size) : nullptr;
-        assets_[i] = data != nullptr && size > 0
-            ? juce::Drawable::createFromImageData(data, static_cast<size_t>(size))
-            : nullptr;
+        if (i == indexOf(AssetRole::companyWordmark) && data != nullptr && size > 0)
+        {
+            // Recolour presentation attributes before parsing to preserve the
+            // artwork's independent outline, shadow and highlight opacities.
+            const auto colour = [](juce::Colour value) { return "#" + value.toDisplayString(false); };
+            const auto svg = juce::String::fromUTF8(data, size)
+                .replace("#ffffff", colour(skin.palette.primaryText))
+                .replace("#d0d0d0", colour(skin.palette.primaryText.interpolatedWith(skin.palette.editorBackground, 0.15f)))
+                .replace("#0a0608", colour(skin.palette.editorBackground.darker(0.5f)));
+            assets_[i] = juce::Drawable::createFromImageData(svg.toRawUTF8(), svg.getNumBytesAsUTF8());
+        }
+        else
+            assets_[i] = data != nullptr && size > 0
+                ? juce::Drawable::createFromImageData(data, static_cast<size_t>(size))
+                : nullptr;
     }
 
     const auto recolour = [this](juce::Colour source, juce::Colour target)
     {
-        for (auto& asset : assets_)
-            if (asset != nullptr)
-                asset->replaceColour(source, target);
+        for (size_t i = 0; i < assets_.size(); ++i)
+            if (i != indexOf(AssetRole::companyWordmark) && assets_[i] != nullptr)
+                assets_[i]->replaceColour(source, target);
     };
 
     recolour(juce::Colour(0xffd9dadb), skin.palette.moduleHeaderBackground);

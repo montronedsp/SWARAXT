@@ -60,6 +60,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     const swaraxt::SwaraXtEngine& engineForTests() const noexcept { return engine_; }
     swaraxt::SequenceState& sequenceState() noexcept { return sequenceState_; }
     const swaraxt::SequenceState& sequenceState() const noexcept { return sequenceState_; }
+    bool sequenceLocked() const noexcept { return sequenceLocked_.load(std::memory_order_relaxed); }
+    void setSequenceLocked(bool locked) noexcept { sequenceLocked_.store(locked, std::memory_order_relaxed); }
 
     std::vector<PresetEntry> getPresetEntries() const;
     bool loadPresetEntry(const PresetEntry& entry, juce::String& error);
@@ -76,6 +78,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
 
  private:
     void loadFactoryPreset(int index);
+    void restoreState(juce::ValueTree tree, bool fromPreset);
     swaraxt::HostTransportSnapshot captureHostTransport() noexcept;
     static bool validatePresetName(const juce::String& name, juce::String& cleanName);
     bool decodePresetData(const void* data, int sizeInBytes, juce::ValueTree& state) const;
@@ -87,6 +90,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     swaraxt::SwaraXtEngine engine_;
     int currentProgram_ = 0;
     std::atomic<bool> requestEngineReset_ { false };
+    std::atomic<bool> sequenceLocked_ { false };
     bool isPrepared_ = false;
     bool engineInitialized_ = false;
     // True after setStateInformation restores a host session; blocks setCurrentProgram

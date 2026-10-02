@@ -72,6 +72,7 @@ class SwaraXtModulePanel : public juce::Component {
     void setSecondaryActionBounds(juce::Rectangle<int> bounds);
     void setPrimaryActionBounds(juce::Rectangle<int> bounds);
     void setSecondaryHeaderVisible(bool visible);
+    void setTitle(const juce::String& title) { title_.setText(title, juce::dontSendNotification); resized(); repaint(); }
     bool secondaryHeaderVisibleForTests() const noexcept { return secondaryHeaderVisible_; }
     juce::Component& body() noexcept { return body_; }
     const juce::Component& body() const noexcept { return body_; }
@@ -183,9 +184,10 @@ class MainPanel : public juce::Component {
     void reflow();
     void setLocalViews(bool modulation, bool sequencer);
     void setBoardEditorView(bool visible);
+    bool showingSequencer() const noexcept { return showingSequencer_; }
+    std::function<void()> workspaceChanged;
     BoardPanel& boardPanelForTests() noexcept { return *boardView_; }
     void setSequencerHostSyncForTests(bool enabled);
-    void setSequencerEditorViewForTests(bool sequence);
     void setSequencerPatternForTests(int pattern);
     int sequencerPatternForTests() const;
     void setSequenceLayoutForTests(int length, int rotation, int groove);
@@ -272,8 +274,7 @@ class MainPanel : public juce::Component {
         kLfo2Retrig,
         kLfo2Sync,
         kLfo2Division,
-        kLegato,
-        kMidiChannel
+        kLegato
     };
 
     SwaraXtModulePanel sourceModule_ { "" };
@@ -305,7 +306,7 @@ class MainPanel : public juce::Component {
     bool attached_ = false;
     bool showingModulation_ = false;
     bool showingSequencer_ = false;
-    bool showingBoard_ = false;
+    std::unique_ptr<juce::CallOutBox> effectsCallout_;
 };
 
 class ModPanel : public juce::Component {
@@ -349,15 +350,15 @@ class ModPanel : public juce::Component {
 
 class SeqPanel : public juce::Component,
                  private swaraxt::SequenceState::Listener,
-                 private juce::AsyncUpdater {
+                 private juce::AsyncUpdater,
+                 private juce::Timer {
  public:
     SeqPanel();
     ~SeqPanel() override;
     void attach(SwaraXtAudioProcessor& processor);
     void reflow();
     void setHostSyncForTests(bool enabled);
-    void setEditorViewForTests(bool sequence);
-    bool showingSequenceEditorForTests() const noexcept { return showingSequenceEditor_; }
+    void lookAndFeelChanged() override;
     void selectStepForTests(int step);
     void setArpPatternForTests(int pattern);
     int arpPatternForTests() const noexcept;
@@ -403,8 +404,11 @@ class SeqPanel : public juce::Component,
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments_;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> selectorAttachments_;
     std::unique_ptr<juce::ParameterAttachment> arpPatternAttachment_;
-    juce::TextButton arpViewButton_ { "ARP" };
-    juce::TextButton sequenceViewButton_ { "SEQ" };
+    juce::Label arpHeading_, sequenceHeading_;
+    juce::TextButton lockButton_ { "LOCK" };
+    juce::TextButton randomNotes_ { "RANDOM NOTES" }, randomVelocity_ { "RANDOM VELOCITY" }, randomSequence_ { "RANDOM SEQ" };
+    juce::Random editRandom_;
+    SwaraXtAudioProcessor* processor_ = nullptr;
     std::array<juce::TextButton, swaraxt::SequenceSnapshot::kNumSteps> stepButtons_;
     SwaraXtKnob length_ { "LENGTH" };
     SwaraXtKnob rotation_ { "START" };
@@ -416,10 +420,10 @@ class SeqPanel : public juce::Component,
         "Swing", "Shuffle", "Push", "Lag", "Human", "Monkey" } };
     swaraxt::SequenceState* sequenceState_ = nullptr;
     int selectedStep_ = 0;
-    bool showingSequenceEditor_ = false;
     bool refreshingSequenceControls_ = false;
     void updateClockControls();
-    void setEditorView(bool sequence);
+    void updateModeEmphasis();
+    void timerCallback() override;
     void refreshSequenceControls();
     void writeSelectedStep(uint8_t dataA, uint8_t dataB);
     void sequenceStateChanged() override;

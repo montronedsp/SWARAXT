@@ -488,7 +488,6 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
            "Mod Matrix header is visible with the synth and matrix editor");
 
     editor.setModuleViewsForTests(false, true);
-    editor.setSequencerEditorViewForTests(false);
     expect(! editor.modMatrixHeaderVisibleForTests(),
            "Mod Matrix header is hidden behind the ARP editor");
     const auto navigation = editor.sequenceNavigationBoundsForTests();
@@ -500,23 +499,19 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
                                  "ARP selectors use canonical embedded ComboBox typography");
     }
 
-    editor.setSequencerEditorViewForTests(true);
     expectCanonicalComboFont(editor.sequenceEventComboForTests(),
                              "Sequence Event uses canonical embedded ComboBox typography");
     expect(! editor.modMatrixHeaderVisibleForTests(),
            "Mod Matrix header is hidden behind the SEQ editor");
     expect(editor.sequenceStartBoundsForTests().getX()
-               < editor.sequenceLengthBoundsForTests().getX(),
-           "Sequence Start is left of Length");
+               > editor.sequenceLengthBoundsForTests().getX(),
+           "Sequence Start follows Length in the shared clock row");
     const auto noteBounds = editor.sequenceNoteBoundsForTests();
     const auto velocityBounds = editor.sequenceVelocityBoundsForTests();
     const auto eventBounds = editor.sequenceEventComboBoundsForTests();
-    const int expectedEventCentre = noteBounds.getY() + swaraxt::ui::Layout::knobLabelHeight
-        + (noteBounds.getHeight() - swaraxt::ui::Layout::knobLabelHeight
-           - swaraxt::ui::Layout::valueBoxHeight) / 2;
-    expect(std::abs(eventBounds.getCentreY() - expectedEventCentre) <= 1
+    expect(eventBounds.getY() >= noteBounds.getY() && eventBounds.getBottom() <= noteBounds.getBottom()
                && noteBounds.getY() == velocityBounds.getY(),
-           "Sequence Event is centred with the Note and Velocity rotary controls");
+           "Sequence Event is contained in the aligned step-edit row");
 
     editor.setModuleViewsForTests(true, false);
     auto& mod = editor.modulationForTests();
@@ -638,9 +633,7 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
            "Pastel colour is restored after switching skins");
     editor.setDecorationForTests(swaraxt::ui::DecorationId::pcbTrace);
     writeScreenshot(editor, outputRoot / "pastel-pcb-trace-large.png", false, false);
-    editor.setSequencerEditorViewForTests(false);
     writeScreenshot(editor, outputRoot / "swara-1.2-arp-large.png", false, true);
-    editor.setSequencerEditorViewForTests(true);
     writeScreenshot(editor, outputRoot / "swara-1.2-seq-large.png", false, true);
 }
 

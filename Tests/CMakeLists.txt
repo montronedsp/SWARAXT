@@ -477,3 +477,4 @@ target_link_libraries(SwaraXTParityDump
 swaraxt_enable_warnings(SwaraXTParityDump)
 swaraxt_configure_shruthi_target(SwaraXTParityDump)
 swaraxt_enable_avrlib_hd_voice(SwaraXTParityDump)
+swaraxt_add_plugin_console_test(SwaraXTWorkflowTests Sequencer/WorkflowTestsMain.cpp)

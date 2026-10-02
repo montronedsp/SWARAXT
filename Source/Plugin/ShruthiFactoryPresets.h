@@ -18,7 +18,8 @@ class ShruthiFactoryPresets {
                             shruthi::Patch& patch) noexcept;
 
     static void applyPatchToApvts(const shruthi::Patch& patch,
-                                  juce::AudioProcessorValueTreeState& apvts);
+                                  juce::AudioProcessorValueTreeState& apvts,
+                                  bool preserveSequence = false);
 
     static float cutoffHzFromShruthiCode(std::uint8_t code) noexcept;
     static std::uint8_t shruthiCutoffCodeFromHz(float cutoffHz) noexcept;

@@ -95,14 +95,6 @@ juce::StringArray legatoNames()
     return { "Retrigger", "Legato" };
 }
 
-juce::StringArray midiChannelNames()
-{
-    juce::StringArray names { "Omni" };
-    for (int channel = 1; channel <= 16; ++channel)
-        names.add("Channel " + juce::String(channel));
-    return names;
-}
-
 juce::StringArray seqModeNames()
 {
     return { "Step", "Arp", "Sequence" };
@@ -625,7 +617,6 @@ MainPanel::MainPanel()
     addSelector("TIMING", timingModeNames());
     addSelector("DIVISION", beatDivisionNames());
     addSelector("VOICE", legatoNames());
-    addSelector("MIDI", midiChannelNames());
 
     sourceModule_.body().addAndMakeVisible(osc1_);
     sourceModule_.body().addAndMakeVisible(osc2_);
@@ -638,11 +629,10 @@ MainPanel::MainPanel()
 
     for (int i = kFilterCutoff; i <= kFilterMod; ++i)
         filterModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(i)]);
-    filterModule_.body().addChildComponent(*boardView_);
-    filterModule_.addAndMakeVisible(boardViewButton_);
+    perfModule_.addAndMakeVisible(boardViewButton_);
     boardViewButton_.getProperties().set("swaraxtSecondaryAction", true);
     boardViewButton_.setTooltip("Effects after the Classic filter and post-mixer level");
-    boardViewButton_.onClick = [this] { setBoardEditorView(!showingBoard_); };
+    boardViewButton_.onClick = [this] { setBoardEditorView(true); };
 
     envModule_.body().addAndMakeVisible(env1Trace_);
     envModule_.body().addAndMakeVisible(env2Trace_);
@@ -664,14 +654,13 @@ MainPanel::MainPanel()
         lfoModule_.body().addAndMakeVisible(*selectors_[static_cast<size_t>(i)]);
     for (int i : { kLfo2Sync, kLfo2Division })
         lfoModule_.body().addAndMakeVisible(*selectors_[static_cast<size_t>(i)]);
-    mixModule_.body().addAndMakeVisible(seqViewButton_);
+    mixModule_.addAndMakeVisible(seqViewButton_);
     seqViewButton_.getProperties().set("swaraxtSecondaryAction", true);
     mixModule_.body().addChildComponent(*sequencerView_);
 
     perfModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(kGlide)]);
     perfModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(kMaster)]);
     perfModule_.body().addAndMakeVisible(*selectors_[static_cast<size_t>(kLegato)]);
-    perfModule_.body().addAndMakeVisible(*selectors_[static_cast<size_t>(kMidiChannel)]);
 
     seqViewButton_.onClick = [this] { setLocalViews(false, ! showingSequencer_); };
     lookAndFeelChanged();
@@ -713,7 +702,7 @@ void MainPanel::attach(SwaraXtAudioProcessor& processor)
         swaraxt::IDs::lfo1Sync, swaraxt::IDs::lfo1Division,
         swaraxt::IDs::lfo2Wave, swaraxt::IDs::lfo2Retrig,
         swaraxt::IDs::lfo2Sync, swaraxt::IDs::lfo2Division,
-        swaraxt::IDs::perfLegato, swaraxt::IDs::midiChannel
+        swaraxt::IDs::perfLegato
     };
 
     selectorAttachments_.clear();
@@ -762,9 +751,13 @@ void MainPanel::lookAndFeelChanged()
 
 void MainPanel::setBoardEditorView(bool visible)
 {
-    showingBoard_ = visible;
-    boardViewButton_.setToggleState(visible, juce::dontSendNotification);
-    reflow();
+    effectsCallout_.reset();
+    boardView_->setVisible(visible);
+    if (!visible) return;
+    boardView_->setSize(320, 125);
+    effectsCallout_ = std::make_unique<juce::CallOutBox>(*boardView_,
+        getLocalArea(&boardViewButton_, boardViewButton_.getLocalBounds()), this);
+    effectsCallout_->enterModalState(false);
 }
 
 void MainPanel::setLocalViews(bool modulation, bool sequencer)
@@ -776,8 +769,10 @@ void MainPanel::setLocalViews(bool modulation, bool sequencer)
     seqViewButton_.setToggleState(sequencer, juce::dontSendNotification);
     seqViewButton_.setButtonText(sequencer ? "SYNTH" : "SEQ/ARP");
     mixModule_.setSecondaryHeaderVisible(! sequencer);
+    mixModule_.setTitle(sequencer ? "SEQ / ARP" : "MIXER");
     seqViewButton_.toFront(false);
     reflow();
+    if (workspaceChanged) workspaceChanged();
 }
 
 juce::ComboBox& MainPanel::sequenceEventComboForTests() noexcept
@@ -822,7 +817,7 @@ juce::Rectangle<int> MainPanel::sequenceVelocityBoundsForTests() const
 
 juce::Rectangle<int> MainPanel::sequenceNavigationBoundsForTests() const
 {
-    return seqViewButton_.getBounds();
+    return mixModule_.body().getLocalArea(&seqViewButton_, seqViewButton_.getLocalBounds());
 }
 
 juce::Rectangle<int> MainPanel::arpComboBoundsForTests(int index) const
@@ -836,10 +831,6 @@ void MainPanel::setSequencerHostSyncForTests(bool enabled)
     sequencerView_->setHostSyncForTests(enabled);
 }
 
-void MainPanel::setSequencerEditorViewForTests(bool sequence)
-{
-    sequencerView_->setEditorViewForTests(sequence);
-}
 
 void MainPanel::setSequencerPatternForTests(int pattern)
 {
@@ -866,7 +857,7 @@ void MainPanel::reflow()
     const int gap = Layout::moduleGap;
     sourceModule_.setBounds(26, 22, 318, 184);
     lfoModule_.setBounds(26, 209, 318, 298);
-    mixModule_.setBounds(383, 196, 347, 307);
+    mixModule_.setBounds(383, showingSequencer_ ? 120 : 196, 347, showingSequencer_ ? 383 : 307);
     filterModule_.setBounds(769, 22, 318, 132);
     perfModule_.setBounds(769, 157, 318, 100);
     envModule_.setBounds(769, 260, 318, 243);
@@ -878,7 +869,7 @@ void MainPanel::reflow()
     osc2_.setBounds(source);
 
     auto mix = mixModule_.body().getLocalBounds();
-    mix.removeFromTop(20);
+    if (!showingSequencer_) mix.removeFromTop(20);
     constexpr int sequenceActionWidth = 58;
     constexpr int sequenceActionHeight = 18;
     constexpr int modMatrixTitleWidth = 100;
@@ -888,10 +879,11 @@ void MainPanel::reflow()
         + 10 - bodyBounds.getX();
     const int sequenceActionY = modMatrixDividerY - bodyBounds.getY()
         - sequenceActionHeight / 2;
-    seqViewButton_.setBounds(sequenceActionX, sequenceActionY,
+    seqViewButton_.setBounds(sequenceActionX + bodyBounds.getX(), showingSequencer_ ? 2 : sequenceActionY + bodyBounds.getY(),
                              sequenceActionWidth, sequenceActionHeight);
     mixModule_.setSecondaryActionBounds(
-        seqViewButton_.getBounds().translated(bodyBounds.getX(), bodyBounds.getY()));
+        showingSequencer_ ? juce::Rectangle<int>{} : seqViewButton_.getBounds());
+    mixModule_.setPrimaryActionBounds(showingSequencer_ ? seqViewButton_.getBounds() : juce::Rectangle<int>{});
     sequencerView_->setBounds(mix);
     auto matrix = mix.removeFromBottom(133);
     matrix.removeFromTop(Layout::moduleHeaderRow);
@@ -905,11 +897,7 @@ void MainPanel::reflow()
 
     auto filter = filterModule_.body().getLocalBounds();
     boardViewButton_.setBounds(259, 1, 48, 18);
-    filterModule_.setPrimaryActionBounds(boardViewButton_.getBounds());
-    boardView_->setBounds(filter);
-    boardView_->setVisible(showingBoard_);
-    for (int i = kFilterCutoff; i <= kFilterMod; ++i)
-        knobs_[static_cast<size_t>(i)]->setVisible(!showingBoard_);
+    perfModule_.setPrimaryActionBounds(boardViewButton_.getBounds());
     layoutRow(filter, { knobs_[kFilterCutoff].get(), knobs_[kFilterResonance].get(),
                         knobs_[kFilterEnv].get(), knobs_[kFilterKey].get(),
                         knobs_[kFilterMod].get() }, 3);
@@ -976,7 +964,7 @@ void MainPanel::reflow()
 
     auto perf = perfModule_.body().getLocalBounds();
     layoutRow(perf, { knobs_[kMaster].get(), knobs_[kGlide].get(),
-                      selectors_[kLegato].get(), selectors_[kMidiChannel].get() }, 4);
+                      selectors_[kLegato].get() }, 4);
 }
 
 ModPanel::ModPanel()
@@ -1127,18 +1115,39 @@ SeqPanel::SeqPanel()
             arpPatternAttachment_->setValueAsCompleteGesture(static_cast<float>(pattern));
     };
 
-    for (auto* button : { &arpViewButton_, &sequenceViewButton_ })
-    {
+    for (auto* heading : { &arpHeading_, &sequenceHeading_ }) {
+        addAndMakeVisible(*heading);
+        heading->setJustificationType(juce::Justification::centredLeft);
+    }
+    arpHeading_.setText("ARPEGGIATOR", juce::dontSendNotification);
+    sequenceHeading_.setText("SEQUENCER", juce::dontSendNotification);
+    for (auto* button : { &lockButton_, &randomNotes_, &randomVelocity_, &randomSequence_ }) {
         addAndMakeVisible(*button);
         button->getProperties().set("swaraxtSecondaryAction", true);
     }
-    arpViewButton_.onClick = [this] { setEditorView(false); };
-    sequenceViewButton_.onClick = [this] { setEditorView(true); };
+    lockButton_.setClickingTogglesState(true);
+    lockButton_.setTooltip("Preserve Seq/Arp settings and pattern across preset changes");
+    lockButton_.onClick = [this] { if (processor_) processor_->setSequenceLocked(lockButton_.getToggleState()); };
+    const auto randomize = [this](SequenceState::Randomize kind) {
+        if (sequenceState_) { sequenceState_->randomize(kind, editRandom_); refreshSequenceControls(); }
+    };
+    randomNotes_.onClick = [randomize] { randomize(SequenceState::Randomize::notes); };
+    randomVelocity_.onClick = [randomize] { randomize(SequenceState::Randomize::velocity); };
+    randomSequence_.onClick = [randomize] { randomize(SequenceState::Randomize::sequence); };
+    randomNotes_.setTooltip("Change pitches only; preserve events, velocities and controller values");
+    randomVelocity_.setTooltip("Change velocities only; preserve pitches, events and controller values");
+    randomSequence_.setTooltip("New notes, velocities, rests/ties and controller values; preserve playback settings");
+    selectors_[kMode]->combo().onChange = [this] {
+        selectors_[kMode]->refreshDescription(); updateModeEmphasis();
+    };
+    controller_.slider().setTooltip("Sequence controller value: feeds Seq modulation sources in every mode");
+    length_.slider().setTooltip("Shared sequence/arp cycle length");
+    rotation_.slider().setTooltip("Step start offset; also used by the arp's Sequence pattern");
 
     for (int i = 0; i < static_cast<int>(stepButtons_.size()); ++i)
     {
         auto& button = stepButtons_[static_cast<size_t>(i)];
-        addChildComponent(button);
+        addAndMakeVisible(button);
         button.getProperties().set("swaraxtSecondaryAction", true);
         button.onClick = [this, i] {
             selectedStep_ = i;
@@ -1150,7 +1159,7 @@ SeqPanel::SeqPanel()
         &length_, &rotation_, &note_, &event_, &velocity_, &controller_, &groove_
     };
     for (auto* control : sequenceControls)
-        addChildComponent(control);
+        addAndMakeVisible(control);
 
     auto configureInteger = [](SwaraXtKnob& knob, int minimum, int maximum, int initial) {
         knob.slider().setRange(minimum, maximum, 1.0);
@@ -1219,7 +1228,8 @@ SeqPanel::SeqPanel()
                           static_cast<uint8_t>((SequenceSnapshot::dataB(packed) & 0xf0) | value));
     };
 
-    setEditorView(false);
+    lookAndFeelChanged();
+    updateModeEmphasis();
 }
 
 SeqPanel::~SeqPanel()
@@ -1234,7 +1244,10 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
         return;
 
     auto& apvts = processor.getApvts();
+    processor_ = &processor;
     sequenceState_ = &processor.sequenceState();
+    lockButton_.setToggleState(processor.sequenceLocked(), juce::dontSendNotification);
+    startTimerHz(4);
     sequenceState_->addListener(this);
     const char* knobIds[] = { swaraxt::IDs::seqTempo, swaraxt::IDs::seqSwing,
                               swaraxt::IDs::seqGate };
@@ -1270,6 +1283,7 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
                     juce::dontSendNotification);
                 selectors_[kPattern]->refreshDescription();
                 refreshingSequenceControls_ = false;
+                updateModeEmphasis();
             },
             nullptr);
         arpPatternAttachment_->sendInitialUpdate();
@@ -1291,11 +1305,6 @@ void SeqPanel::setHostSyncForTests(bool enabled)
 {
     selectors_[kClockMode]->combo().setSelectedItemIndex(enabled ? 1 : 0,
                                                           juce::sendNotificationSync);
-}
-
-void SeqPanel::setEditorViewForTests(bool sequence)
-{
-    setEditorView(sequence);
 }
 
 void SeqPanel::selectStepForTests(int step)
@@ -1333,24 +1342,29 @@ void SeqPanel::setSequenceStepForTests(int step, int note, int event, int veloci
     controller_.slider().setValue(juce::jlimit(0, 15, value), juce::sendNotificationSync);
 }
 
-void SeqPanel::setEditorView(bool sequence)
+void SeqPanel::lookAndFeelChanged()
 {
-    showingSequenceEditor_ = sequence;
-    arpViewButton_.setToggleState(! sequence, juce::dontSendNotification);
-    sequenceViewButton_.setToggleState(sequence, juce::dontSendNotification);
+    for (auto* heading : { &arpHeading_, &sequenceHeading_ })
+        heading->setColour(juce::Label::textColourId, Palette::skin().primaryText);
+}
 
-    for (auto& knob : knobs_)
-        knob->setVisible(! sequence);
-    for (auto& selector : selectors_)
-        selector->setVisible(! sequence);
-    for (auto& button : stepButtons_)
-        button.setVisible(sequence);
-    const std::array<juce::Component*, 7> sequenceControls {
-        &length_, &rotation_, &note_, &event_, &velocity_, &controller_, &groove_
-    };
-    for (auto* control : sequenceControls)
-        control->setVisible(sequence);
-    reflow();
+void SeqPanel::timerCallback()
+{
+    if (processor_) lockButton_.setToggleState(processor_->sequenceLocked(), juce::dontSendNotification);
+}
+
+void SeqPanel::updateModeEmphasis()
+{
+    const int mode = selectors_[kMode]->combo().getSelectedItemIndex();
+    const float arpAlpha = mode == 1 ? 1.0f : 0.55f;
+    const bool arpUsesSteps = mode == 1 && selectors_[kPattern]->combo().getSelectedItemIndex() == 15;
+    const float seqAlpha = mode == 2 || arpUsesSteps ? 1.0f : 0.55f;
+    arpHeading_.setAlpha(arpAlpha);
+    for (int index : { kDirection, kPattern, kOctaves }) selectors_[static_cast<size_t>(index)]->setAlpha(arpAlpha);
+    sequenceHeading_.setAlpha(seqAlpha);
+    for (auto* control : std::array<juce::Component*, 3>{ &note_, &event_, &velocity_ }) control->setAlpha(seqAlpha);
+    for (auto& button : stepButtons_) button.setAlpha(seqAlpha);
+    // Controller values and cycle timing also drive modulation in Step/Arp modes.
 }
 
 void SeqPanel::refreshSequenceControls()
@@ -1371,9 +1385,14 @@ void SeqPanel::refreshSequenceControls()
     for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
     {
         const auto packed = snapshot.steps[static_cast<size_t>(i)];
-        const auto value = SequenceSnapshot::dataB(packed) & 0x0f;
+        const auto a = SequenceSnapshot::dataA(packed);
+        const auto b = SequenceSnapshot::dataB(packed);
+        const auto pitch = juce::MidiMessage::getMidiNoteName(a & 0x7f, true, true, 3);
+        const auto event = (a & 0x80) == 0 ? "Rest" : ((b & 0x80) != 0 ? "Tie" : "Note");
         auto& button = stepButtons_[static_cast<size_t>(i)];
-        button.setButtonText(juce::String::formatted("%02d:%X", i + 1, value));
+        button.setButtonText(juce::String(i + 1) + ":" + ((a & 0x80) == 0 ? "-" : pitch));
+        button.setTooltip("Step " + juce::String(i + 1) + ": " + event + " " + pitch
+            + ", velocity " + juce::String((b >> 4) & 7) + ", value " + juce::String(b & 15));
         button.setToggleState(i == selectedStep_, juce::dontSendNotification);
     }
 
@@ -1387,6 +1406,7 @@ void SeqPanel::refreshSequenceControls()
                                         juce::dontSendNotification);
     event_.refreshDescription();
     refreshingSequenceControls_ = false;
+    updateModeEmphasis();
 }
 
 void SeqPanel::writeSelectedStep(uint8_t dataA, uint8_t dataB)
@@ -1407,54 +1427,34 @@ void SeqPanel::handleAsyncUpdate()
 
 void SeqPanel::reflow()
 {
-    auto area = getLocalBounds();
-    auto tabs = area.removeFromTop(22);
-    arpViewButton_.setBounds(tabs.removeFromLeft(46));
-    tabs.removeFromLeft(4);
-    sequenceViewButton_.setBounds(tabs.removeFromLeft(46));
-
-    if (showingSequenceEditor_)
-    {
-        auto stepGrid = area.removeFromTop(58);
-        for (int row = 0; row < 2; ++row)
-        {
-            auto stepRow = stepGrid.removeFromTop(27);
-            if (row == 0)
-                stepGrid.removeFromTop(4);
-            const int gap = 2;
-            const int width = juce::jmax(1, (stepRow.getWidth() - gap * 7) / 8);
-            for (int column = 0; column < 8; ++column)
-            {
-                stepButtons_[static_cast<size_t>(row * 8 + column)].setBounds(
-                    stepRow.removeFromLeft(width));
-                stepRow.removeFromLeft(gap);
-            }
+    auto area = getLocalBounds().reduced(2);
+    constexpr int gap = 6;
+    layoutRow(area.removeFromTop(38), { selectors_[kMode].get(), selectors_[kClockMode].get(),
+                                      selectors_[kDivision].get(), &groove_ }, gap);
+    area.removeFromTop(4);
+    layoutRow(area.removeFromTop(58), { knobs_[kTempo].get(), knobs_[kSwing].get(), knobs_[kGate].get(),
+                                      &length_, &rotation_ }, gap);
+    area.removeFromTop(gap);
+    arpHeading_.setBounds(area.removeFromTop(18));
+    layoutRow(area.removeFromTop(38), { selectors_[kDirection].get(), selectors_[kPattern].get(),
+                                      selectors_[kOctaves].get() }, gap);
+    area.removeFromTop(gap);
+    auto heading = area.removeFromTop(22);
+    lockButton_.setBounds(heading.removeFromRight(58));
+    sequenceHeading_.setBounds(heading);
+    area.removeFromTop(4);
+    for (int row = 0; row < 2; ++row) {
+        auto steps = area.removeFromTop(22);
+        const int width = (steps.getWidth() - 7 * 3) / 8;
+        for (int col = 0; col < 8; ++col) {
+            stepButtons_[static_cast<size_t>(row * 8 + col)].setBounds(steps.removeFromLeft(width));
+            steps.removeFromLeft(3);
         }
-
         area.removeFromTop(3);
-        auto common = area.removeFromTop(area.getHeight() / 2);
-        layoutRow(common, { &rotation_, &length_, &groove_ }, 3);
-        layoutRow(area, { &note_, &event_, &velocity_, &controller_ }, 3);
-
-        auto eventCombo = event_.combo().getBounds();
-        const int rotaryAreaHeight = juce::jmax(
-            0, event_.getHeight() - Layout::knobLabelHeight - Layout::valueBoxHeight);
-        eventCombo.setY(Layout::knobLabelHeight
-                        + (rotaryAreaHeight - Layout::selectorHeight) / 2);
-        event_.combo().setBounds(eventCombo);
-        return;
     }
-
-    constexpr int selectorRowHeight = Layout::selectorLabelHeight
-        + Layout::selectorHeight + 7;
-    auto row1 = area.removeFromTop(selectorRowHeight);
-    auto row2 = area.removeFromTop(selectorRowHeight);
-    auto row3 = area.removeFromBottom(72);
-    layoutRow(row1, { selectors_[kMode].get(), selectors_[kClockMode].get(),
-                      selectors_[kDirection].get() }, 4);
-    layoutRow(row2, { selectors_[kPattern].get(), selectors_[kOctaves].get(),
-                      selectors_[kDivision].get() }, 4);
-    layoutRow(row3, { knobs_[kTempo].get(), knobs_[kSwing].get(), knobs_[kGate].get() }, 4);
+    layoutRow(area.removeFromTop(62), { &note_, &event_, &velocity_, &controller_ }, gap);
+    area.removeFromTop(gap);
+    layoutRow(area.removeFromTop(22), { &randomNotes_, &randomVelocity_, &randomSequence_ }, gap);
 }
 
 }  // namespace swaraxt::ui

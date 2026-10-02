@@ -13,6 +13,8 @@ class SwaraXtLookAndFeel : public juce::LookAndFeel_V4 {
  public:
     SwaraXtLookAndFeel();
     void applySkin();
+    void drawCallOutBoxBackground(juce::CallOutBox&, juce::Graphics&,
+                                  const juce::Path&, juce::Image&) override;
     juce::Font regularFont(float height) const;
 
     void drawRotarySlider(juce::Graphics& g,

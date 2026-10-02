@@ -7,7 +7,6 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $assets = @{
-    '01_montrone_dsp_wordmark.svg' = 'company_wordmark.svg'
     '02_swara_xt_wordmark.svg' = 'product_wordmark.svg'
     '03_instrument_square_mark.svg' = 'instrument_mark.svg'
     '04_svara_devanagari_mark.svg' = 'svara_mark.svg'
@@ -215,7 +214,6 @@ function Write-NeonVariant([string] $InputName, [string] $OutputName,
     Write-Utf8 (Join-Path $NeonDestinationRoot $OutputName) $content
 }
 
-Write-NeonVariant 'company_wordmark.svg' 'neon_company_wordmark.svg' @{ '#e7ca83'='#f2f7ff'; '#8e6b29'='#f2f7ff' }
 Write-NeonVariant 'braid.svg' 'neon_braid.svg' @{ '#e7ca83'='#318fdf'; '#8e6b29'='#318fdf' }
 Write-NeonVariant 'jam_ornament.svg' 'neon_jam_ornament.svg' @{ '#e7ca83'='#318fdf'; '#8e6b29'='#00c9ff' }
 Write-NeonVariant 'mod_matrix_frame.svg' 'neon_mod_matrix_frame.svg' @{ '#e7ca83'='#8d54ff'; '#8e6b29'='#00c9ff' }

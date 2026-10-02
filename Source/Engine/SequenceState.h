@@ -59,6 +59,35 @@ class SequenceState {
 
     static SequenceSnapshot defaultSnapshot() noexcept { return {}; }
 
+    enum class Randomize { notes, velocity, sequence };
+    void randomize(Randomize kind, juce::Random& random)
+    {
+        auto pattern = snapshot();
+        constexpr std::array<int, 5> scale { 0, 2, 4, 7, 9 };
+        const int root = juce::jlimit(24, 84, static_cast<int>(SequenceSnapshot::dataA(pattern.steps[0]) & 0x7f));
+        bool previousGate = false;
+        for (auto& packed : pattern.steps)
+        {
+            auto a = SequenceSnapshot::dataA(packed);
+            auto b = SequenceSnapshot::dataB(packed);
+            if (kind != Randomize::velocity)
+                a = static_cast<uint8_t>((a & 0x80) | (root + scale[static_cast<size_t>(random.nextInt(5))]
+                                                     + 12 * random.nextInt(2)));
+            if (kind != Randomize::notes)
+                b = static_cast<uint8_t>((b & 0x8f) | ((1 + random.nextInt(7)) << 4));
+            if (kind == Randomize::sequence)
+            {
+                const bool gate = &packed == &pattern.steps[0] || random.nextInt(5) != 0;
+                const bool tie = gate && previousGate && random.nextInt(8) == 0;
+                a = static_cast<uint8_t>((a & 0x7f) | (gate ? 0x80 : 0));
+                b = static_cast<uint8_t>((b & 0x70) | (tie ? 0x80 : 0) | random.nextInt(16));
+                previousGate = gate;
+            }
+            packed = SequenceSnapshot::pack(a, b);
+        }
+        store(pattern);
+    }
+
     bool capture(SequenceSnapshot& snapshot, uint32_t& revision) const noexcept
     {
         const uint32_t before = revision_.load(std::memory_order_acquire);

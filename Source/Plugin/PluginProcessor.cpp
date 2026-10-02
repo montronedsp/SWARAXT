@@ -224,14 +224,18 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
     currentProgram_ = index;
 
     // Start from APVTS defaults (Shruthi-aligned init), then specialize.
-    sequenceState_.resetToDefault();
+    const bool preserveSequence = sequenceLocked();
+    // Do not publish transient preset values for the protected subsystem.
+    if (!preserveSequence) sequenceState_.resetToDefault();
     for (auto* param : getParameters())
     {
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
-            ranged->setValueNotifyingHost(ranged->getDefaultValue());
+            if (!preserveSequence || !swaraxt::isSequenceParameter(ranged->paramID))
+                ranged->setValueNotifyingHost(ranged->getDefaultValue());
     }
 
-    auto setInt = [this](const char* id, int value) {
+    auto setInt = [this, preserveSequence](const char* id, int value) {
+        if (preserveSequence && swaraxt::isSequenceParameter(id)) return;
         if (auto* p = dynamic_cast<juce::AudioParameterInt*>(apvts_.getParameter(id)))
             *p = value;
     };
@@ -244,7 +248,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
     {
         const int userIndex = index - swaraxt::kUserFactoryPresetStart;
         const auto& record = swaraxt::kUserFactoryPresets[static_cast<std::size_t>(userIndex)];
-        swaraxt::ApvtsFactoryPresets::applyParams(record.params, record.paramCount, apvts_);
+        swaraxt::ApvtsFactoryPresets::applyParams(record.params, record.paramCount, apvts_, preserveSequence);
         requestEngineReset_.store(true, std::memory_order_release);
         return;
     }
@@ -259,7 +263,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             // Manually corrected FIXED/FINALFIX presets are authoritative.
             swaraxt::ApvtsFactoryPresets::applyParams(overridePreset->params,
                                                       overridePreset->paramCount,
-                                                      apvts_);
+                                                      apvts_, preserveSequence);
         }
         else
         {
@@ -267,7 +271,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             if (swaraxt::ShruthiFactoryPresets::decodePatch(record.bytes.data(),
                                                              record.bytes.size(),
                                                              patch))
-                swaraxt::ShruthiFactoryPresets::applyPatchToApvts(patch, apvts_);
+                swaraxt::ShruthiFactoryPresets::applyPatchToApvts(patch, apvts_, preserveSequence);
         }
         requestEngineReset_.store(true, std::memory_order_release);
         return;
@@ -477,7 +481,7 @@ bool SwaraXtAudioProcessor::loadPresetEntry(const PresetEntry& entry, juce::Stri
         return false;
     }
 
-    setStateInformation(data.getData(), static_cast<int>(data.getSize()));
+    restoreState(decoded, true);
     currentUserPresetName_ = entry.name;
     return true;
 }
@@ -512,6 +516,11 @@ bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
     currentUserPresetName_ = cleanName;
     juce::MemoryBlock data;
     getStateInformation(data);
+    if (auto xml = getXmlFromBinary(data.getData(), static_cast<int>(data.getSize())))
+    {
+        xml->removeAttribute("sequenceLocked");
+        copyXmlToBinary(*xml, data);
+    }
     juce::TemporaryFile temporary(target);
     if (! temporary.getFile().replaceWithData(data.getData(), data.getSize())
         || ! temporary.overwriteTargetFileWithTemporary())
@@ -531,6 +540,7 @@ void SwaraXtAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     auto state = apvts_.copyState();
     canonicaliseLegacyModes(state);
     state.setProperty("stateVersion", kStateVersion, nullptr);
+    state.setProperty("sequenceLocked", sequenceLocked(), nullptr);
     state.setProperty("currentProgram", currentProgram_, nullptr);
     state.setProperty("presetKind", currentUserPresetName_.isEmpty() ? "factory" : "user", nullptr);
     state.setProperty("presetName", currentPresetName(), nullptr);
@@ -546,53 +556,73 @@ void SwaraXtAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
-    {
-        auto tree = juce::ValueTree::fromXml(*xml);
-        if (tree.isValid() && tree.hasType(kStateRoot))
-        {
-            const int version = static_cast<int>(tree.getProperty("stateVersion", 1));
-            if (version > kStateVersion || version < 1)
-                return;
+        restoreState(juce::ValueTree::fromXml(*xml), false);
+}
 
-            // APVTS otherwise retains current values for absent parameters.
-            // Legacy states must not inherit an active Board/FX configuration.
-            for (const auto* id : { swaraxt::IDs::filterModel, swaraxt::IDs::dspFxProgram,
-                                   swaraxt::IDs::dspFxParam1, swaraxt::IDs::dspFxParam2,
-                                   swaraxt::IDs::dspBoardRouting, swaraxt::IDs::postMixer,
-                                   swaraxt::IDs::inputConditioning })
+void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
+{
+    if (!tree.isValid() || !tree.hasType(kStateRoot)) return;
+    const int version = static_cast<int>(tree.getProperty("stateVersion", 1));
+    if (version > kStateVersion || version < 1) return;
+    const bool preserveSequence = fromPreset && sequenceLocked();
+    if (preserveSequence)
+    {
+        // Merge the protected snapshot before APVTS publication, avoiding
+        // intermediate sequence/arp changes in the engine and attachments.
+        for (const auto* id : swaraxt::sequenceParameterIds)
+        {
+            auto child = tree.getChildWithProperty("id", id);
+            if (!child.isValid())
             {
-                if (!tree.getChildWithProperty("id", id).isValid())
-                {
-                    const auto* parameter = apvts_.getParameter(id);
-                    juce::ValueTree value("PARAM");
-                    value.setProperty("id", id, nullptr);
-                    value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
-                    tree.addChild(value, -1, nullptr);
-                }
+                child = juce::ValueTree("PARAM");
+                child.setProperty("id", id, nullptr);
+                tree.addChild(child, -1, nullptr);
             }
-            canonicaliseLegacyModes(tree);
-            apvts_.replaceState(tree);
-            if (! sequenceState_.restoreFromValueTree(tree.getChildWithName("SEQUENCE")))
-            {
-                auto legacySequence = swaraxt::SequenceState::defaultSnapshot();
-                if (const auto* pattern = apvts_.getRawParameterValue(swaraxt::IDs::arpPattern))
-                    legacySequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 7,
-                        static_cast<int>(std::lround(pattern->load()))));
-                sequenceState_.store(legacySequence);
-            }
-            setFilterQuality(decodeFilterQuality(
-                tree.getProperty(kFilterQualityProperty,
-                                 static_cast<int>(swaraxt::FilterQuality::normal))));
-            currentProgram_ = juce::jlimit(0,
-                                           getNumPrograms() - 1,
-                                           static_cast<int>(tree.getProperty("currentProgram", 0)));
-            currentUserPresetName_ = tree.getProperty("presetKind") == "user"
-                ? tree.getProperty("presetName").toString().trim()
-                : juce::String {};
-            hostSessionStateRestored_ = true;
-            requestEngineReset_.store(true, std::memory_order_release);
+            child.setProperty("value", apvts_.getRawParameterValue(id)->load(), nullptr);
+        }
+        if (const auto existing = tree.getChildWithName("SEQUENCE"); existing.isValid())
+            tree.removeChild(existing, nullptr);
+        tree.addChild(sequenceState_.toValueTree(), -1, nullptr);
+    }
+    if (!fromPreset) setSequenceLocked(static_cast<bool>(tree.getProperty("sequenceLocked", false)));
+    tree.setProperty("sequenceLocked", sequenceLocked(), nullptr);
+    // APVTS otherwise retains current values for absent parameters.
+    // Legacy states must not inherit an active Board/FX configuration.
+    for (const auto* id : { swaraxt::IDs::filterModel, swaraxt::IDs::dspFxProgram,
+                           swaraxt::IDs::dspFxParam1, swaraxt::IDs::dspFxParam2,
+                           swaraxt::IDs::dspBoardRouting, swaraxt::IDs::postMixer,
+                           swaraxt::IDs::inputConditioning })
+    {
+        if (!tree.getChildWithProperty("id", id).isValid())
+        {
+            const auto* parameter = apvts_.getParameter(id);
+            juce::ValueTree value("PARAM");
+            value.setProperty("id", id, nullptr);
+            value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
+            tree.addChild(value, -1, nullptr);
         }
     }
+    canonicaliseLegacyModes(tree);
+    apvts_.replaceState(tree);
+    if (!preserveSequence && !sequenceState_.restoreFromValueTree(tree.getChildWithName("SEQUENCE")))
+    {
+        auto legacySequence = swaraxt::SequenceState::defaultSnapshot();
+        if (const auto* pattern = apvts_.getRawParameterValue(swaraxt::IDs::arpPattern))
+            legacySequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 7,
+                static_cast<int>(std::lround(pattern->load()))));
+        sequenceState_.store(legacySequence);
+    }
+    setFilterQuality(decodeFilterQuality(
+        tree.getProperty(kFilterQualityProperty,
+                         static_cast<int>(swaraxt::FilterQuality::normal))));
+    currentProgram_ = juce::jlimit(0,
+                                   getNumPrograms() - 1,
+                                   static_cast<int>(tree.getProperty("currentProgram", 0)));
+    currentUserPresetName_ = tree.getProperty("presetKind") == "user"
+        ? tree.getProperty("presetName").toString().trim()
+        : juce::String {};
+    hostSessionStateRestored_ = !fromPreset;
+    requestEngineReset_.store(true, std::memory_order_release);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

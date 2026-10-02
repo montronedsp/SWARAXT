@@ -264,7 +264,6 @@ void testEditorRecreationAndViewIsolation()
         if (editor != nullptr)
         {
             editor->setModuleViewsForTests(false, true);
-            editor->setSequencerEditorViewForTests(true);
             const int visibleMode = getInt(processor, swaraxt::IDs::seqMode);
             expect(visibleMode == shruthi::SEQUENCER_MODE_STEP,
                    "ARP/SEQ editor view does not change runtime mode");
@@ -316,8 +315,6 @@ void testEditorRecreationAndViewIsolation()
                        "host automation reaches the complete sequence state while the editor is open");
                 editor->setSequencerPatternForTests(shruthi::kNumArpeggiatorPatterns);
             }
-            editor->setSequencerEditorViewForTests(false);
-            editor->setSequencerEditorViewForTests(true);
         }
         expect(sameSequence(processor.sequenceState().snapshot(), sequence),
                "editor close/reopen does not mutate sequence state");

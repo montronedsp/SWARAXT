@@ -7,7 +7,7 @@
 
 namespace {
 
-const juce::Rectangle<float> companyWordmarkBounds { 474.0f, 20.0f, 165.0f, 23.5f };
+const juce::Rectangle<float> companyWordmarkBounds { 461.0f, 17.0f, 191.0f, 34.3f };
 const juce::Rectangle<float> presetFrameBounds { 414.0f, 58.0f, 284.0f, 52.0f };
 
 constexpr int presetSelectorX = 447;
@@ -161,6 +161,7 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     designSurface_.addAndMakeVisible(mainPanel_);
     mainPanel_.toBack();
     mainPanel_.attach(processor_);
+    mainPanel_.workspaceChanged = [this] { designSurface_.repaint(); };
     applySkin(skinId_, false);
     refreshPresetList();
     applyGuiSize(guiSize_, false);
@@ -240,9 +241,10 @@ void SwaraXtAudioProcessorEditor::paintDesignSurface(juce::Graphics& g)
     g.setColour(Palette::skin().displayBorder);
     g.drawRoundedRectangle(presetFrameBounds, 8.0f, 1.2f);
 
-    if (const auto* lockup = assets_.get(AssetRole::productLockup))
-        lockup->drawWithin(g, productLockupBoundsForTests(),
-                           juce::RectanglePlacement::stretchToFit, 1.0f);
+    if (!mainPanel_.showingSequencer())
+        if (const auto* lockup = assets_.get(AssetRole::productLockup))
+            lockup->drawWithin(g, productLockupBoundsForTests(),
+                               juce::RectanglePlacement::stretchToFit, 1.0f);
 }
 
 void SwaraXtAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
@@ -275,15 +277,35 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     qualityMenu.addItem(302, "Normal", true, filterQuality_ == swaraxt::FilterQuality::normal);
     qualityMenu.addItem(303, "Eco", true, filterQuality_ == swaraxt::FilterQuality::eco);
 
+    juce::PopupMenu midiMenu;
+    const int midiChannel = static_cast<int>(processor_.getApvts().getRawParameterValue(swaraxt::IDs::midiChannel)->load());
+    for (int channel = 0; channel <= 16; ++channel)
+        midiMenu.addItem(400 + channel, channel == 0 ? "Omni" : "Channel " + juce::String(channel),
+                         true, channel == midiChannel);
+    juce::PopupMenu markMenu;
+    markMenu.addItem(500, ManufacturerMarkDefinition::displayName, true,
+                     manufacturerMark_ == ManufacturerMark::montroneDspWordmark);
+
     juce::PopupMenu menu;
+    menu.addSubMenu("MIDI Channel", midiMenu);
+    menu.addSubMenu("Filter Quality", qualityMenu);
+    menu.addSeparator();
+    menu.addSubMenu("Manufacturer Mark", markMenu);
     menu.addSubMenu("Skin", skinMenu);
     menu.addSubMenu("Decoration", decorationMenu);
     menu.addSubMenu("GUI Size", sizeMenu);
-    menu.addSubMenu("Filter Quality", qualityMenu);
     juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
                        [safeThis](int result) {
         if (safeThis == nullptr) return;
+        if (result >= 400 && result <= 416)
+        {
+            auto* parameter = safeThis->processor_.getApvts().getParameter(swaraxt::IDs::midiChannel);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(result - 400)));
+            parameter->endChangeGesture();
+        }
+        if (result == 500) safeThis->manufacturerMark_ = ManufacturerMark::montroneDspWordmark;
         if (result == 100) safeThis->applySkin(SkinId::midnightGold, true);
         if (result == 101) safeThis->applySkin(SkinId::neonCobalt, true);
         if (result == 102) safeThis->applySkin(SkinId::pastel, true);
@@ -520,10 +542,6 @@ void SwaraXtAudioProcessorEditor::setSequencerHostSyncForTests(bool enabled)
     mainPanel_.setSequencerHostSyncForTests(enabled);
 }
 
-void SwaraXtAudioProcessorEditor::setSequencerEditorViewForTests(bool sequence)
-{
-    mainPanel_.setSequencerEditorViewForTests(sequence);
-}
 
 void SwaraXtAudioProcessorEditor::setSequencerPatternForTests(int pattern)
 {

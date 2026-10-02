@@ -29,7 +29,6 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void setBoardEditorViewForTests(bool visible) { mainPanel_.setBoardEditorView(visible); }
     swaraxt::ui::BoardPanel& boardPanelForTests() noexcept { return mainPanel_.boardPanelForTests(); }
     void setSequencerHostSyncForTests(bool enabled);
-    void setSequencerEditorViewForTests(bool sequence);
     void setSequencerPatternForTests(int pattern);
     int sequencerPatternForTests() const;
     void setSequenceLayoutForTests(int length, int rotation, int groove);
@@ -143,6 +142,7 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     swaraxt::ui::SwaraXtLookAndFeel lookAndFeel_;
     swaraxt::ui::SkinId skinId_ = swaraxt::ui::SkinId::pastel;
     swaraxt::ui::DecorationId decorationId_ = swaraxt::ui::DecorationId::legacy;
+    swaraxt::ui::ManufacturerMark manufacturerMark_ = swaraxt::ui::ManufacturerMarkDefinition::defaultMark;
     swaraxt::ui::GuiSize guiSize_ = swaraxt::ui::GuiSize::medium;
     swaraxt::FilterQuality filterQuality_ = swaraxt::FilterQuality::normal;
     swaraxt::ui::SkinAssetCache assets_ { swaraxt::ui::SkinRegistry::pastel() };
