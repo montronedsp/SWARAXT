@@ -641,7 +641,7 @@ MainPanel::MainPanel()
     filterModule_.body().addChildComponent(*boardView_);
     filterModule_.addAndMakeVisible(boardViewButton_);
     boardViewButton_.getProperties().set("swaraxtSecondaryAction", true);
-    boardViewButton_.setTooltip("Filter / DSP Board and effects controls");
+    boardViewButton_.setTooltip("Effects after the Classic filter and post-mixer level");
     boardViewButton_.onClick = [this] { setBoardEditorView(!showingBoard_); };
 
     envModule_.body().addAndMakeVisible(env1Trace_);

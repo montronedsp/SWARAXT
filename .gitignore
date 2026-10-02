@@ -64,6 +64,9 @@ Thumbs.db
 # Agent / IDE local policy (never commit to public tree)
 .cursor/
 AGENTS.md
+AGENT.md
+agents.md
+agent.md
 .cursorrules
 .cursorignore
 **/.cursor/

@@ -55,7 +55,7 @@ void audioMatrix(std::ostream& csv) {
         std::vector<float> audio; audio.reserve(16384); double peak = 0;
         for (int i = 0; i < 32768; ++i) {
             const float input = static_cast<float>(amplitude * std::sin(2 * swaraxt::kPi * hz * i / native));
-            const float y = filter.processInstrumentSample(input, 1, 1);
+            const float y = filter.processInstrumentSample(input, 1);
             check(std::isfinite(y) && std::abs(y) <= 8, "complete IR3109 signal finite and bounded");
             if (i >= 16384) { audio.push_back(y); peak = std::max(peak, std::abs(static_cast<double>(y))); }
         }
@@ -79,7 +79,7 @@ void lowLevelAndTail() {
     swaraxt::SwaraXtFilterParams p; p.cutoffHz = 20000; filter.setParams(p);
     std::vector<float> audio;
     for (int i = 0; i < 32768; ++i) {
-        const float output = filter.processInstrumentSample(static_cast<float>(1.e-4 * std::sin(2 * swaraxt::kPi * 1000 * i / native)), 1, 1);
+        const float output = filter.processInstrumentSample(static_cast<float>(1.e-4 * std::sin(2 * swaraxt::kPi * 1000 * i / native)), 1);
         if (i >= 16384) audio.push_back(output);
     }
     const double measured = std::abs(project(audio, 1000)) / 1.e-4;
@@ -91,12 +91,12 @@ void lowLevelAndTail() {
     check(std::abs(measured / expected - 1) < .015, "small-signal gain agrees with independently assembled resistor/OTA transfer");
     int drain = 0;
     while (filter.instrumentTailActive() && drain < static_cast<int>(native * 5)) {
-        const auto y = filter.processInstrumentSample(0, 0, 1);
+        const auto y = filter.processInstrumentSample(0, 0);
         check(std::isfinite(y), "release output is finite"); ++drain;
     }
     check(drain > swaraxt::FilterRateConverter::kSpan, "release drains analog and FIR tails");
     check(drain < native * 5, "release reaches dormant threshold within five seconds");
-    filter.reset(); check(filter.processInstrumentSample(0, 0, 1) == 0, "hard reset is silent");
+    filter.reset(); check(filter.processInstrumentSample(0, 0) == 0, "hard reset is silent");
 }
 void resetAfterDifferentPatch() {
     swaraxt::SwaraXtFilter filter; filter.prepare(native);
@@ -107,7 +107,7 @@ void resetAfterDifferentPatch() {
         filter.setParams(params);
         std::vector<float> audio(2048);
         for (size_t i = 0; i < audio.size(); ++i)
-            audio[i] = filter.processInstrumentSample(i == 0 ? 1.f : .1f, 1, 1);
+            audio[i] = filter.processInstrumentSample(i == 0 ? 1.f : .1f, 1);
         return audio;
     };
     const auto first = render(700, .55f);
@@ -123,7 +123,7 @@ void explicitByteCv() {
         params.cutoffHz = 10; // Deliberately different RAW/diagnostic mapping.
         params.boardCutoffCvVolts = byte * (5.0 / 255.0);
         filter.setParams(params);
-        filter.processInstrumentSample(0, 0, 1);
+        filter.processInstrumentSample(0, 0);
         check(std::abs(filter.boardCoreForTests().cutoffCv() - params.boardCutoffCvVolts) < 1.e-12,
             "all 256 firmware CV codes reach hardware domain independently of RAW Hz limits");
     }

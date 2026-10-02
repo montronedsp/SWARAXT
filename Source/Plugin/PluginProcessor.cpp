@@ -17,6 +17,18 @@ namespace {
 
 constexpr const char* kFilterQualityProperty = "filterQuality";
 
+void canonicaliseLegacyModes(juce::ValueTree& state)
+{
+    for (auto child : state)
+    {
+        const auto id = child.getProperty("id").toString();
+        if (id == swaraxt::IDs::inputConditioning)
+            child.setProperty("value", 1.0f, nullptr);
+        else if (id == swaraxt::IDs::filterModel || id == swaraxt::IDs::dspBoardRouting)
+            child.setProperty("value", 0.0f, nullptr);
+    }
+}
+
 swaraxt::FilterQuality decodeFilterQuality(const juce::var& value)
 {
     const int encoded = static_cast<int>(value);
@@ -517,6 +529,7 @@ void SwaraXtAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     juce::ignoreUnused(destData);
   #else
     auto state = apvts_.copyState();
+    canonicaliseLegacyModes(state);
     state.setProperty("stateVersion", kStateVersion, nullptr);
     state.setProperty("currentProgram", currentProgram_, nullptr);
     state.setProperty("presetKind", currentUserPresetName_.isEmpty() ? "factory" : "user", nullptr);
@@ -553,13 +566,11 @@ void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInByte
                     const auto* parameter = apvts_.getParameter(id);
                     juce::ValueTree value("PARAM");
                     value.setProperty("id", id, nullptr);
-                    // Pre-conditioning states used RAW. Preserve that explicit
-                    // compatibility choice even though new instances use board mode.
-                    value.setProperty("value", juce::String(id) == swaraxt::IDs::inputConditioning
-                        ? 0.0f : parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
+                    value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
                     tree.addChild(value, -1, nullptr);
                 }
             }
+            canonicaliseLegacyModes(tree);
             apvts_.replaceState(tree);
             if (! sequenceState_.restoreFromValueTree(tree.getChildWithName("SEQUENCE")))
             {

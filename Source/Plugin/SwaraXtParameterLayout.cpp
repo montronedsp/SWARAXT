@@ -11,6 +11,18 @@ namespace swaraxt {
 
 namespace {
 
+// Preserve retired parameter IDs, indices and domains for existing sessions.
+// Every host-visible choice is canonical; writes cannot change the value.
+class FixedCompatibilityChoice final : public juce::AudioParameterChoice {
+public:
+    FixedCompatibilityChoice(const juce::ParameterID& id, const juce::String& name,
+                             const juce::StringArray& choices, int fixedIndex)
+        : AudioParameterChoice(id, name, choices, fixedIndex,
+                               juce::AudioParameterChoiceAttributes{}.withAutomatable(false)) {}
+private:
+    void setValue(float) override {}
+};
+
 juce::AudioParameterInt* intParam(const juce::String& id,
                                  const juce::String& name,
                                  int minV,
@@ -223,9 +235,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
         intParam(IDs::arpGate, "Sequencer Division", 0, 11, 7)));
 
     // Append only: existing host indices and normalized domains are unchanged.
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+    params.push_back(std::make_unique<FixedCompatibilityChoice>(
         juce::ParameterID { IDs::filterModel, 2 }, "Filter Model",
-        juce::StringArray { "Classic IR3109", "DSP Board" }, 0));
+        juce::StringArray { "Classic IR3109", "Classic IR3109" }, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { IDs::dspFxProgram, 2 }, "DSP FX",
         juce::StringArray { "Off", "Distortion", "Crush", "Comb +", "Comb -", "Ring Mod",
@@ -235,17 +247,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
         juce::ParameterID { IDs::dspFxParam1, 2 }, "DSP FX Control 1", 0, 127, 64));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID { IDs::dspFxParam2, 2 }, "DSP FX Control 2", 0, 63, 0));
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+    params.push_back(std::make_unique<FixedCompatibilityChoice>(
         juce::ParameterID { IDs::dspBoardRouting, 2 }, "DSP Board Routing",
-        juce::StringArray { "LP > FX", "HP > FX", "FX > LP", "FX > HP", "FX Only" }, 0));
+        juce::StringArray { "Classic > FX", "Classic > FX", "Classic > FX", "Classic > FX", "Classic > FX" }, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { IDs::postMixer, 1 }, "Post Mixer",
         juce::NormalisableRange<float> { -18.0f, 0.0f, 0.1f, 1.0f }, 0.0f,
         juce::AudioParameterFloatAttributes {}.withStringFromValueFunction(
             [](float value, int) { return juce::String(value, 1) + " dB"; })));
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+    params.push_back(std::make_unique<FixedCompatibilityChoice>(
         juce::ParameterID { IDs::inputConditioning, 1 }, "Input Conditioning",
-        juce::StringArray { "RAW", "HARDWARE" }, 1));
+        juce::StringArray { "HARDWARE", "HARDWARE" }, 1));
 
     return { params.begin(), params.end() };
 }

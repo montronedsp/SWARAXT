@@ -67,16 +67,13 @@ class SwaraXtEngine {
     }
     static constexpr int kAudioBlockSize = 40;
     static constexpr int kMaxPendingMidi = 512;
-    // Legacy SWARA control observer only; this is not a board-derived constant.
-    // Classic IR3109 uses Ir3109BoardCore::kVcaCvTau (10k * 33n = 330 us).
-    static constexpr double kSmr4VcaCvCutoffHz = 1250.0;
 
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
     struct DebugBlockCapture {
         float rawOsc1[kAudioBlockSize] {};
         float rawOsc2[kAudioBlockSize] {};
         float postShruthiMixer[kAudioBlockSize] {};
-        float filterOutput[kAudioBlockSize] {}; // completed analog path, includes VCA in IR3109/RAW
+        float filterOutput[kAudioBlockSize] {}; // completed analog path, includes IR3109 VCA
         float postVca[kAudioBlockSize] {};
         float vcaTarget[kAudioBlockSize] {};
         float vcaGain[kAudioBlockSize] {}; // reconstructed CV at final oversampled substep, before decimation
@@ -206,11 +203,9 @@ class SwaraXtEngine {
     void snapMasterGain(float value) noexcept;
     float nextMasterGain() noexcept;
     float nextQualityGain() noexcept;
-    float nextVcaCv(float target) noexcept;
     void setPostMixerTarget(float linear) noexcept;
     void snapPostMixerGain(float linear) noexcept;
     float nextPostMixerGain() noexcept;
-    float nextConditioningMix() noexcept;
     void updateHostLfoRates(double bpm) noexcept;
     void prepareHostClock(const HostTransportSnapshot& transport, int numSamples) noexcept;
     void resetHostState() noexcept;
@@ -265,12 +260,6 @@ class SwaraXtEngine {
     int masterSamplesRemaining_ = 0;
     bool snapMasterOnApply_ = true;
     float vcaCvState_ = 0.0f;
-    float vcaCvCoeff_ = 0.0f;
-    // Equal latency for the optional DSP board, which bypasses the VCF FIRs.
-    std::array<float, FilterRateConverter::kLatency> dspBoardDelay_{};
-    size_t dspBoardDelayHead_ = 0;
-    int dspBoardDelayRemaining_ = 0;
-    float dspBoardPreviousInput_ = 0;
     void resetVcaReconstruction() noexcept {
         vcaCvState_ = 0;
     }
@@ -279,11 +268,6 @@ class SwaraXtEngine {
     float postMixerGainIncrement_ = 0.0f;
     int postMixerRampSamples_ = 1;
     int postMixerSamplesRemaining_ = 0;
-    float conditioningMix_ = 0.0f;
-    float conditioningMixTarget_ = 0.0f;
-    float conditioningMixIncrement_ = 0.0f;
-    int conditioningMixRemaining_ = 0;
-    int conditioningRampSamples_ = 1;
     float filterCutoffHz_ = 8000.0f;
     float filterResonance_ = 0.2f;
     float filterEnvAmount_ = 0.35f;

@@ -146,7 +146,7 @@ void PatchBridge::applyCacheToEngine(const ParameterCache& cache)
     settings->midi_out_mode = shruthi::MIDI_OUT_OFF;
 
     const auto boardControls = cache.boardControls();
-    const bool boardCv = boardControls.model == board::Model::dspBoard || boardControls.effect != board::Effect::off;
+    const bool boardCv = boardControls.effect != board::Effect::off;
     settings->expansion_filter_board = static_cast<uint8_t>(
         boardCv ? shruthi::FILTER_BOARD_DSP : shruthi::FILTER_BOARD_LPF);
     if (boardCv)

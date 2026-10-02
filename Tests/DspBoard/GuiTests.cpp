@@ -62,10 +62,7 @@ void testEditor()
     auto& panel=editor.boardPanelForTests();
     editor.setBoardEditorViewForTests(true);
     require(values(p)==initial,"editor construction/view is observational");
-    require(panel.modelCombo().getNumItems()==2 && panel.fxCombo().getNumItems()==17
-        && panel.routeCombo().getNumItems()==5 && panel.conditioningCombo().getNumItems()==2,
-        "complete parameter-derived choice lists");
-    require(!visibleInEditor(panel.routeCombo()),"Classic hides Board route");
+    require(panel.fxCombo().getNumItems()==17,"complete parameter-derived FX choice list");
     require(!panel.control1().isVisible()&&!panel.control2().isVisible(),"Off hides FX controls");
     for(auto skin:{ui::SkinId::pastel,ui::SkinId::midnightGold,ui::SkinId::neonCobalt,ui::SkinId::jungle,ui::SkinId::rossocorsa})
     {
@@ -73,15 +70,18 @@ void testEditor()
         for(auto size:{ui::GuiSize::small,ui::GuiSize::medium,ui::GuiSize::large})
         {
             editor.setGuiSizeForTests(size);
-            for(auto* combo:{&panel.modelCombo(),&panel.fxCombo(),&panel.routeCombo(),&panel.conditioningCombo()})
-                checkCombo(*combo,editor.mixOperatorComboForTests());
-            require(!panel.modelCombo().getParentComponent()->getBounds().intersects(panel.fxCombo().getParentComponent()->getBounds()),"model and FX selectors separate");
-            require(!panel.modelCombo().getParentComponent()->getBounds().intersects(panel.conditioningCombo().getParentComponent()->getBounds()),"model and input conditioning separate");
+            checkCombo(panel.fxCombo(),editor.mixOperatorComboForTests());
+            require(!panel.fxCombo().getParentComponent()->getBounds().intersects(panel.postMixerKnob().getBounds()),"FX selector and post mixer separate");
+            require(!panel.postMixerKnob().getBounds().intersects(panel.control1().getBounds()),"post mixer and FX knobs separate");
             require(!panel.control1().getBounds().intersects(panel.control2().getBounds()),"FX knobs separate");
             for(int model=0;model<2;++model)
             {
                 set(p,IDs::filterModel,float(model));
-                require(visibleInEditor(panel.routeCombo())==(model==1),"automation updates route visibility");
+                set(p,IDs::inputConditioning,float(model));
+                set(p,IDs::dspBoardRouting,4);
+                require(getParameterInt(p.getApvts(),IDs::filterModel)==0,"retired filter selector stays Classic");
+                require(getParameterInt(p.getApvts(),IDs::inputConditioning)==1,"retired conditioning selector stays Hardware");
+                require(getParameterInt(p.getApvts(),IDs::dspBoardRouting)==0,"retired route selector stays fixed");
                 for(int effect=0;effect<17;++effect)
                 {
                     set(p,IDs::dspFxProgram,float(effect));
@@ -124,11 +124,10 @@ void testEditor()
     {
         SwaraXtAudioProcessorEditor recreated(restored);
         recreated.setBoardEditorViewForTests(true);
-        require(recreated.boardPanelForTests().modelCombo().getSelectedItemIndex()==1
-            && recreated.boardPanelForTests().fxCombo().getSelectedItemIndex()==15,"recreated editor restored Board/FX");
+        require(recreated.boardPanelForTests().fxCombo().getSelectedItemIndex()==15,"recreated editor restores FX with Classic filter");
     }
     require(values(restored)==before,"editor recreation preserves all parameters");
-    std::cout<<"Board GUI: 5 skins x 3 sizes x 2 models x 17 effects, context, looper switch, view/state isolation PASS\n";
+    std::cout<<"FX GUI: 5 skins x 3 sizes x 17 effects, fixed legacy modes, context, looper switch, view/state isolation PASS\n";
 }
 }
 int main()
