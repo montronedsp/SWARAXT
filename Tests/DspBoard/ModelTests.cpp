@@ -198,10 +198,23 @@ void compensatedFilterTailTest()
     std::cout << "Cutoff-compensated filter feedback tail policy PASS\n";
 }
 
+void nativeCvDomainTest()
+{
+    for (int code = 0; code <= 255; ++code)
+        require(BoardControl::nativeCv(code) == code, "all native byte CV codes reach the effect unchanged");
+    require(BoardControl::nativeCv(-1) == 0 && BoardControl::nativeCv(256) == 255,
+            "out-of-domain CV values saturate to the byte endpoints");
+    BoardEffects direct, mapped;
+    Block expected{}, actual{};
+    expected.fill(1024); actual = expected;
+    direct.process(expected, Effect::ringMod, 255, 254, 120);
+    mapped.process(actual, Effect::ringMod, BoardControl::nativeCv(255), 254, 120);
+    require(actual == expected, "full-scale native CV preserves upstream ring-modulator output");
+}
 }
 int main()
 {
-    try { responseTests(); safetyTests(); fixedPointTailTest(); subCodeInputTailTest(); compensatedFilterTailTest(); }
+    try { responseTests(); safetyTests(); fixedPointTailTest(); subCodeInputTailTest(); compensatedFilterTailTest(); nativeCvDomainTest(); }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     return 0;
 }

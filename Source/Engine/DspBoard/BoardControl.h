@@ -13,7 +13,7 @@ struct BoardControl {
     Effect effect = Effect::off;
     std::uint8_t cutoff = 254, resonance = 0, dca = 0, cv1 = 128, cv2 = 0, tempo = 120;
 
-    static std::uint8_t nativeCv(int value) noexcept { return static_cast<std::uint8_t>(std::clamp(value, 0, 254)); }
+    static std::uint8_t nativeCv(int value) noexcept { return static_cast<std::uint8_t>(std::clamp(value, 0, 255)); }
     static std::uint8_t tempoCode(double value) noexcept
     {
         return static_cast<std::uint8_t>(std::clamp(std::isfinite(value) ? std::round(value) : 120.0, 40.0, 240.0));
@@ -22,7 +22,8 @@ struct BoardControl {
     {
         // Invert the original resource generator's self-oscillation tuning law.
         const double hz = std::clamp(std::isfinite(musicalHz) ? musicalHz : 10.0, 1.0, sampleRate * .5);
-        return nativeCv(static_cast<int>(std::lround(256 + 24 * std::log2(hz / (sampleRate * .75)))));
+        return static_cast<std::uint8_t>(std::clamp(static_cast<int>(
+            std::lround(256 + 24 * std::log2(hz / (sampleRate * .75)))), 0, 254));
     }
     bool sameTopology(const BoardControl& other) const noexcept
     {
