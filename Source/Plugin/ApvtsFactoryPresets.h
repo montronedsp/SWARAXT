@@ -6,7 +6,6 @@
 #include <JuceHeader.h>
 
 #include <cmath>
-#include <cstring>
 
 #include "Plugin/ApvtsFactoryPresetData.h"
 #include "Plugin/SequenceParameters.h"
@@ -52,17 +51,7 @@ class ApvtsFactoryPresets {
         }
     }
 
-    static const ApvtsFactoryPreset* findMutableOverride(const char* displayName) noexcept
-    {
-        if (displayName == nullptr)
-            return nullptr;
-        for (std::size_t i = 0; i < kMutableFactoryOverrideCount; ++i)
-        {
-            if (std::strcmp(kMutableFactoryOverrides[i].displayName, displayName) == 0)
-                return &kMutableFactoryOverrides[i];
-        }
-        return nullptr;
-    }
+
 };
 
 }  // namespace swaraxt

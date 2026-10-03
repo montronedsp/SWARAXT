@@ -56,6 +56,8 @@ class SwaraXtLookAndFeel : public juce::LookAndFeel_V4 {
                           float maxSliderPos,
                           juce::Slider::SliderStyle style,
                           juce::Slider& slider) override;
+    void drawLabel(juce::Graphics&, juce::Label&) override;
+    void drawButtonText(juce::Graphics&, juce::TextButton&, bool, bool) override;
     juce::Font getLabelFont(juce::Label&) override;
     juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override;
 

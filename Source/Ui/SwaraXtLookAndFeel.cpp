@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "Ui/SwaraXtLookAndFeel.h"
+#include "Ui/SwaraXtText.h"
 
 #if __has_include("BinaryData.h")
 #include "BinaryData.h"
@@ -211,6 +212,20 @@ void SwaraXtLookAndFeel::drawLinearSlider(juce::Graphics& g,
                                           juce::Slider::SliderStyle style,
                                           juce::Slider& slider)
 {
+    if (style == juce::Slider::TwoValueHorizontal)
+    {
+        const float yMid = static_cast<float>(y) + static_cast<float>(height) * 0.5f;
+        const float zero = static_cast<float>(x) + static_cast<float>(width) * 0.5f;
+        g.setColour(Palette::skin().matrixGuide);
+        g.fillRoundedRectangle(static_cast<float>(x), yMid - 1.5f, static_cast<float>(width), 3.0f, 1.5f);
+        g.setColour(Palette::accent());
+        g.fillRoundedRectangle(minSliderPos, yMid - 2.0f, maxSliderPos - minSliderPos, 4.0f, 2.0f);
+        g.fillEllipse(minSliderPos - 4.0f, yMid - 4.0f, 8.0f, 8.0f);
+        g.fillEllipse(maxSliderPos - 4.0f, yMid - 4.0f, 8.0f, 8.0f);
+        g.setColour(Palette::mutedText());
+        g.drawLine(zero, yMid - 6.0f, zero, yMid + 6.0f, 1.0f);
+        return;
+    }
     if (style != juce::Slider::LinearHorizontal)
     {
         juce::LookAndFeel_V4::drawLinearSlider(g, x, y, width, height, sliderPos,
@@ -262,6 +277,40 @@ juce::Font SwaraXtLookAndFeel::getPopupMenuFont()
     return regularFont(13.0f);
 }
 
+void SwaraXtLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
+{
+    g.fillAll(label.findColour(juce::Label::backgroundColourId));
+    if (!label.isBeingEdited())
+    {
+        const auto font = getLabelFont(label);
+        g.setColour(label.findColour(juce::Label::textColourId).withMultipliedAlpha(label.isEnabled() ? 1.0f : 0.5f));
+        auto area = label.getLocalBounds().toFloat();
+        const auto border = label.getBorderSize();
+        area = area.withTrimmedLeft(static_cast<float>(border.getLeft()))
+                   .withTrimmedRight(static_cast<float>(border.getRight()));
+        if (label.getText().containsChar('\n'))
+        {
+            g.setFont(font);
+            g.drawFittedText(label.getText(), area.toNearestInt(), label.getJustificationType(),
+                             juce::jmax(1, static_cast<int>(area.getHeight() / font.getHeight())));
+        }
+        else
+            singleLineText(font, label.getText(), area, label.getJustificationType()).draw(g);
+    }
+    g.setColour(label.findColour(juce::Label::outlineColourId));
+    g.drawRect(label.getLocalBounds());
+}
+
+void SwaraXtLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool)
+{
+    g.setColour(button.findColour(button.getToggleState() ? juce::TextButton::textColourOnId
+                                                        : juce::TextButton::textColourOffId)
+                      .withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f));
+    singleLineText(getTextButtonFont(button, button.getHeight()), button.getButtonText(),
+                   button.getLocalBounds().toFloat().reduced(3.0f, 0.0f),
+                   juce::Justification::centred).draw(g);
+}
+
 juce::Font SwaraXtLookAndFeel::getLabelFont(juce::Label&)
 {
     return regularFont(12.0f);
@@ -269,7 +318,7 @@ juce::Font SwaraXtLookAndFeel::getLabelFont(juce::Label&)
 
 juce::Font SwaraXtLookAndFeel::getTextButtonFont(juce::TextButton&, int buttonHeight)
 {
-    return regularFont(static_cast<float>(buttonHeight) * 0.52f);
+    return regularFont(juce::jmin(12.0f, static_cast<float>(buttonHeight)));
 }
 
 }  // namespace swaraxt::ui

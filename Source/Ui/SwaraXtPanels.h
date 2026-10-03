@@ -306,7 +306,7 @@ class MainPanel : public juce::Component {
     bool attached_ = false;
     bool showingModulation_ = false;
     bool showingSequencer_ = false;
-    std::unique_ptr<juce::CallOutBox> effectsCallout_;
+    bool showingBoard_ = false;
 };
 
 class ModPanel : public juce::Component {
@@ -407,6 +407,10 @@ class SeqPanel : public juce::Component,
     juce::Label arpHeading_, sequenceHeading_;
     juce::TextButton lockButton_ { "LOCK" };
     juce::TextButton randomNotes_ { "RANDOM NOTES" }, randomVelocity_ { "RANDOM VELOCITY" }, randomSequence_ { "RANDOM SEQ" };
+    juce::TextButton randomEvent_ { "RANDOM EVENT" }, randomValue_ { "RANDOM VALUE" };
+    juce::ComboBox randomType_;
+    juce::Slider noteRange_;
+    juce::Label rangeLabel_;
     juce::Random editRandom_;
     SwaraXtAudioProcessor* processor_ = nullptr;
     std::array<juce::TextButton, swaraxt::SequenceSnapshot::kNumSteps> stepButtons_;

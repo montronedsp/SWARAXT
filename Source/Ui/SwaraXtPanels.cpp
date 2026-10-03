@@ -632,7 +632,8 @@ MainPanel::MainPanel()
     perfModule_.addAndMakeVisible(boardViewButton_);
     boardViewButton_.getProperties().set("swaraxtSecondaryAction", true);
     boardViewButton_.setTooltip("Effects after the Classic filter and post-mixer level");
-    boardViewButton_.onClick = [this] { setBoardEditorView(true); };
+    perfModule_.body().addChildComponent(*boardView_);
+    boardViewButton_.onClick = [this] { setBoardEditorView(!showingBoard_); };
 
     envModule_.body().addAndMakeVisible(env1Trace_);
     envModule_.body().addAndMakeVisible(env2Trace_);
@@ -751,13 +752,11 @@ void MainPanel::lookAndFeelChanged()
 
 void MainPanel::setBoardEditorView(bool visible)
 {
-    effectsCallout_.reset();
-    boardView_->setVisible(visible);
-    if (!visible) return;
-    boardView_->setSize(320, 125);
-    effectsCallout_ = std::make_unique<juce::CallOutBox>(*boardView_,
-        getLocalArea(&boardViewButton_, boardViewButton_.getLocalBounds()), this);
-    effectsCallout_->enterModalState(false);
+    showingBoard_ = visible;
+    perfModule_.setTitle(visible ? "FX" : "GLOBAL");
+    boardViewButton_.setButtonText(visible ? "GLOBAL" : "FX");
+    boardViewButton_.setTooltip(visible ? "Return to Global controls" : "Effects after the Classic filter");
+    reflow();
 }
 
 void MainPanel::setLocalViews(bool modulation, bool sequencer)
@@ -857,7 +856,7 @@ void MainPanel::reflow()
     const int gap = Layout::moduleGap;
     sourceModule_.setBounds(26, 22, 318, 184);
     lfoModule_.setBounds(26, 209, 318, 298);
-    mixModule_.setBounds(383, showingSequencer_ ? 120 : 196, 347, showingSequencer_ ? 383 : 307);
+    mixModule_.setBounds(383, showingSequencer_ ? 105 : 196, 347, showingSequencer_ ? 398 : 307);
     filterModule_.setBounds(769, 22, 318, 132);
     perfModule_.setBounds(769, 157, 318, 100);
     envModule_.setBounds(769, 260, 318, 243);
@@ -896,7 +895,7 @@ void MainPanel::reflow()
     layoutRow(mix, { selectors_[kMixOperator].get(), selectors_[kSubShape].get() }, 5);
 
     auto filter = filterModule_.body().getLocalBounds();
-    boardViewButton_.setBounds(259, 1, 48, 18);
+    boardViewButton_.setBounds(247, 1, 60, 18);
     perfModule_.setPrimaryActionBounds(boardViewButton_.getBounds());
     layoutRow(filter, { knobs_[kFilterCutoff].get(), knobs_[kFilterResonance].get(),
                         knobs_[kFilterEnv].get(), knobs_[kFilterKey].get(),
@@ -963,6 +962,11 @@ void MainPanel::reflow()
         selectors_[static_cast<size_t>(i)]->setVisible(true);
 
     auto perf = perfModule_.body().getLocalBounds();
+    boardView_->setBounds(perf);
+    boardView_->setVisible(showingBoard_);
+    knobs_[kMaster]->setVisible(!showingBoard_);
+    knobs_[kGlide]->setVisible(!showingBoard_);
+    selectors_[kLegato]->setVisible(!showingBoard_);
     layoutRow(perf, { knobs_[kMaster].get(), knobs_[kGlide].get(),
                       selectors_[kLegato].get() }, 4);
 }
@@ -1121,7 +1125,7 @@ SeqPanel::SeqPanel()
     }
     arpHeading_.setText("ARPEGGIATOR", juce::dontSendNotification);
     sequenceHeading_.setText("SEQUENCER", juce::dontSendNotification);
-    for (auto* button : { &lockButton_, &randomNotes_, &randomVelocity_, &randomSequence_ }) {
+    for (auto* button : { &lockButton_, &randomNotes_, &randomVelocity_, &randomEvent_, &randomValue_, &randomSequence_ }) {
         addAndMakeVisible(*button);
         button->getProperties().set("swaraxtSecondaryAction", true);
     }
@@ -1129,11 +1133,41 @@ SeqPanel::SeqPanel()
     lockButton_.setTooltip("Preserve Seq/Arp settings and pattern across preset changes");
     lockButton_.onClick = [this] { if (processor_) processor_->setSequenceLocked(lockButton_.getToggleState()); };
     const auto randomize = [this](SequenceState::Randomize kind) {
-        if (sequenceState_) { sequenceState_->randomize(kind, editRandom_); refreshSequenceControls(); }
+        if (sequenceState_) {
+            const auto range = processor_ ? processor_->randomNoteRange() : SequenceState::NoteRange {};
+            sequenceState_->randomize(kind, editRandom_, range);
+            refreshSequenceControls();
+        }
     };
     randomNotes_.onClick = [randomize] { randomize(SequenceState::Randomize::notes); };
     randomVelocity_.onClick = [randomize] { randomize(SequenceState::Randomize::velocity); };
     randomSequence_.onClick = [randomize] { randomize(SequenceState::Randomize::sequence); };
+    randomEvent_.onClick = [randomize] { randomize(SequenceState::Randomize::events); };
+    randomValue_.onClick = [randomize] { randomize(SequenceState::Randomize::value); };
+    randomEvent_.setTooltip("Change Note/Rest/Tie only; preserve pitches, velocities and values");
+    randomValue_.setTooltip("Change controller values only (0--15)");
+    addAndMakeVisible(randomType_);
+    randomType_.addItem("Type 1", 1);
+    randomType_.setSelectedId(1, juce::dontSendNotification);
+    randomType_.setTooltip("Type 1: pentatonic notes, velocities, rests/ties and controller values");
+    addAndMakeVisible(rangeLabel_);
+    rangeLabel_.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(noteRange_);
+    noteRange_.setSliderStyle(juce::Slider::TwoValueHorizontal);
+    noteRange_.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    noteRange_.setRange(-SequenceState::NoteRange::extent, SequenceState::NoteRange::extent, 1);
+    noteRange_.setMinAndMaxValues(-12, 12, juce::dontSendNotification);
+    noteRange_.setTooltip("Note offsets from step 1: lower -48..0, upper 0..+48 semitones; pentatonic Type 1");
+    noteRange_.onValueChange = [this] {
+        const SequenceState::NoteRange range {
+            juce::jmin(0, static_cast<int>(noteRange_.getMinValue())),
+            juce::jmax(0, static_cast<int>(noteRange_.getMaxValue())) };
+        noteRange_.setMinAndMaxValues(range.lower, range.upper, juce::dontSendNotification);
+        rangeLabel_.setText("RANGE " + juce::String(range.lower) + " / +" + juce::String(range.upper),
+                             juce::dontSendNotification);
+        if (processor_) processor_->setRandomNoteRange(range);
+    };
+    noteRange_.onValueChange();
     randomNotes_.setTooltip("Change pitches only; preserve events, velocities and controller values");
     randomVelocity_.setTooltip("Change velocities only; preserve pitches, events and controller values");
     randomSequence_.setTooltip("New notes, velocities, rests/ties and controller values; preserve playback settings");
@@ -1246,6 +1280,7 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
     auto& apvts = processor.getApvts();
     processor_ = &processor;
     sequenceState_ = &processor.sequenceState();
+    timerCallback();
     lockButton_.setToggleState(processor.sequenceLocked(), juce::dontSendNotification);
     startTimerHz(4);
     sequenceState_->addListener(this);
@@ -1350,7 +1385,13 @@ void SeqPanel::lookAndFeelChanged()
 
 void SeqPanel::timerCallback()
 {
-    if (processor_) lockButton_.setToggleState(processor_->sequenceLocked(), juce::dontSendNotification);
+    if (processor_) {
+        lockButton_.setToggleState(processor_->sequenceLocked(), juce::dontSendNotification);
+        const auto range = processor_->randomNoteRange();
+        noteRange_.setMinAndMaxValues(range.lower, range.upper, juce::dontSendNotification);
+        rangeLabel_.setText("RANGE " + juce::String(range.lower) + " / +" + juce::String(range.upper),
+                             juce::dontSendNotification);
+    }
 }
 
 void SeqPanel::updateModeEmphasis()
@@ -1428,33 +1469,43 @@ void SeqPanel::handleAsyncUpdate()
 void SeqPanel::reflow()
 {
     auto area = getLocalBounds().reduced(2);
-    constexpr int gap = 6;
-    layoutRow(area.removeFromTop(38), { selectors_[kMode].get(), selectors_[kClockMode].get(),
-                                      selectors_[kDivision].get(), &groove_ }, gap);
-    area.removeFromTop(4);
+    constexpr int gap = 4;
+    constexpr int choiceRow = Layout::selectorLabelHeight + Layout::selectorHeight;
+    constexpr int actionHeight = 22;
+    layoutRow(area.removeFromTop(choiceRow), { selectors_[kMode].get(), selectors_[kClockMode].get(),
+                                              selectors_[kDivision].get(), &groove_ }, gap);
+    area.removeFromTop(gap);
     layoutRow(area.removeFromTop(58), { knobs_[kTempo].get(), knobs_[kSwing].get(), knobs_[kGate].get(),
-                                      &length_, &rotation_ }, gap);
+                                       &length_, &rotation_ }, gap);
     area.removeFromTop(gap);
-    arpHeading_.setBounds(area.removeFromTop(18));
-    layoutRow(area.removeFromTop(38), { selectors_[kDirection].get(), selectors_[kPattern].get(),
-                                      selectors_[kOctaves].get() }, gap);
+    arpHeading_.setBounds(area.removeFromTop(16));
+    layoutRow(area.removeFromTop(choiceRow), { selectors_[kDirection].get(), selectors_[kPattern].get(),
+                                              selectors_[kOctaves].get() }, gap);
     area.removeFromTop(gap);
-    auto heading = area.removeFromTop(22);
+    auto heading = area.removeFromTop(20);
     lockButton_.setBounds(heading.removeFromRight(58));
     sequenceHeading_.setBounds(heading);
-    area.removeFromTop(4);
+    area.removeFromTop(gap);
     for (int row = 0; row < 2; ++row) {
-        auto steps = area.removeFromTop(22);
+        auto steps = area.removeFromTop(20);
         const int width = (steps.getWidth() - 7 * 3) / 8;
         for (int col = 0; col < 8; ++col) {
             stepButtons_[static_cast<size_t>(row * 8 + col)].setBounds(steps.removeFromLeft(width));
             steps.removeFromLeft(3);
         }
-        area.removeFromTop(3);
+        area.removeFromTop(2);
     }
-    layoutRow(area.removeFromTop(62), { &note_, &event_, &velocity_, &controller_ }, gap);
+    layoutRow(area.removeFromTop(58), { &note_, &event_, &velocity_, &controller_ }, gap);
     area.removeFromTop(gap);
-    layoutRow(area.removeFromTop(22), { &randomNotes_, &randomVelocity_, &randomSequence_ }, gap);
+    auto range = area.removeFromTop(25);
+    randomType_.setBounds(range.removeFromLeft(76).withHeight(Layout::selectorHeight));
+    range.removeFromLeft(gap);
+    rangeLabel_.setBounds(range.removeFromLeft(108));
+    noteRange_.setBounds(range);
+    area.removeFromTop(gap);
+    layoutRow(area.removeFromTop(actionHeight), { &randomNotes_, &randomVelocity_, &randomEvent_ }, gap);
+    area.removeFromTop(2);
+    layoutRow(area.removeFromTop(actionHeight), { &randomValue_, &randomSequence_ }, gap);
 }
 
 }  // namespace swaraxt::ui

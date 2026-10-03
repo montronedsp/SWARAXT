@@ -63,6 +63,18 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     bool sequenceLocked() const noexcept { return sequenceLocked_.load(std::memory_order_relaxed); }
     void setSequenceLocked(bool locked) noexcept { sequenceLocked_.store(locked, std::memory_order_relaxed); }
 
+    swaraxt::SequenceState::NoteRange randomNoteRange() const noexcept
+    {
+        const auto packed = randomNoteRange_.load(std::memory_order_relaxed);
+        return { static_cast<int>(packed & 255u) - 48, static_cast<int>(packed >> 8) };
+    }
+    void setRandomNoteRange(swaraxt::SequenceState::NoteRange range) noexcept
+    {
+        const auto lower = static_cast<unsigned>(juce::jlimit(-48, 0, range.lower) + 48);
+        const auto upper = static_cast<unsigned>(juce::jlimit(0, 48, range.upper));
+        randomNoteRange_.store(lower | (upper << 8), std::memory_order_relaxed);
+    }
+
     std::vector<PresetEntry> getPresetEntries() const;
     bool loadPresetEntry(const PresetEntry& entry, juce::String& error);
     bool saveUserPreset(const juce::String& name, bool overwrite, juce::String& error);
@@ -91,6 +103,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     int currentProgram_ = 0;
     std::atomic<bool> requestEngineReset_ { false };
     std::atomic<bool> sequenceLocked_ { false };
+    std::atomic<unsigned> randomNoteRange_ { 36u | (12u << 8) };
     bool isPrepared_ = false;
     bool engineInitialized_ = false;
     // True after setStateInformation restores a host session; blocks setCurrentProgram

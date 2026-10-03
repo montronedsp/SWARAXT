@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Generate APVTS factory overrides and user-designed factory presets.
+"""Generate SWARA-designed APVTS factory presets.
 
 Rules:
-  * ends with FINALFIX  -> Mutable factory correction (wins over FIXED)
-  * ends with FIXED     -> Mutable factory correction
+  * ends with FINALFIX/FIXED -> excluded historical Shruthi workarounds
   * everything else     -> new factory preset
   * exclusions: LFO MOD, duo pong, voweano (case-insensitive; optional CA prefix)
 
@@ -46,10 +45,6 @@ def load_factory_names() -> list[str]:
     return re.findall(r'\{\s*"([^"]+)",\s*"[^"]+",\s*"[^"]+"', text)
 
 
-def normalize(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", s.lower())
-
-
 def strip_correction_suffix(name: str) -> tuple[str | None, str | None]:
     """Return (base_name, kind) where kind is FINALFIX|FIXED|None."""
     m = re.search(r"(?i)[\s_]*finalfix$", name)
@@ -75,20 +70,6 @@ def emit_params(params: list[tuple[str, float]]) -> str:
     return "\n".join(f'        {{ "{c_escape(pid)}", {val!r} }},' for pid, val in params)
 
 
-def match_factory(base: str, factory_names: list[str]) -> str | None:
-    exact = [f for f in factory_names if f == base]
-    if len(exact) == 1:
-        return exact[0]
-    ci = [f for f in factory_names if f.lower() == base.lower()]
-    if len(ci) == 1:
-        return ci[0]
-    norm = normalize(base)
-    soft = [f for f in factory_names if normalize(f) == norm]
-    if len(soft) == 1:
-        return soft[0]
-    return None
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate APVTS factory preset data from saved .swaraxtpreset files."
@@ -110,33 +91,11 @@ def main() -> None:
 
     presets = [decode_preset(p) for p in sorted(preset_dir.glob("*.swaraxtpreset"))]
 
-    # Mutable corrections: FINALFIX wins over FIXED for same target.
-    corrections: dict[str, dict] = {}
-    unmatched = []
-    for p in presets:
-        base, kind = strip_correction_suffix(p["name"])
-        if kind is None:
-            continue
-        target = match_factory(base, factory_names)
-        if target is None:
-            unmatched.append((p["name"], base, kind))
-            continue
-        existing = corrections.get(target)
-        if existing is None or (kind == "FINALFIX" and existing["kind"] != "FINALFIX"):
-            corrections[target] = {**p, "kind": kind, "target": target, "base": base}
-        elif kind == "FIXED" and existing["kind"] == "FINALFIX":
-            pass  # keep FINALFIX
-        elif kind == existing["kind"]:
-            unmatched.append((p["name"], base, f"duplicate {kind}"))
-
-    if unmatched:
-        raise SystemExit(f"Unmatched/ambiguous corrections: {unmatched}")
-
     # New user-designed presets: everything else except exclusions and corrections.
     user_presets = []
     excluded = []
     for p in presets:
-        base, kind = strip_correction_suffix(p["name"])
+        _, kind = strip_correction_suffix(p["name"])
         if kind is not None:
             continue
         if is_excluded(p["name"]):
@@ -144,11 +103,7 @@ def main() -> None:
             continue
         user_presets.append(p)
 
-    # Stable order: alphabetical by shipping name for reproducibility of new bank,
-    # but user asked NOT to alphabetically reshuffle - "Do not alphabetically reshuffle
-    # older factory programs". For NEW presets, filesystem/name order from inventory
-    # is fine. Use the order they appeared in sorted(filename) which is what we have.
-    # Keep sorted-by-filename order (already sorted).
+    # Preserve existing program indexes with deterministic filename order.
 
     # Deduplicate shipping names.
     seen = set()
@@ -181,38 +136,17 @@ def main() -> None:
         "    std::size_t paramCount;",
         "};",
         "",
-        f"inline constexpr std::size_t kMutableFactoryOverrideCount = {len(corrections)};",
         f"inline constexpr std::size_t kUserFactoryPresetCount = {len(user_presets)};",
         # Keep old alias so transitional includes compile if needed.
         "inline constexpr std::size_t kCaFactoryPresetCount = kUserFactoryPresetCount;",
         "",
     ]
 
-    # Emit Mutable overrides in Mutable bank order for stable indexing.
-    ordered_targets = [f for f in factory_names if f in corrections]
-    for idx, target in enumerate(ordered_targets):
-        p = corrections[target]
-        lines.append(f"inline constexpr ApvtsFactoryParam kMutableOverrideParams{idx}[] = {{")
-        lines.append(emit_params(p["params"]))
-        lines.append("};")
-        lines.append("")
-
     for idx, p in enumerate(user_presets):
         lines.append(f"inline constexpr ApvtsFactoryParam kUserFactoryParams{idx}[] = {{")
         lines.append(emit_params(p["params"]))
         lines.append("};")
         lines.append("")
-
-    lines.append("inline constexpr ApvtsFactoryPreset kMutableFactoryOverrides[kMutableFactoryOverrideCount] = {")
-    for idx, target in enumerate(ordered_targets):
-        lines.append("    {")
-        lines.append(f'        "{c_escape(target)}",')
-        lines.append('        "",')
-        lines.append(f"        kMutableOverrideParams{idx},")
-        lines.append(f"        sizeof(kMutableOverrideParams{idx}) / sizeof(kMutableOverrideParams{idx}[0]),")
-        lines.append("    },")
-    lines.append("};")
-    lines.append("")
 
     if user_presets:
         lines.append(
@@ -267,11 +201,6 @@ def main() -> None:
 
     OUT.write_text(clean, encoding="utf-8", newline="\n")
 
-    print("=== MUTABLE CORRECTIONS ===")
-    for target in ordered_targets:
-        p = corrections[target]
-        print(f"{p['file']} -> {target} [{p['kind']}] params={len(p['params'])}")
-    print(f"count={len(ordered_targets)}")
     print("=== NEW USER FACTORY ===")
     for p in user_presets:
         print(f"{p['file']} -> {p['name']} params={len(p['params'])}")

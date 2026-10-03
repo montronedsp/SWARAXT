@@ -7,10 +7,10 @@
 
 namespace {
 
-const juce::Rectangle<float> companyWordmarkBounds { 461.0f, 17.0f, 191.0f, 34.3f };
-const juce::Rectangle<float> presetFrameBounds { 414.0f, 58.0f, 284.0f, 52.0f };
+const juce::Rectangle<float> companyWordmarkBounds { 482.0f, 21.0f, 149.0f, 27.0f };
+const juce::Rectangle<float> presetFrameBounds { 391.0f, 58.0f, 330.0f, 37.0f };
 
-constexpr int presetSelectorX = 447;
+constexpr int presetSelectorX = 426;
 constexpr int presetSelectorY = 64;
 constexpr int presetSelectorWidth = 218;
 constexpr int presetControlHeight = 25;
@@ -197,8 +197,8 @@ void SwaraXtAudioProcessorEditor::resized()
                                 presetSelectorY, presetArrowWidth, presetControlHeight);
     nextPresetButton_.setBounds(presetSelectorX + presetSelectorWidth + presetControlGap,
                                 presetSelectorY, presetArrowWidth, presetControlHeight);
-    savePresetButton_.setBounds(presetSelectorX + presetSelectorWidth - 40,
-                                90, 40, 18);
+    savePresetButton_.setBounds(presetSelectorX + presetSelectorWidth + 2 * presetControlGap + presetArrowWidth,
+                                presetSelectorY, 38, presetControlHeight);
     aboutBrandButton_.setBounds(companyWordmarkBounds.toNearestInt());
 
     mainPanel_.setBounds(0, 0, swaraxt::ui::GuiGeometry::designWidth,

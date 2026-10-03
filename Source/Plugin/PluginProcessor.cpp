@@ -257,22 +257,10 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
     {
         const int shruthiIndex = index - swaraxt::kShruthiFactoryPresetStart;
         const auto& record = swaraxt::kShruthiFactoryPresets[static_cast<std::size_t>(shruthiIndex)];
-        if (const auto* overridePreset =
-                swaraxt::ApvtsFactoryPresets::findMutableOverride(record.displayName))
-        {
-            // Manually corrected FIXED/FINALFIX presets are authoritative.
-            swaraxt::ApvtsFactoryPresets::applyParams(overridePreset->params,
-                                                      overridePreset->paramCount,
-                                                      apvts_, preserveSequence);
-        }
-        else
-        {
-            shruthi::Patch patch {};
-            if (swaraxt::ShruthiFactoryPresets::decodePatch(record.bytes.data(),
-                                                             record.bytes.size(),
-                                                             patch))
-                swaraxt::ShruthiFactoryPresets::applyPatchToApvts(patch, apvts_, preserveSequence);
-        }
+        shruthi::Patch patch {};
+        if (swaraxt::ShruthiFactoryPresets::decodePatch(record.bytes.data(),
+                                                        record.bytes.size(), patch))
+            swaraxt::ShruthiFactoryPresets::applyPatchToApvts(patch, apvts_, preserveSequence);
         requestEngineReset_.store(true, std::memory_order_release);
         return;
     }
@@ -519,6 +507,8 @@ bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
     if (auto xml = getXmlFromBinary(data.getData(), static_cast<int>(data.getSize())))
     {
         xml->removeAttribute("sequenceLocked");
+        xml->removeAttribute("randomNoteLower");
+        xml->removeAttribute("randomNoteUpper");
         copyXmlToBinary(*xml, data);
     }
     juce::TemporaryFile temporary(target);
@@ -541,6 +531,9 @@ void SwaraXtAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     canonicaliseLegacyModes(state);
     state.setProperty("stateVersion", kStateVersion, nullptr);
     state.setProperty("sequenceLocked", sequenceLocked(), nullptr);
+    const auto range = randomNoteRange();
+    state.setProperty("randomNoteLower", range.lower, nullptr);
+    state.setProperty("randomNoteUpper", range.upper, nullptr);
     state.setProperty("currentProgram", currentProgram_, nullptr);
     state.setProperty("presetKind", currentUserPresetName_.isEmpty() ? "factory" : "user", nullptr);
     state.setProperty("presetName", currentPresetName(), nullptr);
@@ -584,7 +577,15 @@ void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
             tree.removeChild(existing, nullptr);
         tree.addChild(sequenceState_.toValueTree(), -1, nullptr);
     }
-    if (!fromPreset) setSequenceLocked(static_cast<bool>(tree.getProperty("sequenceLocked", false)));
+    if (!fromPreset)
+    {
+        setSequenceLocked(static_cast<bool>(tree.getProperty("sequenceLocked", false)));
+        setRandomNoteRange({ static_cast<int>(tree.getProperty("randomNoteLower", -12)),
+                             static_cast<int>(tree.getProperty("randomNoteUpper", 12)) });
+    }
+    const auto range = randomNoteRange();
+    tree.setProperty("randomNoteLower", range.lower, nullptr);
+    tree.setProperty("randomNoteUpper", range.upper, nullptr);
     tree.setProperty("sequenceLocked", sequenceLocked(), nullptr);
     // APVTS otherwise retains current values for absent parameters.
     // Legacy states must not inherit an active Board/FX configuration.

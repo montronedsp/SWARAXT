@@ -5,6 +5,7 @@
 
 #include <JuceHeader.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -59,33 +60,67 @@ class SequenceState {
 
     static SequenceSnapshot defaultSnapshot() noexcept { return {}; }
 
-    enum class Randomize { notes, velocity, sequence };
-    void randomize(Randomize kind, juce::Random& random)
+    enum class Randomize { notes, velocity, events, value, sequence };
+    enum class RandomizationType { type1 };
+    struct NoteRange {
+        int lower = -12;
+        int upper = 12;
+        static constexpr int extent = 48;
+    };
+
+    void randomize(Randomize kind, juce::Random& random, NoteRange range,
+                   RandomizationType type = RandomizationType::type1)
     {
+        juce::ignoreUnused(type); // The production domain contains Type 1 only.
         auto pattern = snapshot();
         constexpr std::array<int, 5> scale { 0, 2, 4, 7, 9 };
-        const int root = juce::jlimit(24, 84, static_cast<int>(SequenceSnapshot::dataA(pattern.steps[0]) & 0x7f));
-        bool previousGate = false;
-        for (auto& packed : pattern.steps)
+        range.lower = juce::jlimit(-NoteRange::extent, 0, range.lower);
+        range.upper = juce::jlimit(0, NoteRange::extent, range.upper);
+        std::array<int, 2 * NoteRange::extent + 1> offsets {};
+        int count = 0;
+        for (int offset = range.lower; offset <= range.upper; ++offset)
         {
+            const int degree = (offset % 12 + 12) % 12;
+            if (std::find(scale.begin(), scale.end(), degree) != scale.end())
+                offsets[static_cast<size_t>(count++)] = offset;
+        }
+        const int root = SequenceSnapshot::dataA(pattern.steps[0]) & 0x7f;
+        bool previousGate = false;
+        for (int logical = 0; logical < SequenceSnapshot::kNumSteps; ++logical)
+        {
+            const auto index = static_cast<size_t>((pattern.rotation + logical) & 15);
+            auto& packed = pattern.steps[index];
             auto a = SequenceSnapshot::dataA(packed);
             auto b = SequenceSnapshot::dataB(packed);
-            if (kind != Randomize::velocity)
-                a = static_cast<uint8_t>((a & 0x80) | (root + scale[static_cast<size_t>(random.nextInt(5))]
-                                                     + 12 * random.nextInt(2)));
-            if (kind != Randomize::notes)
-                b = static_cast<uint8_t>((b & 0x8f) | ((1 + random.nextInt(7)) << 4));
-            if (kind == Randomize::sequence)
+            if (kind == Randomize::notes || kind == Randomize::sequence)
             {
-                const bool gate = &packed == &pattern.steps[0] || random.nextInt(5) != 0;
-                const bool tie = gate && previousGate && random.nextInt(8) == 0;
+                const int pitch = juce::jlimit(0, 127,
+                    root + offsets[static_cast<size_t>(random.nextInt(count))]);
+                a = static_cast<uint8_t>((a & 0x80) | pitch);
+            }
+            if (kind == Randomize::velocity || kind == Randomize::sequence)
+                b = static_cast<uint8_t>((b & 0x8f) | ((1 + random.nextInt(7)) << 4));
+            if (kind == Randomize::events || kind == Randomize::sequence)
+            {
+                // Start each playable cycle with a fresh note. A tie is legal
+                // only after an active step, including rotated short patterns.
+                const bool start = logical == 0 || logical == pattern.length;
+                const bool gate = start || random.nextInt(5) != 0;
+                const bool tie = !start && gate && previousGate && random.nextInt(8) == 0;
                 a = static_cast<uint8_t>((a & 0x7f) | (gate ? 0x80 : 0));
-                b = static_cast<uint8_t>((b & 0x70) | (tie ? 0x80 : 0) | random.nextInt(16));
+                b = static_cast<uint8_t>((b & 0x7f) | (tie ? 0x80 : 0));
                 previousGate = gate;
             }
+            if (kind == Randomize::value || kind == Randomize::sequence)
+                b = static_cast<uint8_t>((b & 0xf0) | random.nextInt(16));
             packed = SequenceSnapshot::pack(a, b);
         }
         store(pattern);
+    }
+
+    void randomize(Randomize kind, juce::Random& random)
+    {
+        randomize(kind, random, NoteRange {});
     }
 
     bool capture(SequenceSnapshot& snapshot, uint32_t& revision) const noexcept

@@ -80,50 +80,38 @@ void renderSmoke(SwaraXtAudioProcessor& proc, int midiNote)
     }
 }
 
-void verifyOverrideParity()
+void verifyOfficialImportParity()
 {
-    expect(static_cast<int>(swaraxt::kMutableFactoryOverrideCount) == 11,
-           "eleven Mutable FIXED/FINALFIX overrides");
-    bool foundDigobass = false;
-    for (std::size_t i = 0; i < swaraxt::kMutableFactoryOverrideCount; ++i)
+    for (std::size_t i = 0; i < swaraxt::kShruthiFactoryPresetCount; ++i)
     {
-        const auto& overridePreset = swaraxt::kMutableFactoryOverrides[i];
-        if (std::strcmp(overridePreset.displayName, "digobass") == 0)
-            foundDigobass = true;
-
-        int factoryIndex = -1;
-        for (std::size_t s = 0; s < swaraxt::kShruthiFactoryPresetCount; ++s)
+        const auto& record = swaraxt::kShruthiFactoryPresets[i];
+        SwaraXtAudioProcessor actual;
+        actual.setCurrentProgram(swaraxt::kShruthiFactoryPresetStart + static_cast<int>(i));
+        SwaraXtAudioProcessor expected;
+        for (auto* p : expected.getParameters()) p->setValueNotifyingHost(p->getDefaultValue());
+        shruthi::Patch patch {};
+        expect(swaraxt::ShruthiFactoryPresets::decodePatch(record.bytes.data(), record.bytes.size(), patch),
+               "official patch decodes");
+        swaraxt::ShruthiFactoryPresets::applyPatchToApvts(patch, expected.getApvts());
+        for (auto* p : expected.getParameters())
         {
-            if (std::strcmp(swaraxt::kShruthiFactoryPresets[s].displayName,
-                            overridePreset.displayName) == 0)
-            {
-                factoryIndex = swaraxt::kShruthiFactoryPresetStart + static_cast<int>(s);
-                break;
-            }
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(p))
+                if (!nearlyEqual(getFloat(actual, ranged->paramID.toRawUTF8()),
+                                 getFloat(expected, ranged->paramID.toRawUTF8())))
+                {
+                    std::printf("FAIL: official %s param %s\n", record.displayName, ranged->paramID.toRawUTF8());
+                    ++failures;
+                }
         }
-        expect(factoryIndex >= 0, "override maps to Mutable factory preset");
-        if (factoryIndex < 0)
-            continue;
-
-        SwaraXtAudioProcessor factoryProc;
-        factoryProc.setCurrentProgram(factoryIndex);
-
-        for (std::size_t p = 0; p < overridePreset.paramCount; ++p)
-        {
-            const char* id = overridePreset.params[p].id;
-            const float expected = static_cast<float>(overridePreset.params[p].value);
-            const float actual = getFloat(factoryProc, id);
-            if (! nearlyEqual(actual, expected))
-            {
-                std::printf("FAIL: %s param %s expected %g got %g\n",
-                            overridePreset.displayName, id, expected, actual);
-                ++failures;
-            }
-        }
-        for (const int note : { 36, 48, 60 })
-            renderSmoke(factoryProc, note);
+        juce::MemoryBlock saved;
+        actual.getStateInformation(saved);
+        SwaraXtAudioProcessor restored;
+        restored.setStateInformation(saved.getData(), static_cast<int>(saved.getSize()));
+        for (auto* p : actual.getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(p))
+                expect(nearlyEqual(getFloat(actual, ranged->paramID.toRawUTF8()),
+                                   getFloat(restored, ranged->paramID.toRawUTF8())), "official preset state roundtrip");
     }
-    expect(foundDigobass, "digobass FINALFIX override present");
 }
 
 void verifyUserFactoryParity()
@@ -189,8 +177,6 @@ void verifyMutableBank()
     for (std::size_t i = 0; i < swaraxt::kShruthiFactoryPresetCount; ++i)
     {
         const auto& record = swaraxt::kShruthiFactoryPresets[i];
-        const bool hasOverride =
-            swaraxt::ApvtsFactoryPresets::findMutableOverride(record.displayName) != nullptr;
         shruthi::Patch patch {};
         expect(swaraxt::ShruthiFactoryPresets::decodePatch(record.bytes.data(),
                                                            record.bytes.size(),
@@ -199,7 +185,6 @@ void verifyMutableBank()
 
         SwaraXtAudioProcessor proc;
         proc.setCurrentProgram(swaraxt::kShruthiFactoryPresetStart + static_cast<int>(i));
-        if (! hasOverride)
         {
             expect(getInt(proc, swaraxt::IDs::osc1Shape) == patch.osc[0].shape,
                    "osc1 shape roundtrip");
@@ -269,9 +254,10 @@ void verifyProgramLayout()
 
 int main(int argc, char* argv[])
 {
+    juce::ScopedJuceInitialiser_GUI init;
     juce::ignoreUnused(argc, argv);
     verifyProgramLayout();
-    verifyOverrideParity();
+    verifyOfficialImportParity();
     verifyUserFactoryParity();
     verifyMutableBank();
     verifyMainOperatorIsIndependentFromModOperators();

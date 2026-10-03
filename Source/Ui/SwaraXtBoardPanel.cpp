@@ -52,14 +52,16 @@ void BoardPanel::attach(juce::AudioProcessorValueTreeState& apvts)
 
 void BoardPanel::resized()
 {
-    fx_.setBounds(getLocalBounds().removeFromTop(35));
-    auto bottom = getLocalBounds().withTrimmedTop(40);
-    postMixer_.setBounds(bottom.removeFromLeft((bottom.getWidth() - 8) / 3));
-    bottom.removeFromLeft(4);
-    control1_.setBounds(bottom.removeFromLeft((bottom.getWidth() - 4) / 2));
-    bottom.removeFromLeft(4);
-    control2_.setBounds(bottom);
-    replay_.setBounds(bottom.withSizeKeepingCentre(bottom.getWidth(), 24));
+    auto area = getLocalBounds();
+    fx_.setBounds(area.removeFromLeft(108).removeFromTop(35));
+    area.removeFromLeft(6);
+    const int width = (area.getWidth() - 8) / 3;
+    postMixer_.setBounds(area.removeFromLeft(width));
+    area.removeFromLeft(4);
+    control1_.setBounds(area.removeFromLeft(width));
+    area.removeFromLeft(4);
+    control2_.setBounds(area);
+    replay_.setBounds(area.withSizeKeepingCentre(area.getWidth(), 24));
 }
 
 void BoardPanel::comboBoxChanged(juce::ComboBox*) { refreshContext(); }
