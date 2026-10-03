@@ -94,8 +94,10 @@ void parameterTests()
     require(post->get() == 0.0f, "default Post Mixer 0 dB");
     require(post->convertFrom0to1(1.0f) == 0.0f, "Post Mixer cannot boost");
     require(post->convertFrom0to1(0.0f) == -18.0f, "Post Mixer min is -18 dB");
-    require(cond->getIndex() == 1 && cond->choices[0] == "RAW" && cond->choices[1] == "HARDWARE",
-            "new instances default to the complete board; RAW remains available");
+    require(cond->getIndex() == 1 && cond->choices[0] == "HARDWARE" && cond->choices[1] == "HARDWARE",
+            "legacy input parameter preserves its domain but always selects Hardware");
+    set(p, IDs::inputConditioning, 0);
+    require(cond->getIndex() == 1, "automation cannot reactivate RAW");
     const float six = std::pow(10.0f, -6.0f / 20.0f);
     const float twelve = std::pow(10.0f, -12.0f / 20.0f);
     const float eighteen = std::pow(10.0f, -18.0f / 20.0f);
@@ -154,7 +156,7 @@ void classicPostMixerAndConditioning()
               << " filter/mixer=" << (filterRms / mixerRms) << '\n';
 }
 
-void boardPostMixerAndConditioning()
+void compatibilityChoicesDoNotSelectAnotherPath()
 {
     SwaraXtAudioProcessor unity;
     set(unity, IDs::filterModel, 1);
@@ -179,9 +181,8 @@ void boardPostMixerAndConditioning()
     hardware.prepareToPlay(48000, 256);
     const auto hw = renderHost(hardware, 48, 256, true);
     require(rms(hw, 2048) > 1.0e-5, "Board HARDWARE still produces audio");
-    require(std::abs(rms(hw, 2048) - rms(raw, 2048)) > 1.0e-4,
-            "Board RAW and HARDWARE are not the same path");
-    std::cout << "Board Post Mixer/RAW vs HARDWARE PASS ratio-12=" << ratio
+    require(hw == raw, "obsolete Board/RAW choices render the same canonical Hardware path");
+    std::cout << "Canonical Hardware compatibility PASS ratio-12=" << ratio
               << " rawRms=" << rms(raw, 2048) << " hwRms=" << rms(hw, 2048) << '\n';
 }
 
@@ -239,7 +240,7 @@ void stateAndSwitching()
     SwaraXtAudioProcessor restored;
     restored.setStateInformation(old.getData(), static_cast<int>(old.getSize()));
     require(std::abs(get(restored, IDs::postMixer)) < 1.0e-4f, "old state resolves Post Mixer 0 dB");
-    require(get(restored, IDs::inputConditioning) == 0.0f, "old state resolves RAW");
+    require(get(restored, IDs::inputConditioning) == 1.0f, "old state resolves Hardware");
 
     SwaraXtAudioProcessor live;
     live.prepareToPlay(48000, 64);
@@ -250,7 +251,9 @@ void stateAndSwitching()
         set(live, IDs::filterModel, float(i % 2));
         process(live, 64, i == 0);
     }
-    std::cout << "State restore and RAW/HARDWARE switching PASS\n";
+    require(get(live, IDs::inputConditioning) == 1 && get(live, IDs::filterModel) == 0,
+            "legacy selector automation remains inert");
+    std::cout << "State restore and inert selector automation PASS\n";
 }
 
 void rates()
@@ -275,7 +278,7 @@ int main()
         parameterTests();
         smr4CouplingAndBoardAnalog();
         classicPostMixerAndConditioning();
-        boardPostMixerAndConditioning();
+        compatibilityChoicesDoNotSelectAnotherPath();
         stateAndSwitching();
         rates();
     }

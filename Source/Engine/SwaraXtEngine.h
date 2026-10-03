@@ -153,6 +153,7 @@ class SwaraXtEngine {
     int lastHostClockOffsetForTests() const noexcept { return lastHostClockOffset_; }
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     bool dormantForTests() const noexcept { return dormant_; }
+    bool drainingForTests() const noexcept { return drainingToDormant_; }
     bool dcDrainingForTests() const noexcept { return dcDrainingToDormant_; }
     void setDormancyEnabledForTests(bool enabled) noexcept
     {

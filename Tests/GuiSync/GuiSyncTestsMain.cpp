@@ -359,14 +359,14 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
            "medium editor uses the canonical SVG dimensions");
     const auto lockup = editor.productLockupBoundsForTests();
     expect(std::abs(lockup.getX() - 433.340f) < 0.001f
-               && std::abs(lockup.getY() - 146.590f) < 0.001f
+               && std::abs(lockup.getY() - 130.590f) < 0.001f
                && std::abs(lockup.getWidth() - 246.674f) < 0.001f
                && std::abs(lockup.getHeight() - 44.282f) < 0.001f,
            "product lockup preserves canonical geometry with the refined group offset");
-    expect(editor.presetBoundsForTests().getCentreX() == editor.getWidth() / 2,
-           "preset name is centered on the complete editor");
-    expect(juce::String(SWARAXT_VERSION_STRING) == "1.2.2",
-           "GUI and build metadata report SWARA XT 1.2.2");
+    expect(editor.presetBoundsForTests().getCentreX() == 535,
+           "preset name leaves room for navigation and Save within the center column");
+    expect(juce::String(SWARAXT_VERSION_STRING) == "1.2.3",
+           "GUI and build metadata report SWARA XT 1.2.3");
 
     for (int oscillator = 0; oscillator < 2; ++oscillator)
     {

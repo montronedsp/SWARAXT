@@ -39,7 +39,7 @@ juce::MemoryBlock legacyState(SwaraXtAudioProcessor& p)
 void stateTests()
 {
     SwaraXtAudioProcessor p;p.prepareToPlay(48000,512);
-    require(p.getNumPrograms()==76,"factory count");
+    require(p.getNumPrograms()==57,"factory count");
     require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==0,"Classic Off default");
     const int count=p.getParameters().size();
     int index=count-7;
@@ -49,11 +49,13 @@ void stateTests()
         require(parameter != nullptr && parameter->paramID==id,"append-only parameter order");
     }
     juce::String error;
-    for(int preset=0;preset<76;++preset)
+    for(int preset=0;preset<p.getNumPrograms();++preset)
     {
         set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,15);
         require(p.loadPresetEntry({p.getProgramName(preset),{},preset,true},error),"factory load");
-        require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==0,"all old factory presets Classic Off");
+        SwaraXtAudioProcessor reference;
+        reference.setCurrentProgram(preset);
+        require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==get(reference,IDs::dspFxProgram),"factory restores its canonical filter and authored FX");
     }
     auto old=legacyState(p);
     set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,15);set(p,IDs::dspFxParam2,63);
@@ -72,7 +74,7 @@ void stateTests()
         require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==0,"A/B/A Classic");
         p.setStateInformation(boardState.getData(),static_cast<int>(boardState.getSize()));
         set(p,IDs::dspFxParam2,63);process(p);
-        require(get(p,IDs::filterModel)==1 && get(p,IDs::dspFxProgram)==15 && get(p,IDs::dspBoardRouting)==3,"A/B/A Board");
+        require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==15 && get(p,IDs::dspBoardRouting)==0,"A/B/A Board");
         require(!p.engineForTests().boardProcessorForTests().hasValidLoop(),"restore invalidates transient loop");
     }
     SwaraXtAudioProcessor restored;
@@ -80,7 +82,7 @@ void stateTests()
     set(restored,IDs::dspFxParam2,63);restored.prepareToPlay(48000,512);process(restored);
     require(!restored.engineForTests().boardProcessorForTests().hasValidLoop(),"recreate invalid loop");
     require(get(restored,IDs::dspFxParam1)==99,"recreated FX controls");
-    std::cout<<"State: appended parameters="<<count<<", 76 factories, legacy defaults, A/B/A, loop invalidation PASS\n";
+    std::cout<<"State: appended parameters="<<count<<", 57 factories, legacy defaults, A/B/A, loop invalidation PASS\n";
 }
 void controlTests()
 {
@@ -176,55 +178,16 @@ void streamingTests()
         &&p.engineForTests().boardControlsForTests().effect==board::Effect::off,"rapid transition settles to requested topology");
     std::cout<<"Six rates/six blocks exact, 85 routes/programs, 400 rapid transitions PASS\n";
 }
-void modelSwitchSafety()
+void compatibilityChoiceSafety()
 {
-    for(double rate:{44100.,48000.,88200.,96000.,176400.,192000.})
-    {
-        SwaraXtAudioProcessor p;
-        set(p,IDs::filterModel,1);set(p,IDs::dspFxProgram,0);set(p,IDs::dspBoardRouting,2);
-        set(p,IDs::filterCutoff,18000);set(p,IDs::filterResonance,0);
-        p.prepareToPlay(rate,256);
-        for(int i=0;i<16;++i)process(p,256,i==0);
-        set(p,IDs::filterModel,0);
-        const int totalBlocks=int(rate/256);
-        // Last 8 host blocks is only ~11 ms at 176.4/192 kHz, so a held oscillator
-        // period aliases into the mean. Use 200 ms, which is many cycles at note 60
-        // and several DC-blocker time constants after the model switch.
-        const int dcWindowBlocks=std::max(8,int(rate*0.2/256.0));
-        double peak=0,sum=0; int n=0;
-        for(int block=0;block<totalBlocks;++block)
+    for(double rate:{44100.,48000.,96000.,192000.})
+        for(int effect:{0,5,6,15,16})
         {
-            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
-            p.processBlock(audio,midi);
-            for(int i=0;i<256;++i)
-            {
-                const float v=audio.getSample(0,i);
-                require(std::isfinite(v)&&std::abs(v)<8.f,"Board to Classic finite");
-                peak=std::max(peak,double(std::abs(v)));
-                if(block>=totalBlocks-dcWindowBlocks){sum+=v;++n;}
-            }
+            const auto reference=render(rate,128,effect,0);
+            for(int route=1;route<5;++route)
+                require(reference==render(rate,128,effect,route),"obsolete routing choices cannot alter production audio");
         }
-        require(n>0 && std::abs(sum/n)<0.05,"Board to Classic host DC");
-        std::cout<<"Board to Classic rate="<<rate<<" peak="<<peak<<" mean="<<(sum/n)<<'\n';
-        set(p,IDs::filterModel,1);
-        for(int i=0;i<8;++i)process(p,256,i==0);
-        sum=0;n=0;peak=0;
-        for(int block=0;block<totalBlocks;++block)
-        {
-            juce::AudioBuffer<float> audio(2,256);juce::MidiBuffer midi;
-            p.processBlock(audio,midi);
-            for(int i=0;i<256;++i)
-            {
-                const float v=audio.getSample(0,i);
-                require(std::isfinite(v)&&std::abs(v)<8.f,"Classic to Board finite");
-                peak=std::max(peak,double(std::abs(v)));
-                if(block>=totalBlocks-dcWindowBlocks){sum+=v;++n;}
-            }
-        }
-        require(n>0 && std::abs(sum/n)<0.05,"Classic to Board host DC");
-        std::cout<<"Classic to Board rate="<<rate<<" peak="<<peak<<" mean="<<(sum/n)<<'\n';
-    }
-    std::cout<<"Board↔Classic six-rate switch host DC PASS\n";
+    std::cout<<"Inert routing choices preserve exact Classic plus FX output PASS\n";
 }
 void dormantModulationTest()
 {
@@ -259,16 +222,17 @@ void dormantModulationTest()
 }
 void headroomAndTailTests()
 {
-    std::uint64_t samples=0,clips=0;
+    std::uint64_t obsoleteAdcSamples=0;
     juce::String error;
-    for(int preset=0;preset<76;++preset)
+    SwaraXtAudioProcessor bank;
+    for(int preset=0;preset<bank.getNumPrograms();++preset)
     {
         SwaraXtAudioProcessor p;
         require(p.loadPresetEntry({p.getProgramName(preset),{},preset,true},error),"headroom factory");
         set(p,IDs::filterModel,1);p.prepareToPlay(48000,512);
         for(int i=0;i<40;++i)process(p,512,i==0);
         const auto& input=p.engineForTests().boardProcessorForTests().inputModel();
-        samples+=input.processedSamples();clips+=input.clippedSamples();
+        obsoleteAdcSamples+=input.processedSamples();
     }
     for(int op=0;op<14;++op)
     {
@@ -278,10 +242,10 @@ void headroomAndTailTests()
         set(p,IDs::mixBalance,64);p.prepareToPlay(48000,512);
         for(int i=0;i<80;++i)process(p,512,i==0);
         const auto& input=p.engineForTests().boardProcessorForTests().inputModel();
-        samples+=input.processedSamples();clips+=input.clippedSamples();
+        obsoleteAdcSamples+=input.processedSamples();
     }
-    require(clips==0,"factory/all-operator input headroom");
-    std::cout<<"ADC headroom: "<<clips<<'/'<<samples<<" clipped samples (76 factories, 14 operators + maximum sub/noise)\n";
+    require(obsoleteAdcSamples==0,"Classic FX never traverses the obsolete DSP-board ADC/filter path");
+    std::cout<<"57 factories and 14 operators finite; obsolete ADC samples="<<obsoleteAdcSamples<<'\n';
 
     for(int choice:{0,6})
     {
@@ -346,26 +310,6 @@ void suspendAndResetSafety()
     }
     std::cout<<"Six-rate empty replay/state/suspend/resume/block-change safety PASS\n";
 }
-void compensatedFilterDormancy()
-{
-    SwaraXtAudioProcessor p;
-    set(p,IDs::filterModel,1);set(p,IDs::dspBoardRouting,2);
-    set(p,IDs::filterCutoff,100);set(p,IDs::filterResonance,.01f);
-    p.prepareToPlay(48000,512);
-    for(int i=0;i<350;++i)process(p);
-    const auto low=p.engineForTests().boardControlsForTests();
-    require(low.resonance!=0 && !board::BoardFilter::hasFeedback(low.cutoff,low.resonance,false),"test reaches nonzero panel / zero effective resonance");
-    require(p.engineForTests().dormantForTests(),"compensated post-DCA filter sleeps");
-    require(std::isfinite(p.getTailLengthSeconds()),"compensated filter finite host tail");
-    set(p,IDs::filterResonance,1);
-    for(int i=0;i<8;++i)process(p);
-    require(!p.engineForTests().dormantForTests(),"dormant resonance automation wakes autonomous filter");
-    require(std::isinf(p.getTailLengthSeconds()),"autonomous filter sustained host tail");
-    set(p,IDs::filterResonance,.01f);
-    for(int i=0;i<350;++i)process(p);
-    require(p.engineForTests().dormantForTests(),"compensated filter returns to dormancy");
-    std::cout<<"Post-DCA compensated feedback dormancy, host tail and resonance wake PASS\n";
-}
 void benchmark()
 {
     for(int model=0;model<2;++model)
@@ -390,7 +334,7 @@ int main(int argc,char** argv)
     juce::ScopedJuceInitialiser_GUI gui;
     try {
         if(argc>1 && juce::String(argv[1])=="--benchmark")benchmark();
-        else {stateTests();controlTests();hostTempoTests();streamingTests();modelSwitchSafety();dormantModulationTest();headroomAndTailTests();suspendAndResetSafety();compensatedFilterDormancy();}
+        else {stateTests();controlTests();hostTempoTests();streamingTests();compatibilityChoiceSafety();dormantModulationTest();headroomAndTailTests();suspendAndResetSafety();}
     }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     return 0;

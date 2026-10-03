@@ -400,35 +400,34 @@ void testNaturalDormancyContinuityAndLongIdle()
                 static_cast<double>(finalDiscontinuity));
 }
 
-void testWakeDuringDcTail()
+void testWakeDuringOutputTail()
 {
     constexpr double sampleRate = 48000.0;
-    constexpr int blockSize = 64;
+    constexpr int blockSize = 1;
     SwaraXtAudioProcessor processor;
     configureFastEnvelope(processor);
-    // RAW leaves a measurable host-DC tail; HARDWARE's longer output-pole
-    // settling is covered above and can leave only one DC-only sample.
-    setParameter(processor, swaraxt::IDs::inputConditioning, 0);
+    // Hardware can finish the host DC drain in a single sample. Wake during
+    // its preceding FIR tail, independently of host buffer partitioning.
     processor.prepareToPlay(sampleRate, blockSize);
     auto& engine = processor.engineForTests();
     juce::AudioBuffer<float> buffer(2, blockSize);
     juce::MidiBuffer midi;
-    startAndRelease(processor, buffer, 200);
+    startAndRelease(processor, buffer, 12800);
 
     const int findTailBlocks = static_cast<int>(std::ceil(sampleRate * 5.0 / blockSize));
     int block = 0;
-    for (; block < findTailBlocks && ! engine.dcDrainingForTests()
+    for (; block < findTailBlocks && ! engine.drainingForTests()
            && ! engine.dormantForTests(); ++block)
     {
         buffer.clear();
         processor.processBlock(buffer, midi);
     }
-    expect(engine.dcDrainingForTests(), "wake test reaches the DC-only drain phase");
-    if (! engine.dcDrainingForTests())
+    expect(engine.drainingForTests(), "wake test reaches the output drain phase");
+    if (! engine.drainingForTests())
         return;
 
     engine.resetCpuProfileForTests();
-    midi.addEvent(juce::MidiMessage::noteOn(1, 67, static_cast<juce::uint8>(110)), 17);
+    midi.addEvent(juce::MidiMessage::noteOn(1, 67, static_cast<juce::uint8>(110)), 0);
     buffer.clear();
     processor.processBlock(buffer, midi);
     midi.clear();
@@ -437,7 +436,7 @@ void testWakeDuringDcTail()
     expect(finite(buffer), "wake-during-tail output is finite");
 
     float attackPeak = peak(buffer);
-    for (int sustain = 0; sustain < 40; ++sustain)
+    for (int sustain = 0; sustain < 2560; ++sustain)
     {
         buffer.clear();
         processor.processBlock(buffer, midi);
@@ -467,7 +466,7 @@ int main()
     juce::ScopedJuceInitialiser_GUI juce;
     testDcBlockerAtRates();
     testNaturalDormancyContinuityAndLongIdle();
-    testWakeDuringDcTail();
+    testWakeDuringOutputTail();
     std::printf(failures == 0 ? "Swara XT DC dormancy tests: PASSED\n"
                               : "Swara XT DC dormancy tests: FAILED (%d)\n",
                 failures);
