@@ -157,6 +157,29 @@ void fixedPointTailTest()
     require(varying,"source one-code positive feedback limit cycle");
     std::cout << "Positive comb feedback=1 retains AC limit-cycle after >4 seconds: confirmed\n";
 }
+void subCodeInputTailTest()
+{
+    BoardControl controls;
+    controls.effect = Effect::delay;
+    controls.cv1 = 255;
+    controls.cv2 = 0;
+    BoardProcessor residual, silence;
+    for (int block = 0; block < 2100; ++block)
+    {
+        FloatBlock input{}, zero{};
+        input.fill((block & 1) != 0 ? .25f / 2048 : -.25f / 2048);
+        residual.processClassicFx(input, controls);
+        silence.processClassicFx(zero, controls);
+        require(input == zero, "sub-code input is identical to silence at the FX boundary");
+    }
+    require(!silence.needsAudio(controls), "silent delay settles");
+    require(!residual.needsAudio(controls), "sub-code analog residue cannot hold FX awake");
+    FloatBlock audible{};
+    audible.fill(1.f / 2048);
+    residual.processClassicFx(audible, controls);
+    require(residual.needsAudio(controls), "one-code input still rearms the FX tail");
+    std::cout << "Quantized FX activity follows the actual 12-bit input PASS\n";
+}
 void compensatedFilterTailTest()
 {
     BoardControl c;
@@ -174,10 +197,11 @@ void compensatedFilterTailTest()
     require(std::isinf(BoardProcessor::tailSeconds(c)),"autonomous filter retains sustained tail");
     std::cout << "Cutoff-compensated filter feedback tail policy PASS\n";
 }
+
 }
 int main()
 {
-    try { responseTests(); safetyTests(); fixedPointTailTest(); compensatedFilterTailTest(); }
+    try { responseTests(); safetyTests(); fixedPointTailTest(); subCodeInputTailTest(); compensatedFilterTailTest(); }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     return 0;
 }

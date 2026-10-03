@@ -52,8 +52,9 @@ void BoardProcessor::processClassicFx(FloatBlock& samples, const BoardControl& c
     for (std::size_t i = 0; i < blockSize; ++i)
     {
         const double x = std::isfinite(samples[i]) ? samples[i] : 0.0;
-        driven = driven || x != 0;
         integer[i] = static_cast<std::int16_t>(std::clamp(std::round(x * 2048), -2048.0, 2047.0));
+        // Only samples that reach the integer effect can extend its input tail.
+        driven = driven || integer[i] != 0;
     }
     processEffects(integer, c);
     for (std::size_t i = 0; i < blockSize; ++i) samples[i] = static_cast<float>(integer[i]) / 2048;
