@@ -322,10 +322,12 @@ void SwaraXtEngine::prepareHostClock(const HostTransportSnapshot& transport, int
 {
     const double bpm = sanitizeBpm(transport.bpm);
     blockPpqPerSample_ = bpm / (60.0 * hostSampleRate_);
-    blockStartPpq_ = transport.hasPpqPosition ? transport.ppqPosition : fallbackPpq_;
+    const bool hasValidPpq = transport.hasPpqPosition && isValidHostPpq(transport.ppqPosition);
+    blockStartPpq_ = hasValidPpq ? transport.ppqPosition
+        : (isValidHostPpq(fallbackPpq_) ? fallbackPpq_ : 0.0);
 
     const double tolerance = blockPpqPerSample_ * 2.0;
-    const bool discontinuity = transport.hasPpqPosition
+    const bool discontinuity = hasValidPpq
         && hostTransportWasPlaying_
         && std::abs(blockStartPpq_ - expectedNextPpq_) > tolerance;
 

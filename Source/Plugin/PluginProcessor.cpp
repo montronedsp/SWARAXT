@@ -177,7 +177,7 @@ swaraxt::HostTransportSnapshot SwaraXtAudioProcessor::captureHostTransport() noe
     if (const auto ppq = position->getPpqPosition())
     {
         snapshot.ppqPosition = *ppq;
-        snapshot.hasPpqPosition = std::isfinite(*ppq) && *ppq >= 0.0;
+        snapshot.hasPpqPosition = swaraxt::isValidHostPpq(*ppq);
     }
     return snapshot;
 }

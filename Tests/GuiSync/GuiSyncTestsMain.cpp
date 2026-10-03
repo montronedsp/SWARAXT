@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 
 #include "Plugin/PluginEditor.h"
 #include "Plugin/PluginProcessor.h"
@@ -72,6 +73,55 @@ void processSamples(SwaraXtAudioProcessor& processor,
         playHead.ppq += static_cast<double>(block) * playHead.bpm / (60.0 * 48000.0);
         processed += block;
         ++blockIndex;
+    }
+}
+
+void testInvalidHostPositions()
+{
+    constexpr double maximumPpq = 4294967296.0;
+    expect(swaraxt::isValidHostPpq(maximumPpq), "maximum precise host position accepted");
+    for (double invalid : { std::numeric_limits<double>::quiet_NaN(),
+                            std::numeric_limits<double>::infinity(),
+                            -std::numeric_limits<double>::infinity(), -1.0,
+                            maximumPpq + 1.0, 1.0e300,
+                            std::numeric_limits<double>::max() })
+    {
+        expect(! swaraxt::isValidHostPpq(invalid), "invalid host position rejected");
+        SwaraXtAudioProcessor malformed, missing;
+        TestPlayHead badHost, absentHost;
+        badHost.ppq = invalid;
+        absentHost.providePpq = false;
+        malformed.setPlayHead(&badHost);
+        missing.setPlayHead(&absentHost);
+        for (auto* processor : { &malformed, &missing })
+        {
+            processor->prepareToPlay(48000.0, 128);
+            setInt(*processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+            setInt(*processor, swaraxt::IDs::seqClockMode, 1);
+        }
+        juce::AudioBuffer<float> badAudio(2, 128), reference(2, 128);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        for (int block = 0; block < 256; ++block)
+        {
+            if (block == 128)
+            {
+                badHost.ppq = absentHost.ppq = 2.0;
+                absentHost.providePpq = true;
+            }
+            malformed.processBlock(badAudio, midi);
+            missing.processBlock(reference, midi);
+            midi.clear();
+            for (int sample = 0; sample < 128; ++sample)
+                expect(std::isfinite(badAudio.getSample(0, sample))
+                           && badAudio.getSample(0, sample) == reference.getSample(0, sample),
+                       "invalid PPQ uses identical fallback and resumes valid host timing");
+            if (block >= 128)
+                badHost.ppq = absentHost.ppq += 128.0 / 24000.0;
+        }
+        expect(malformed.engineForTests().hostClockEventCountForTests()
+                   == missing.engineForTests().hostClockEventCountForTests(),
+               "malformed and missing PPQ clock identically");
     }
 }
 
@@ -646,6 +696,7 @@ int main(int argc, char** argv)
     if (argc > 1)
         outputRoot = argv[1];
 
+    testInvalidHostPositions();
     testHostClockAndLfoSync();
     testHostTempoCoverage();
     testFreeClockAndGate();
