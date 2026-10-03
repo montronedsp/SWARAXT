@@ -101,6 +101,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     swaraxt::SequenceState sequenceState_;
     swaraxt::SwaraXtEngine engine_;
     int currentProgram_ = 0;
+    std::atomic_flag stateUpdateGate_ = ATOMIC_FLAG_INIT;
     std::atomic<bool> requestEngineReset_ { false };
     std::atomic<bool> sequenceLocked_ { false };
     std::atomic<unsigned> randomNoteRange_ { 36u | (12u << 8) };

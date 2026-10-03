@@ -17,6 +17,25 @@ namespace {
 
 constexpr const char* kFilterQualityProperty = "filterQuality";
 
+class StateUpdateScope {
+public:
+    StateUpdateScope(std::atomic_flag& gate, bool wait) noexcept : gate_(gate)
+    {
+        do {
+            acquired_ = !gate_.test_and_set(std::memory_order_acquire);
+            if (acquired_ || !wait) break;
+            juce::Thread::yield();
+        } while (true);
+    }
+    ~StateUpdateScope() { if (acquired_) gate_.clear(std::memory_order_release); }
+    explicit operator bool() const noexcept { return acquired_; }
+    StateUpdateScope(const StateUpdateScope&) = delete;
+    StateUpdateScope& operator=(const StateUpdateScope&) = delete;
+private:
+    std::atomic_flag& gate_;
+    bool acquired_ = false;
+};
+
 void canonicaliseLegacyModes(juce::ValueTree& state)
 {
     for (auto child : state)
@@ -112,15 +131,22 @@ void SwaraXtAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     if (! isPrepared_)
         return;
 
-    // Consume message-thread preset/reset requests on the audio thread only.
-    if (requestEngineReset_.exchange(false, std::memory_order_acq_rel))
     {
-        engine_.reset();
-        engine_.touchModulationRates();
+        // A bulk preset publishes many independent APVTS atomics plus sequence
+        // state. Never ingest that transaction halfway through. Audio attempts
+        // once and continues with its existing engine state while a writer owns
+        // publication; only non-audio writers may wait.
+        const StateUpdateScope publication(stateUpdateGate_, false);
+        if (publication)
+        {
+            if (requestEngineReset_.exchange(false, std::memory_order_acq_rel))
+            {
+                engine_.reset();
+                engine_.touchModulationRates();
+            }
+            engine_.applyParameters();
+        }
     }
-
-    // Cached atomics — safe to mirror every block without string map lookups.
-    engine_.applyParameters();
     const int numSamples = buffer.getNumSamples();
     if (numSamples <= 0)
         return;
@@ -219,6 +245,7 @@ const juce::String SwaraXtAudioProcessor::getProgramName(int index)
 
 void SwaraXtAudioProcessor::loadFactoryPreset(int index)
 {
+    const StateUpdateScope publication(stateUpdateGate_, true);
     const int programCount = getNumPrograms();
     index = juce::jlimit(0, programCount - 1, index);
     currentProgram_ = index;
@@ -557,6 +584,7 @@ void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
     if (!tree.isValid() || !tree.hasType(kStateRoot)) return;
     const int version = static_cast<int>(tree.getProperty("stateVersion", 1));
     if (version > kStateVersion || version < 1) return;
+    const StateUpdateScope publication(stateUpdateGate_, true);
     const bool preserveSequence = fromPreset && sequenceLocked();
     if (preserveSequence)
     {

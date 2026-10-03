@@ -401,6 +401,56 @@ void testLfoPresetSwitchAndMatrixRoundtrip()
     }
 }
 
+void testBulkPublicationKeepsPreviousEngineState()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000, 128);
+    const auto destination = captureState(processor);
+    const auto establishPrevious = [&] {
+        setInt(processor, swaraxt::IDs::osc1Shape, shruthi::WAVEFORM_FM);
+        setInt(processor, swaraxt::IDs::env2Release, 100);
+        setInt(processor, swaraxt::IDs::mixBalance, 106);
+        processControlState(processor);
+    };
+    struct Probe final : juce::AudioProcessorValueTreeState::Listener {
+        explicit Probe(SwaraXtAudioProcessor& p) : processor(p) {}
+        void parameterChanged(const juce::String&, float) override
+        {
+            // Place audio callbacks deterministically at intermediate APVTS
+            // writes, rather than depending on a thread scheduling accident.
+            processor.processBlock(buffer, midi);
+            const auto& patch = processor.engineForTests().shruthiPart().patch();
+            ++callbacks;
+            expect(patch.osc[0].shape == shruthi::WAVEFORM_FM
+                       && patch.env[1].release == 100 && patch.mix_balance == 53,
+                   "audio retains complete previous patch during bulk publication");
+        }
+        SwaraXtAudioProcessor& processor;
+        juce::AudioBuffer<float> buffer { 2, 1 };
+        juce::MidiBuffer midi;
+        int callbacks = 0;
+    } probe(processor);
+    const auto listen = [&](bool enabled) {
+        for (const auto* id : {swaraxt::IDs::osc1Shape, swaraxt::IDs::env2Release, swaraxt::IDs::mixBalance})
+            if (enabled) processor.getApvts().addParameterListener(id, &probe);
+            else processor.getApvts().removeParameterListener(id, &probe);
+    };
+    establishPrevious(); listen(true);
+    processor.setCurrentProgram(1);
+    listen(false);
+    processControlState(processor);
+    expect(processor.engineForTests().shruthiPart().patch().osc[0].shape == shruthi::WAVEFORM_SQUARE,
+           "completed factory publication reaches engine on next callback");
+    establishPrevious(); listen(true);
+    restoreState(processor, destination);
+    listen(false);
+    processControlState(processor);
+    expect(processor.engineForTests().shruthiPart().patch().env[1].release != 100,
+           "completed session publication reaches engine on next callback");
+    expect(probe.callbacks >= 6, "factory and session intermediate writes exercised");
+    std::printf("Bulk publication: %d intermediate audio callbacks retained previous patch\n", probe.callbacks);
+}
+
 }  // namespace
 
 int main(int argc, char* argv[])
@@ -418,6 +468,7 @@ int main(int argc, char* argv[])
     testAudioEquivalence();
     testFilterQualityDefaultAndStateLifecycle();
     testLfoPresetSwitchAndMatrixRoundtrip();
+    testBulkPublicationKeepsPreviousEngineState();
 
     if (failures == 0)
     {
