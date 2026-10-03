@@ -83,6 +83,7 @@ juce_add_binary_data(SwaraXTFonts
         resources/Fonts/din1451alt.ttf
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/braid.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Shared/montronedsp_wordmark.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Shared/stones_letters.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/jam_ornament.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/midnight_backdrop.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/midnight_product_lockup.svg"

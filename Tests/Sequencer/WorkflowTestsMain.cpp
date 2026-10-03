@@ -130,7 +130,7 @@ void randomChecks() {
                 auto after = state.snapshot();
                 for (auto step : after.steps) {
                     const int note = step & 127;
-                    check(note >= juce::jmax(0, root + range.lower) && note <= juce::jmin(127, root + range.upper), "bipolar range and endpoint clamp");
+                    check(note >= juce::jmax(1, root + range.lower) && note <= juce::jmax(1, juce::jmin(127, root + range.upper)), "bipolar range and endpoint clamp");
                 }
                 if (kind == Kind::sequence) {
                     bool previous = false;
@@ -182,7 +182,7 @@ void uiChecks(const juce::File& output) {
             const auto before = p.sequenceState().snapshot(); const int root = before.steps[0] & 127;
             button(e, "RANDOM NOTES")->onClick();
             for (auto step : p.sequenceState().snapshot().steps)
-                check((step & 127) >= juce::jmax(0, root + limits.lower) && (step & 127) <= juce::jmin(127, root + limits.upper), "range UI controls note generation");
+                check((step & 127) >= juce::jmax(1, root + limits.lower) && (step & 127) <= juce::jmax(1, juce::jmin(127, root + limits.upper)), "range UI controls note generation");
         }
         range->setMinAndMaxValues(-12, 12, juce::dontSendNotification); range->onValueChange();
     }
@@ -235,6 +235,27 @@ void uiChecks(const juce::File& output) {
         }
     }
     e.setBoardEditorViewForTests(false);
+    const auto savedMark = swaraxt::ui::UiPreferences::loadManufacturerMark();
+    for (auto mark : {swaraxt::ui::ManufacturerMark::montroneDspWordmark, swaraxt::ui::ManufacturerMark::stone}) {
+        swaraxt::ui::UiPreferences::saveManufacturerMark(mark);
+        check(swaraxt::ui::UiPreferences::loadManufacturerMark() == mark, "manufacturer mark preference persists");
+        e.setManufacturerMarkForTests(mark);
+        for (auto skin : {swaraxt::ui::SkinId::pastel, swaraxt::ui::SkinId::midnightGold, swaraxt::ui::SkinId::neonCobalt,
+                          swaraxt::ui::SkinId::jungle, swaraxt::ui::SkinId::rossocorsa}) {
+            e.setSkinForTests(skin);
+            swaraxt::ui::SkinAssetCache assets(swaraxt::ui::SkinRegistry::get(skin));
+            const auto* artwork = assets.get(mark == swaraxt::ui::ManufacturerMark::stone
+                ? swaraxt::ui::AssetRole::stoneWordmark : swaraxt::ui::AssetRole::companyWordmark);
+            check(artwork && !artwork->getDrawableBounds().isEmpty(), "skin manufacturer vector parses");
+            for (auto size : {swaraxt::ui::GuiSize::small, swaraxt::ui::GuiSize::medium, swaraxt::ui::GuiSize::large}) {
+                e.setGuiSizeForTests(size);
+                check(e.manufacturerMarkForTests() == mark, "skin/size preserves mark selection");
+                writeImage(e, output.getChildFile(juce::String(swaraxt::ui::ManufacturerMarkDefinition::stableId(mark))
+                    + "-" + swaraxt::ui::SkinRegistry::get(skin).stableId + "-" + swaraxt::ui::GuiGeometry::stableId(size) + ".png"));
+            }
+        }
+    }
+    swaraxt::ui::UiPreferences::saveManufacturerMark(savedMark);
     std::puts("UI: unified controls, lock, random actions, 17 FX choices; rendered 5 skins x 3 sizes x 2 modes and HiDPI");
 }
 }

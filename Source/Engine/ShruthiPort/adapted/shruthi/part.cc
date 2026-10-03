@@ -518,12 +518,19 @@ void Part::Start(bool internal) {
 }
 
 /* static */
-void Part::Stop(bool internal) {
+void Part::Stop(bool internal, bool preserve_held_notes) {
   arp_seq_running_ = false;
   ignore_note_off_messages_ = false;
   if (sequencer_settings_.mode() != SEQUENCER_MODE_STEP) {
     StopSequencerArpeggiatorNotes();
-    AllSoundOff();
+    if (preserve_held_notes) {
+      // Host transport is independent of the physical MIDI key lifetime.
+      poly_allocator_.Clear();
+      mono_allocator_.Clear();
+      voice_.NoteOff();
+    } else {
+      AllSoundOff();
+    }
   }
   if (internal) {
     midi_dispatcher_->OnStop();

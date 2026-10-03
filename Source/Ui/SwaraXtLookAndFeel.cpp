@@ -46,7 +46,7 @@ void SwaraXtLookAndFeel::applySkin()
 {
     setColour(juce::ResizableWindow::backgroundColourId, Palette::background());
     setColour(juce::Label::textColourId, Palette::cream());
-    setColour(juce::Slider::textBoxTextColourId, Palette::cream());
+    setColour(juce::Slider::textBoxTextColourId, Palette::skin().displayText);
     setColour(juce::Slider::textBoxBackgroundColourId, Palette::panelDeep());
     setColour(juce::Slider::textBoxOutlineColourId, Palette::line());
     setColour(juce::TextButton::buttonColourId, Palette::panelRaised());
@@ -303,9 +303,12 @@ void SwaraXtLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
 
 void SwaraXtLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool)
 {
-    g.setColour(button.findColour(button.getToggleState() ? juce::TextButton::textColourOnId
-                                                        : juce::TextButton::textColourOffId)
-                      .withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f));
+    const bool displayAction = button.getProperties().getWithDefault("swaraxtPresetNavigation", false)
+        || button.getProperties().getWithDefault("swaraxtSecondaryAction", false);
+    const auto text = displayAction ? Palette::skin().displayText
+        : button.findColour(button.getToggleState() ? juce::TextButton::textColourOnId
+                                                   : juce::TextButton::textColourOffId);
+    g.setColour(text.withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f));
     singleLineText(getTextButtonFont(button, button.getHeight()), button.getButtonText(),
                    button.getLocalBounds().toFloat().reduced(3.0f, 0.0f),
                    juce::Justification::centred).draw(g);

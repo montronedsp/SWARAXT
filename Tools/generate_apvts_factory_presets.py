@@ -3,7 +3,7 @@
 
 Rules:
   * ends with FINALFIX/FIXED -> excluded historical Shruthi workarounds
-  * everything else     -> new factory preset
+  * only the explicit shipping shortlist -> factory preset
   * exclusions: LFO MOD, duo pong, voweano (case-insensitive; optional CA prefix)
 
 Pass the read-only preset directory via --preset-dir. Do not commit raw presets.
@@ -20,6 +20,7 @@ REPO = Path(__file__).resolve().parents[1]
 FACTORY_HEADER = REPO / "Source/Plugin/ShruthiFactoryPresetData.h"
 OUT = REPO / "Source/Plugin/ApvtsFactoryPresetData.h"
 
+SHIPPING_NAMES = ("1996 Sub Bass", "Ibiza Bass", "Pong Fun", "Sport Sub", "Unwanted Truths", "Vowel drone")
 EXCLUSIONS = {"lfo mod", "duo pong", "voweano"}
 
 
@@ -98,12 +99,16 @@ def main() -> None:
         _, kind = strip_correction_suffix(p["name"])
         if kind is not None:
             continue
-        if is_excluded(p["name"]):
+        if is_excluded(p["name"]) or p["name"] not in SHIPPING_NAMES:
             excluded.append(p["name"])
             continue
         user_presets.append(p)
 
-    # Preserve existing program indexes with deterministic filename order.
+    # Preserve the explicit shipping program order.
+    user_presets.sort(key=lambda p: SHIPPING_NAMES.index(p["name"]))
+    missing = set(SHIPPING_NAMES) - {p["name"] for p in user_presets}
+    if missing:
+        raise SystemExit(f"Missing shipping presets: {sorted(missing)}")
 
     # Deduplicate shipping names.
     seen = set()
@@ -126,7 +131,7 @@ def main() -> None:
         "",
         "struct ApvtsFactoryParam {",
         "    const char* id;",
-        "    float value;",
+        "    double value;",
         "};",
         "",
         "struct ApvtsFactoryPreset {",

@@ -38,6 +38,8 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void setGuiSizeForTests(swaraxt::ui::GuiSize size);
     void setSkinForTests(swaraxt::ui::SkinId skin);
     void setDecorationForTests(swaraxt::ui::DecorationId decoration);
+    void setManufacturerMarkForTests(swaraxt::ui::ManufacturerMark mark) { applyManufacturerMark(mark, false); }
+    swaraxt::ui::ManufacturerMark manufacturerMarkForTests() const noexcept { return manufacturerMark_; }
     swaraxt::ui::GuiSize guiSizeForTests() const noexcept { return guiSize_; }
     const swaraxt::ui::OscillatorPanel& oscillatorForTests(int index) const noexcept
     {
@@ -135,6 +137,7 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void showAboutPopup();
     void applySkin(swaraxt::ui::SkinId skin, bool persist);
     void applyDecoration(swaraxt::ui::DecorationId decoration, bool persist);
+    void applyManufacturerMark(swaraxt::ui::ManufacturerMark mark, bool persist);
     void applyGuiSize(swaraxt::ui::GuiSize size, bool persist);
     void applyFilterQuality(swaraxt::FilterQuality quality, bool persist);
 

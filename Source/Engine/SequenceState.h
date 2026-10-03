@@ -94,7 +94,9 @@ class SequenceState {
             auto b = SequenceSnapshot::dataB(packed);
             if (kind == Randomize::notes || kind == Randomize::sequence)
             {
-                const int pitch = juce::jlimit(0, 127,
+                // Native tuned pitch zero is the muted-scale sentinel, not a
+                // playable random note. Existing/manual pattern bytes stay intact.
+                const int pitch = juce::jlimit(1, 127,
                     root + offsets[static_cast<size_t>(random.nextInt(count))]);
                 a = static_cast<uint8_t>((a & 0x80) | pitch);
             }

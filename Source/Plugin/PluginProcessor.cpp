@@ -249,7 +249,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
         const int userIndex = index - swaraxt::kUserFactoryPresetStart;
         const auto& record = swaraxt::kUserFactoryPresets[static_cast<std::size_t>(userIndex)];
         swaraxt::ApvtsFactoryPresets::applyParams(record.params, record.paramCount, apvts_, preserveSequence);
-        requestEngineReset_.store(true, std::memory_order_release);
+        if (!preserveSequence) requestEngineReset_.store(true, std::memory_order_release);
         return;
     }
 
@@ -261,7 +261,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
         if (swaraxt::ShruthiFactoryPresets::decodePatch(record.bytes.data(),
                                                         record.bytes.size(), patch))
             swaraxt::ShruthiFactoryPresets::applyPatchToApvts(patch, apvts_, preserveSequence);
-        requestEngineReset_.store(true, std::memory_order_release);
+        if (!preserveSequence) requestEngineReset_.store(true, std::memory_order_release);
         return;
     }
 
@@ -372,7 +372,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             break;
     }
 
-    requestEngineReset_.store(true, std::memory_order_release);
+    if (!preserveSequence) requestEngineReset_.store(true, std::memory_order_release);
 }
 
 juce::File SwaraXtAudioProcessor::userPresetDirectory() const
@@ -619,11 +619,20 @@ void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
     currentProgram_ = juce::jlimit(0,
                                    getNumPrograms() - 1,
                                    static_cast<int>(tree.getProperty("currentProgram", 0)));
+    // Saved parameter state stays authoritative when factory numbering changes.
+    // Names remap retained programs without substituting the current bank sound.
+    if (tree.getProperty("presetKind") == "factory")
+        for (int program = 0; program < getNumPrograms(); ++program)
+            if (getProgramName(program) == tree.getProperty("presetName").toString())
+            {
+                currentProgram_ = program;
+                break;
+            }
     currentUserPresetName_ = tree.getProperty("presetKind") == "user"
         ? tree.getProperty("presetName").toString().trim()
         : juce::String {};
     hostSessionStateRestored_ = !fromPreset;
-    requestEngineReset_.store(true, std::memory_order_release);
+    if (!preserveSequence) requestEngineReset_.store(true, std::memory_order_release);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

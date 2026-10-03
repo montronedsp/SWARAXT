@@ -195,7 +195,7 @@ const SwaraXtSkin& SkinRegistry::midnightGold()
             "mod_matrix_frame_svg",
             "visualizer_frame_svg",
             "vco1_header_svg",
-            "vco2_header_svg"
+            "vco2_header_svg", "stones_letters_svg"
         }
     };
     return skin;
@@ -217,7 +217,7 @@ const SwaraXtSkin& SkinRegistry::neonCobalt()
             "neon_mod_matrix_frame_svg",
             "neon_visualizer_frame_svg",
             "vco1_header_svg",
-            "vco2_header_svg"
+            "vco2_header_svg", "stones_letters_svg"
         }
     };
     return skin;
@@ -229,7 +229,7 @@ const SwaraXtSkin& SkinRegistry::pastel()
         SkinId::pastel, "pastel", "Pastel", pastelPalette(),
         { "", "montronedsp_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
           "jam_ornament_svg", "mod_matrix_frame_svg", "visualizer_frame_svg",
-          "vco1_header_svg", "vco2_header_svg" }
+          "vco1_header_svg", "vco2_header_svg", "stones_letters_svg" }
     };
     return skin;
 }
@@ -240,7 +240,7 @@ const SwaraXtSkin& SkinRegistry::jungle()
         SkinId::jungle, "jungle", "Jungle", junglePalette(),
         { "", "montronedsp_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
           "jam_ornament_svg", "mod_matrix_frame_svg", "visualizer_frame_svg",
-          "vco1_header_svg", "vco2_header_svg" }
+          "vco1_header_svg", "vco2_header_svg", "stones_letters_svg" }
     };
     return skin;
 }
@@ -251,7 +251,7 @@ const SwaraXtSkin& SkinRegistry::rossocorsa()
         SkinId::rossocorsa, "rossocorsa", "Rossocorsa", rossocorsaPalette(),
         { "", "montronedsp_wordmark_svg", "midnight_product_lockup_svg", "braid_svg",
           "jam_ornament_svg", "mod_matrix_frame_svg", "visualizer_frame_svg",
-          "vco1_header_svg", "vco2_header_svg" }
+          "vco1_header_svg", "vco2_header_svg", "stones_letters_svg" }
     };
     return skin;
 }
@@ -292,7 +292,7 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
         const auto* resourceName = skin.resourceNames[i];
         const auto* data = resourceName != nullptr && resourceName[0] != '\0'
             ? BinaryData::getNamedResource(resourceName, size) : nullptr;
-        if (i == indexOf(AssetRole::companyWordmark) && data != nullptr && size > 0)
+        if ((i == indexOf(AssetRole::companyWordmark) || i == indexOf(AssetRole::stoneWordmark)) && data != nullptr && size > 0)
         {
             // Recolour presentation attributes before parsing to preserve the
             // artwork's independent outline, shadow and highlight opacities.
@@ -312,7 +312,7 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
     const auto recolour = [this](juce::Colour source, juce::Colour target)
     {
         for (size_t i = 0; i < assets_.size(); ++i)
-            if (i != indexOf(AssetRole::companyWordmark) && assets_[i] != nullptr)
+            if (i != indexOf(AssetRole::companyWordmark) && i != indexOf(AssetRole::stoneWordmark) && assets_[i] != nullptr)
                 assets_[i]->replaceColour(source, target);
     };
 
@@ -434,6 +434,20 @@ GuiSize UiPreferences::loadGuiSize()
     if (value == "small") return GuiSize::small;
     if (value == "large") return GuiSize::large;
     return GuiSize::medium;
+}
+
+ManufacturerMark UiPreferences::loadManufacturerMark()
+{
+    const auto properties = open();
+    return properties->getValue("manufacturer_mark") == "stone"
+        ? ManufacturerMark::stone : ManufacturerMarkDefinition::defaultMark;
+}
+
+void UiPreferences::saveManufacturerMark(ManufacturerMark mark)
+{
+    auto properties = open();
+    properties->setValue("manufacturer_mark", ManufacturerMarkDefinition::stableId(mark));
+    properties->saveIfNeeded();
 }
 
 void UiPreferences::save(SkinId skin, DecorationId decoration, GuiSize size)

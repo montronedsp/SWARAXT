@@ -14,10 +14,15 @@ namespace swaraxt::ui {
 
 enum class SkinId { midnightGold, neonCobalt, pastel, jungle, rossocorsa };
 enum class DecorationId { legacy, pcbTrace };
-enum class ManufacturerMark { montroneDspWordmark };
+enum class ManufacturerMark { montroneDspWordmark, stone };
 struct ManufacturerMarkDefinition {
     static constexpr ManufacturerMark defaultMark = ManufacturerMark::montroneDspWordmark;
-    static constexpr const char* displayName = "MontroneDSP Wordmark";
+    static const char* displayName(ManufacturerMark mark) {
+        return mark == ManufacturerMark::stone ? "STONE" : "MontroneDSP Wordmark";
+    }
+    static const char* stableId(ManufacturerMark mark) {
+        return mark == ManufacturerMark::stone ? "stone" : "montronedsp_wordmark";
+    }
 };
 enum class GuiSize { small, medium, large };
 
@@ -31,6 +36,7 @@ enum class AssetRole : size_t {
     visualizerFrame,
     vco1Header,
     vco2Header,
+    stoneWordmark,
     count
 };
 
@@ -93,7 +99,7 @@ class SkinRegistry {
 };
 
 struct ProductLockupGeometry {
-    static constexpr float editorOffsetY = -10.0f;
+    static constexpr float editorOffsetY = -26.0f;
     static juce::Rectangle<float> instrumentMark() { return { 433.340f, 156.590f, 21.436f, 21.435f }; }
     static juce::Rectangle<float> wordmark() { return { 459.032f, 158.481f, 116.871f, 18.500f }; }
     static juce::Rectangle<float> tagline() { return { 585.600f, 167.690f, 94.414f, 11.094f }; }
@@ -152,9 +158,11 @@ class UiPreferences {
     static SkinId loadSkin();
     static DecorationId loadDecoration();
     static GuiSize loadGuiSize();
+    static ManufacturerMark loadManufacturerMark();
     static swaraxt::FilterQuality loadFilterQuality();
     static void save(SkinId skin, DecorationId decoration, GuiSize size);
     static void saveFilterQuality(swaraxt::FilterQuality quality);
+    static void saveManufacturerMark(ManufacturerMark mark);
 
  private:
     static std::unique_ptr<juce::PropertiesFile> open();

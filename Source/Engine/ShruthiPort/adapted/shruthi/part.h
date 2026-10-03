@@ -75,7 +75,7 @@ class Part {
   void Reset();
   void Clock(bool internal);
   void Start(bool internal);
-  void Stop(bool internal);
+  void Stop(bool internal, bool preserve_held_notes = false);
   void AlignExternalClock(uint64_t ticksBeforeNextClock);
   void SetHostLfoSync(uint8_t index, bool enabled, uint16_t phaseIncrement);
   void SetGatePercent(uint8_t percent);
@@ -123,6 +123,7 @@ class Part {
   }
 
   inline bool running() const { return arp_seq_running_; }
+  inline bool has_held_notes() { return pressed_keys_.size() != 0; }
   inline uint8_t step() const { return arp_seq_step_; }
 
   inline const Patch& patch() const { return patch_; }

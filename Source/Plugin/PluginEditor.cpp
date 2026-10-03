@@ -8,6 +8,7 @@
 namespace {
 
 const juce::Rectangle<float> companyWordmarkBounds { 482.0f, 21.0f, 149.0f, 27.0f };
+const juce::Rectangle<float> stoneWordmarkBounds { 492.5f, 19.5f, 128.0f, 30.0f };
 const juce::Rectangle<float> presetFrameBounds { 391.0f, 58.0f, 330.0f, 37.0f };
 
 constexpr int presetSelectorX = 426;
@@ -133,6 +134,7 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     setResizable(false, false);
     skinId_ = swaraxt::ui::UiPreferences::loadSkin();
     decorationId_ = swaraxt::ui::UiPreferences::loadDecoration();
+    manufacturerMark_ = swaraxt::ui::UiPreferences::loadManufacturerMark();
     swaraxt::ui::SkinRegistry::setActive(skinId_);
     lookAndFeel_.applySkin();
     guiSize_ = swaraxt::ui::UiPreferences::loadGuiSize();
@@ -232,8 +234,9 @@ void SwaraXtAudioProcessorEditor::paintDesignSurface(juce::Graphics& g)
             separator->drawWithin(g, { centreX - width * 0.5f, 4.0f, width, 513.0f },
                                   juce::RectanglePlacement::centred, 1.0f);
     }
-    if (const auto* company = assets_.get(AssetRole::companyWordmark))
-        company->drawWithin(g, companyWordmarkBounds,
+    const bool stone = manufacturerMark_ == ManufacturerMark::stone;
+    if (const auto* company = assets_.get(stone ? AssetRole::stoneWordmark : AssetRole::companyWordmark))
+        company->drawWithin(g, stone ? stoneWordmarkBounds : companyWordmarkBounds,
                             juce::RectanglePlacement::centred, 1.0f);
 
     g.setColour(Palette::skin().displayBackground);
@@ -283,8 +286,10 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
         midiMenu.addItem(400 + channel, channel == 0 ? "Omni" : "Channel " + juce::String(channel),
                          true, channel == midiChannel);
     juce::PopupMenu markMenu;
-    markMenu.addItem(500, ManufacturerMarkDefinition::displayName, true,
+    markMenu.addItem(500, ManufacturerMarkDefinition::displayName(ManufacturerMark::montroneDspWordmark), true,
                      manufacturerMark_ == ManufacturerMark::montroneDspWordmark);
+    markMenu.addItem(501, ManufacturerMarkDefinition::displayName(ManufacturerMark::stone), true,
+                     manufacturerMark_ == ManufacturerMark::stone);
 
     juce::PopupMenu menu;
     menu.addSubMenu("MIDI Channel", midiMenu);
@@ -305,7 +310,8 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
             parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(result - 400)));
             parameter->endChangeGesture();
         }
-        if (result == 500) safeThis->manufacturerMark_ = ManufacturerMark::montroneDspWordmark;
+        if (result == 500) safeThis->applyManufacturerMark(ManufacturerMark::montroneDspWordmark, true);
+        if (result == 501) safeThis->applyManufacturerMark(ManufacturerMark::stone, true);
         if (result == 100) safeThis->applySkin(SkinId::midnightGold, true);
         if (result == 101) safeThis->applySkin(SkinId::neonCobalt, true);
         if (result == 102) safeThis->applySkin(SkinId::pastel, true);
@@ -340,6 +346,14 @@ void SwaraXtAudioProcessorEditor::applySkin(swaraxt::ui::SkinId skin, bool persi
     repaint();
     if (persist)
         swaraxt::ui::UiPreferences::save(skinId_, decorationId_, guiSize_);
+}
+
+void SwaraXtAudioProcessorEditor::applyManufacturerMark(swaraxt::ui::ManufacturerMark mark, bool persist)
+{
+    if (manufacturerMark_ == mark) return;
+    manufacturerMark_ = mark;
+    if (persist) swaraxt::ui::UiPreferences::saveManufacturerMark(mark);
+    designSurface_.repaint();
 }
 
 void SwaraXtAudioProcessorEditor::applyDecoration(swaraxt::ui::DecorationId decoration,

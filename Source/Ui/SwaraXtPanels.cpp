@@ -856,7 +856,7 @@ void MainPanel::reflow()
     const int gap = Layout::moduleGap;
     sourceModule_.setBounds(26, 22, 318, 184);
     lfoModule_.setBounds(26, 209, 318, 298);
-    mixModule_.setBounds(383, showingSequencer_ ? 105 : 196, 347, showingSequencer_ ? 398 : 307);
+    mixModule_.setBounds(383, showingSequencer_ ? 105 : 180, 347, showingSequencer_ ? 398 : 323);
     filterModule_.setBounds(769, 22, 318, 132);
     perfModule_.setBounds(769, 157, 318, 100);
     envModule_.setBounds(769, 260, 318, 243);
@@ -884,7 +884,7 @@ void MainPanel::reflow()
         showingSequencer_ ? juce::Rectangle<int>{} : seqViewButton_.getBounds());
     mixModule_.setPrimaryActionBounds(showingSequencer_ ? seqViewButton_.getBounds() : juce::Rectangle<int>{});
     sequencerView_->setBounds(mix);
-    auto matrix = mix.removeFromBottom(133);
+    auto matrix = mix.removeFromBottom(149);
     matrix.removeFromTop(Layout::moduleHeaderRow);
     modulationView_->setBounds(matrix);
     modulationView_->reflow();
@@ -1055,10 +1055,10 @@ void ModPanel::reflow()
         if (row / 3 != page_)
             continue;
         auto rowArea = area.removeFromTop(rowH).reduced(2, 2);
-        r.indexLabel.setBounds(rowArea.removeFromLeft(24));
-        rowArea.removeFromLeft(3);
-        const int amountW = 102;
-        const int sourceW = 75;
+        r.indexLabel.setBounds(rowArea.removeFromLeft(20));
+        rowArea.removeFromLeft(4);
+        const int amountW = 88;
+        const int sourceW = 82;
         r.source.setBounds(rowArea.removeFromLeft(sourceW));
         rowArea.removeFromLeft(3);
         r.amount->setBounds(rowArea.removeFromLeft(amountW));

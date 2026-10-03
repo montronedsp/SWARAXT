@@ -116,8 +116,8 @@ void verifyOfficialImportParity()
 
 void verifyUserFactoryParity()
 {
-    expect(static_cast<int>(swaraxt::kUserFactoryPresetCount) == 25,
-           "twenty-five user-designed factory presets");
+    expect(static_cast<int>(swaraxt::kUserFactoryPresetCount) == 6,
+           "six retained user-designed factory presets");
     std::unordered_set<std::string> names;
     for (std::size_t i = 0; i < swaraxt::kUserFactoryPresetCount; ++i)
     {
@@ -229,7 +229,7 @@ void verifyProgramLayout()
     const int expected = swaraxt::kUserFactoryPresetStart
         + static_cast<int>(swaraxt::kUserFactoryPresetCount);
     expect(proc.getNumPrograms() == expected, "total factory program count");
-    expect(expected == 76, "11 native + 40 Mutable + 25 user = 76");
+    expect(expected == 57, "11 native + 40 Mutable + 6 user = 57");
     expect(std::strcmp(proc.getProgramName(0).toRawUTF8(), "Saw Bass") == 0,
            "native indices preserved");
     expect(std::strcmp(proc.getProgramName(swaraxt::kShruthiFactoryPresetStart).toRawUTF8(),

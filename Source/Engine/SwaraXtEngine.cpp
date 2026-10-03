@@ -184,7 +184,15 @@ void SwaraXtEngine::applyParameters()
     lfoSync_[1] = ParameterCache::loadInt(parameterCache_->lfo2Sync) != 0;
     lfoDivision_[0] = juce::jlimit(0, 7, ParameterCache::loadInt(parameterCache_->lfo1Division));
     lfoDivision_[1] = juce::jlimit(0, 7, ParameterCache::loadInt(parameterCache_->lfo2Division));
+    const bool wasHostSync = sequencerHostSync_;
     sequencerHostSync_ = ParameterCache::loadInt(parameterCache_->seqClockMode) != 0;
+    // A host Stop relinquishes playback. On clock handoff, an already-held key
+    // must have the same start semantics as a new key in internal-clock mode.
+    if (wasHostSync && !sequencerHostSync_ && !part_.running() && part_.has_held_notes())
+    {
+        part_.Start(true);
+        part_.Clock(true);
+    }
     sequencerSwing_ = juce::jlimit(0, 127, ParameterCache::loadInt(parameterCache_->seqSwing));
 
     const auto nextBoard = parameterCache_->boardControls();
@@ -332,7 +340,7 @@ void SwaraXtEngine::prepareHostClock(const HostTransportSnapshot& transport, int
     if (! transport.isPlaying)
     {
         if (hostTransportWasPlaying_)
-            part_.Stop(false);
+            part_.Stop(false, true);
         hostTransportWasPlaying_ = false;
         hostClockNeedsAlignment_ = true;
         fallbackPpq_ = blockStartPpq_;
