@@ -10,7 +10,7 @@ namespace swaraxt {
 void DcBlocker::prepare(double sampleRate) noexcept
 {
     constexpr double kFallbackSampleRate = 44100.0;
-    constexpr double kCutoffHz = 3.5;
+    constexpr double kCutoffHz = 0.7;
     constexpr double kTwoPi = 6.28318530717958647692;
     const double validRate =
         sampleRate > 1.0 ? sampleRate : kFallbackSampleRate;

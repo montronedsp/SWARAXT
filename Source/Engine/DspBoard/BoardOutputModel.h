@@ -10,7 +10,7 @@ public:
     float process(std::int16_t sample) noexcept
     {
         // Character: output SOS plus the historical R7/R15 polarity.
-        // LF coupling is supplied by the existing host 3.5 Hz DC blocker, not
+        // LF safety protection is supplied by the final host DC blocker, not
         // duplicated here. The physical 10/22 voltage ratio is then restored so
         // plugin nominal level does not inherit PCB output-amplifier attenuation.
         // Compensation is after the musical DCF/DCA/FX and after the character SOS.

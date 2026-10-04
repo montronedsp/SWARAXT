@@ -28,7 +28,7 @@ uint8_t shruthiCutoffCode(float cutoffHz)
         static_cast<int>(std::lround(127.0f + semitonesBelowMaximum))));
 }
 
-// The reference pole reaches 1e-7 from unity in about 3.65 seconds. That is
+// The 0.7 Hz safety pole reaches 1e-7 from unity in about 3.66 seconds. That is
 // below -140 dBFS, while a 25-second backstop also covers decay from the
 // largest finite float at every supported host rate.
 constexpr float kDcSettlementThreshold = 1.0e-7f;

@@ -5,12 +5,18 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <limits>
+#include <vector>
 
 #include "Engine/SampleRate/HostResampler.h"
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
+#include "shruthi/patch.h"
 
 namespace {
 
@@ -64,10 +70,11 @@ void startAndRelease(SwaraXtAudioProcessor& processor,
                      juce::AudioBuffer<float>& buffer,
                      int sustainBlocks);
 
-constexpr double kCutoffHz = 3.5;
+constexpr double kCutoffHz = 0.7;
 constexpr double kTwoPi = 6.28318530717958647692;
-constexpr std::array<double, 6> kMatrixRates {
-    44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0
+constexpr std::array<double, 12> kMatrixRates {
+    8000.0, 11025.0, 16000.0, 22050.0, 32000.0, 44100.0,
+    48000.0, 88200.0, 96000.0, 176400.0, 192000.0, 384000.0
 };
 
 double derivedCutoffHz(double sampleRate, float pole) noexcept
@@ -75,10 +82,12 @@ double derivedCutoffHz(double sampleRate, float pole) noexcept
     return -sampleRate * static_cast<double>(std::log(static_cast<double>(pole))) / kTwoPi;
 }
 
-double measuredSineGainDb(swaraxt::DcBlocker& blocker, double sampleRate, double frequencyHz)
+template <typename Blocker>
+double measuredSineGainDb(Blocker& blocker, double sampleRate, double frequencyHz)
 {
-    const int settleSamples = static_cast<int>(std::ceil(sampleRate * 0.5));
-    const int measureSamples = static_cast<int>(std::ceil(sampleRate * 1.0));
+    blocker.reset();
+    const int settleSamples = static_cast<int>(std::ceil(sampleRate * 8.0));
+    const int measureSamples = static_cast<int>(std::lround(sampleRate * 8.0 / frequencyHz));
     for (int i = 0; i < settleSamples; ++i)
     {
         const double t = static_cast<double>(i) / sampleRate;
@@ -231,7 +240,7 @@ void testDcBlockerMatrix()
 {
     std::printf("DC_BLOCKER_MATRIX\n");
     std::printf("rate_hz,stored_pole,effective_cutoff_hz,cutoff_err_hz,cutoff_err_pct,"
-                "dc_residual_2s,step,reset,extreme,dormancy,result\n");
+                "dc_residual_5s,step,reset,extreme,dormancy,result\n");
 
     for (const double rate : kMatrixRates)
     {
@@ -246,10 +255,12 @@ void testDcBlockerMatrix()
         row.cutoffErrorPct = 100.0 * row.cutoffErrorHz / kCutoffHz;
         worstCutoffErrorHz = std::max(worstCutoffErrorHz, std::abs(row.cutoffErrorHz));
 
-        expect(std::abs(row.cutoffErrorHz) < 0.05,
-               "derived cutoff remains 3.5 Hz across host sample rates");
+        expect(std::abs(row.cutoffErrorHz) < 0.002,
+               "derived cutoff remains 0.7 Hz across host sample rates including float quantization");
+        const float referencePole = static_cast<float>(std::exp(-kTwoPi * kCutoffHz / rate));
+        expect(row.storedPole == referencePole, "stored pole exactly matches the reconstructed 0.7 Hz formula");
 
-        for (const float dc : { 0.25f, -0.25f })
+        for (const float dc : { 0.25f, -0.25f, 1.0f, -1.0f })
         {
             swaraxt::DcBlocker dcBlocker;
             dcBlocker.prepare(rate);
@@ -263,12 +274,17 @@ void testDcBlockerMatrix()
             }
             row.worstDcResidual = std::max(row.worstDcResidual, static_cast<double>(std::abs(output)));
             for (const double checkpoint : { 0.1, 0.25, 0.5, 1.0, 2.0 })
-                row.worstDcResidual = std::max(
-                    row.worstDcResidual,
-                    dcResidualAtTime(dcBlocker, rate, dc, checkpoint));
+            {
+                dcBlocker.reset();
+                const double residual = dcResidualAtTime(dcBlocker, rate, dc, checkpoint);
+                const double expected = std::abs(static_cast<double>(dc))
+                    * std::pow(static_cast<double>(row.storedPole), std::ceil(rate * checkpoint) - 1.0);
+                expect(std::abs(residual - expected) < 2.0e-5,
+                       "constant DC follows the analytically predicted pole decay");
+            }
         }
         worstDcResidual = std::max(worstDcResidual, row.worstDcResidual);
-        row.dcReject = row.worstDcResidual < 1.0e-3;
+        row.dcReject = row.worstDcResidual < kSettlementThreshold;
 
         swaraxt::DcBlocker stepBlocker;
         stepBlocker.prepare(rate);
@@ -285,16 +301,16 @@ void testDcBlockerMatrix()
         swaraxt::DcBlocker responseBlocker;
         responseBlocker.prepare(rate);
         const double gainAtCutoff = measuredSineGainDb(responseBlocker, rate, kCutoffHz);
-        expect(std::abs(gainAtCutoff + 3.0) < 1.5, "3.5 Hz is near the -3 dB point");
-        expect(measuredSineGainDb(responseBlocker, rate, 20.0) > -0.5,
+        expect(std::abs(gainAtCutoff + 3.0103) < 0.03, "0.7 Hz is near the -3 dB point");
+        expect(measuredSineGainDb(responseBlocker, rate, 20.0) > -0.01,
                "20 Hz attenuation remains small");
-        expect(measuredSineGainDb(responseBlocker, rate, 40.0) > -0.1,
+        expect(measuredSineGainDb(responseBlocker, rate, 40.0) > -0.003,
                "40 Hz attenuation remains negligible");
 
         row.dormancy = testDormancyAtRate(rate);
 
         const bool pass = row.dcReject && row.step && row.reset && row.extreme && row.dormancy
-                          && std::abs(row.cutoffErrorHz) < 0.05;
+                          && std::abs(row.cutoffErrorHz) < 0.002;
         std::printf("%.1f,%.10f,%.6f,%.6f,%.4f,%.3e,%d,%d,%d,%d,%s\n",
                     row.sampleRate,
                     static_cast<double>(row.storedPole),
@@ -333,6 +349,69 @@ void testDcBlockerMatrix()
 void testDcBlockerAtRates()
 {
     testDcBlockerMatrix();
+}
+
+double theoreticalGainDb(double pole, double rate, double frequency)
+{
+    const double sine = std::sin(0.5 * kTwoPi * frequency / rate);
+    const double numerator = 4.0 * sine * sine;
+    return 10.0 * std::log10(numerator / ((1.0 - pole) * (1.0 - pole) + pole * numerator));
+}
+
+void testFrequencyResponseAndSafety()
+{
+    constexpr double rate = 48000;
+    struct OldBlocker {
+        float pole = static_cast<float>(std::exp(-kTwoPi * 3.5 / rate));
+        float x = 0, y = 0;
+        void reset() { x = y = 0; }
+        float process(float input) { const float output = input - x + pole * y; x = input; y = output; return output; }
+    } old;
+    swaraxt::DcBlocker restored;
+    restored.prepare(rate);
+    std::printf("RESPONSE_HZ,old_measured_db,new_measured_db,old_theoretical_db,new_theoretical_db\n");
+    for (const double frequency : {0.1, 0.5, kCutoffHz, 1.0, 3.5, 5.0, 10.0, 20.0, 30.0, 50.0})
+    {
+        const double before = measuredSineGainDb(old, rate, frequency);
+        const double after = measuredSineGainDb(restored, rate, frequency);
+        const double oldTheory = theoreticalGainDb(old.pole, rate, frequency);
+        const double newTheory = theoreticalGainDb(restored.poleForTests(), rate, frequency);
+        expect(std::abs(before - oldTheory) < 0.025 && std::abs(after - newTheory) < 0.025,
+               "measured before/after response agrees with the discrete transfer function");
+        std::printf("%.6f,%.6f,%.6f,%.6f,%.6f\n", frequency, before, after, oldTheory, newTheory);
+    }
+    juce::ScopedNoDenormals noDenormals;
+    for (const float input : {std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(),
+                              1.0f / 2048, -1.0f / 2048})
+    {
+        restored.reset();
+        float output = restored.process(input);
+        for (int i = 0; i < static_cast<int>(rate * 25); ++i)
+        {
+            output = restored.process(input);
+            if (!std::isfinite(output)) { expect(false, "finite maximum/quantized-bias step"); break; }
+        }
+        expect(std::abs(output) <= kSettlementThreshold, "25 seconds covers maximum finite and quantized-bias DC");
+        restored.reset();
+        expect(restored.process(0) == 0, "extreme-state reset is exact zero");
+    }
+    restored.reset();
+    const auto begin = std::chrono::steady_clock::now();
+    float tiny = 0;
+    for (int i = 0; i < 1000000; ++i)
+        tiny = restored.process((i & 1) != 0 ? 1.e-40f : -1.e-40f);
+    expect(std::isfinite(tiny) && tiny == 0, "production denormal guard flushes denormal-scale values");
+    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
+    std::printf("Denormal-guarded million samples: %.6f seconds\n", elapsed);
+    for (const double hostRate : kMatrixRates)
+    {
+        swaraxt::DcBlocker dc; dc.prepare(hostRate);
+        const double decay = -hostRate * std::log(static_cast<double>(dc.poleForTests()));
+        const double unitySeconds = std::log(1.e7) / decay;
+        const double maximumSeconds = std::log(static_cast<double>(std::numeric_limits<float>::max()) / 1.e-7) / decay;
+        expect(maximumSeconds < 25, "25-second backstop covers float pole quantization at every rate");
+        std::printf("SETTLEMENT,%.0f,unity_seconds=%.6f,maxfloat_seconds=%.6f\n", hostRate, unitySeconds, maximumSeconds);
+    }
 }
 
 void startAndRelease(SwaraXtAudioProcessor& processor,
@@ -459,12 +538,104 @@ void testWakeDuringOutputTail()
     expect(engine.dormantForTests(), "wake-during-tail path later returns to dormancy");
 }
 
+// Optional deterministic artifacts compare final-output changes against an
+// earlier binary while retaining an exact pre-SRC analog/source boundary.
+void lowEndRenders(const std::filesystem::path& directory)
+{
+    std::filesystem::create_directories(directory);
+    std::ofstream report(directory / "metrics.csv");
+    report << "target_hz,note,fine_amount,resonance,fx,rms,peak,dc\n";
+    for (const double frequency : {20.0, 25.0, 30.0, 40.0, 50.0})
+        for (const float resonance : {0.0f, 0.85f})
+            for (const int fx : {0, 6})
+            {
+                SwaraXtAudioProcessor processor;
+                configureFastEnvelope(processor);
+                setParameter(processor, swaraxt::IDs::seqMode, 0);
+                setParameter(processor, swaraxt::IDs::osc1Shape, shruthi::WAVEFORM_FM);
+                setParameter(processor, swaraxt::IDs::osc1Param, 0);
+                setParameter(processor, swaraxt::IDs::osc1Range, 0);
+                setParameter(processor, swaraxt::IDs::mixBalance, 0);
+                setParameter(processor, swaraxt::IDs::mixSub, 0);
+                setParameter(processor, swaraxt::IDs::mixNoise, 0);
+                setParameter(processor, swaraxt::IDs::filterCutoff, 20000);
+                setParameter(processor, swaraxt::IDs::filterResonance, resonance);
+                setParameter(processor, swaraxt::IDs::filterEnvAmount, 0);
+                setParameter(processor, swaraxt::IDs::filterKeyTracking, 0);
+                setParameter(processor, swaraxt::IDs::filterModAmount, 0);
+                setParameter(processor, swaraxt::IDs::filterShruthiEnv, 0);
+                setParameter(processor, swaraxt::IDs::filterShruthiLfo, 0);
+                setParameter(processor, swaraxt::IDs::dspFxProgram, static_cast<float>(fx));
+                setParameter(processor, swaraxt::IDs::dspFxParam1, 80);
+                setParameter(processor, swaraxt::IDs::dspFxParam2, 35);
+                for (int row = 0; row < 12; ++row)
+                {
+                    const auto id = "mod.row" + juce::String(row + 1) + ".amount";
+                    setParameter(processor, id.toRawUTF8(), 0);
+                }
+                setParameter(processor, "mod.row9.source", shruthi::MOD_SRC_ENV_2);
+                setParameter(processor, "mod.row9.destination", shruthi::MOD_DST_VCA);
+                setParameter(processor, "mod.row9.amount", 63);
+                const double pitch = 69.0 + 12.0 * std::log2(frequency / 440.0);
+                const int note = static_cast<int>(std::floor(pitch));
+                const int fine = static_cast<int>(std::lround((pitch - note) * 64.0));
+                setParameter(processor, "mod.row1.source", shruthi::MOD_SRC_OFFSET);
+                setParameter(processor, "mod.row1.destination", shruthi::MOD_DST_VCO_1_2_FINE);
+                setParameter(processor, "mod.row1.amount", static_cast<float>(fine));
+                processor.prepareToPlay(48000, 128);
+                std::vector<float> upstream;
+                processor.engineForTests().setDebugTapSink(&upstream,
+                    [](void* context, const swaraxt::SwaraXtEngine::DebugBlockCapture& block) {
+                        auto& values = *static_cast<std::vector<float>*>(context);
+                        values.insert(values.end(), block.filterOutput, block.filterOutput + block.samples);
+                    });
+                std::vector<float> host;
+                host.reserve(48000 * 6);
+                juce::AudioBuffer<float> buffer(2, 128);
+                for (int block = 0; block < 2250; ++block)
+                {
+                    juce::MidiBuffer midi;
+                    if (block == 0) midi.addEvent(juce::MidiMessage::noteOn(1, note, juce::uint8(110)), 0);
+                    processor.processBlock(buffer, midi);
+                    expect(finite(buffer), "low-end complete production render is finite");
+                    host.insert(host.end(), buffer.getReadPointer(0), buffer.getReadPointer(0) + 128);
+                }
+                double square = 0.0, sum = 0.0;
+                float maximum = 0.0f;
+                for (size_t i = 48000 * 4; i < host.size(); ++i)
+                {
+                    const double value = host[i];
+                    square += value * value; sum += value;
+                    maximum = std::max(maximum, std::abs(host[i]));
+                }
+                const double count = static_cast<double>(host.size() - 48000 * 4);
+                expect(maximum > 1.0e-5f, "low-end complete production render is audible");
+                report << frequency << ',' << note << ',' << fine << ',' << resonance << ',' << fx
+                       << ',' << std::sqrt(square / count) << ',' << maximum << ',' << sum / count << '\n';
+                const auto name = std::to_string(static_cast<int>(frequency)) + "-"
+                    + std::to_string(resonance) + "-" + std::to_string(fx);
+                for (const auto& item : {std::make_pair("host", &host), std::make_pair("upstream", &upstream)})
+                {
+                    std::ofstream file(directory / (name + "-" + item.first + ".f32"), std::ios::binary);
+                    file.write(reinterpret_cast<const char*>(item.second->data()),
+                               static_cast<std::streamsize>(item.second->size() * sizeof(float)));
+                    expect(file.good(), "low-end artifact was saved");
+                }
+            }
+}
+
 }  // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juce;
+    if (argc == 3 && juce::String(argv[1]) == "--low-end")
+    {
+        lowEndRenders(argv[2]);
+        return failures == 0 ? 0 : 1;
+    }
     testDcBlockerAtRates();
+    testFrequencyResponseAndSafety();
     testNaturalDormancyContinuityAndLongIdle();
     testWakeDuringOutputTail();
     std::printf(failures == 0 ? "Swara XT DC dormancy tests: PASSED\n"

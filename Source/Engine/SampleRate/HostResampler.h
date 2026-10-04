@@ -17,8 +17,8 @@ class DcBlocker {
 #endif
 
  private:
-    // 3.5 Hz at 44.1 kHz; prepare() overwrites before processing.
-    float pole_ = 0.9995014588f;
+    // 0.7 Hz at 44.1 kHz; prepare() overwrites before processing.
+    float pole_ = 0.9999002719f;
     float x1_ = 0.0f;
     float y1_ = 0.0f;
 };
