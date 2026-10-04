@@ -23,7 +23,7 @@ inline double sanitizeBpm(double bpm) noexcept
 inline bool isValidHostPpq(double ppq) noexcept
 {
     // Bound tick conversion and preserve sub-sample precision during alignment.
-    // This accommodates more than six millennia at 120 BPM.
+    // This accommodates more than six decades at 120 BPM.
     return std::isfinite(ppq) && ppq >= 0.0 && ppq <= 4294967296.0;
 }
 
