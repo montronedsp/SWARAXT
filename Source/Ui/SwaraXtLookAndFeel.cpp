@@ -4,12 +4,7 @@
 #include "Ui/SwaraXtLookAndFeel.h"
 #include "Ui/SwaraXtText.h"
 
-#if __has_include("BinaryData.h")
 #include "BinaryData.h"
-#define SWARAXT_HAS_BINARY_FONTS 1
-#else
-#define SWARAXT_HAS_BINARY_FONTS 0
-#endif
 
 namespace swaraxt::ui {
 
@@ -17,29 +12,25 @@ namespace {
 
 juce::Typeface::Ptr loadEmbeddedFont(const char* resourceName)
 {
-#if SWARAXT_HAS_BINARY_FONTS
     int size = 0;
     if (const void* data = BinaryData::getNamedResource(resourceName, size))
         if (size > 0)
             return juce::Typeface::createSystemTypefaceFor(data, static_cast<size_t>(size));
-#else
-    juce::ignoreUnused(resourceName);
-#endif
     return nullptr;
 }
 
 }  // namespace
 
 SwaraXtLookAndFeel::SwaraXtLookAndFeel()
+    : typography_(loadEmbeddedFont("AdriaticaNextMedium_ttf"),
+                  loadEmbeddedFont("AdriaticaNextCondensedBold_ttf"))
 {
     applySkin();
-    regular_ = loadEmbeddedFont("din1451alt_ttf");
-    jassert(regular_ != nullptr);
 }
 
 juce::Font SwaraXtLookAndFeel::regularFont(float height) const
 {
-    return juce::Font(juce::FontOptions { regular_ }.withHeight(height));
+    return typography_.medium(height);
 }
 
 void SwaraXtLookAndFeel::applySkin()
@@ -56,7 +47,8 @@ void SwaraXtLookAndFeel::applySkin()
     setColour(juce::ComboBox::outlineColourId, Palette::skin().comboBorder);
     setColour(juce::ComboBox::textColourId, Palette::skin().comboText);
     setColour(juce::ComboBox::arrowColourId, Palette::skin().comboArrow);
-    setColour(juce::PopupMenu::backgroundColourId, Palette::panelRaised());
+    setColour(juce::PopupMenu::backgroundColourId, SkinRegistry::active().id == SkinId::pastel
+        ? Palette::skin().comboBackground : Palette::panelRaised());
     const auto popupText = SkinRegistry::active().id == SkinId::pastel
         ? Palette::skin().comboText
         : Palette::cream();
@@ -251,14 +243,16 @@ void SwaraXtLookAndFeel::drawLinearSlider(juce::Graphics& g,
 
 void SwaraXtLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
 {
-    label.setBounds(box.getLocalBounds().reduced(9, 1).withTrimmedRight(18));
+    label.setBounds(box.getLocalBounds().reduced(0, 1).withTrimmedLeft(6).withTrimmedRight(22));
+    label.setBorderSize({});
     label.setJustificationType(juce::Justification::centredLeft);
+    setTextRole(label, textRole(box, TextRole::comboValue));
     label.setFont(getComboBoxFont(box));
 }
 
-juce::Font SwaraXtLookAndFeel::getComboBoxFont(juce::ComboBox&)
+juce::Font SwaraXtLookAndFeel::getComboBoxFont(juce::ComboBox& box)
 {
-    return regularFont(12.0f);
+    return font(textRole(box, TextRole::comboValue));
 }
 
 juce::PopupMenu::Options SwaraXtLookAndFeel::getOptionsForComboBoxPopupMenu(
@@ -274,7 +268,29 @@ juce::PopupMenu::Options SwaraXtLookAndFeel::getOptionsForComboBoxPopupMenu(
 
 juce::Font SwaraXtLookAndFeel::getPopupMenuFont()
 {
-    return regularFont(13.0f);
+    return font(TextRole::presetName);
+}
+
+void SwaraXtLookAndFeel::drawPopupMenuSectionHeader(juce::Graphics& g,
+    const juce::Rectangle<int>& area, const juce::String& text)
+{
+    g.setColour(findColour(juce::PopupMenu::textColourId));
+    singleLineText(font(TextRole::sectionHeader), text, area.toFloat().reduced(8.0f, 0.0f),
+                   juce::Justification::centredLeft).draw(g);
+}
+
+void SwaraXtLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,
+                                        bool highlighted, bool down)
+{
+    const auto typeface = font(TextRole::actionText);
+    const float tickWidth = typeface.getHeight() * 1.1f;
+    drawTickBox(g, button, 4.0f, (static_cast<float>(button.getHeight()) - tickWidth) * 0.5f,
+                tickWidth, tickWidth, button.getToggleState(), button.isEnabled(), highlighted, down);
+    g.setColour(button.findColour(juce::ToggleButton::textColourId)
+                    .withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f));
+    singleLineText(typeface, button.getButtonText(),
+                   button.getLocalBounds().toFloat().withTrimmedLeft(tickWidth + 10.0f)
+                       .withTrimmedRight(2.0f), juce::Justification::centredLeft).draw(g);
 }
 
 void SwaraXtLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
@@ -301,6 +317,32 @@ void SwaraXtLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
     g.drawRect(label.getLocalBounds());
 }
 
+juce::Rectangle<int> SwaraXtLookAndFeel::getTooltipBounds(const juce::String& text,
+    juce::Point<int> position, juce::Rectangle<int> parent)
+{
+    juce::AttributedString attributed;
+    attributed.append(text, font(TextRole::aboutBody), Palette::skin().displayText);
+    juce::TextLayout layout;
+    layout.createLayout(attributed, 300.0f);
+    return juce::Rectangle<int>(position.x + 12, position.y + 18,
+        static_cast<int>(std::ceil(layout.getWidth())) + 16,
+        static_cast<int>(std::ceil(layout.getHeight())) + 12).constrainedWithin(parent);
+}
+
+void SwaraXtLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text,
+                                    int width, int height)
+{
+    g.fillAll(Palette::panelDeep());
+    g.setColour(Palette::line());
+    g.drawRect(0, 0, width, height);
+    juce::AttributedString attributed;
+    attributed.append(text, font(TextRole::aboutBody), Palette::skin().displayText);
+    juce::TextLayout layout;
+    layout.createLayout(attributed, 300.0f);
+    layout.draw(g, { 8.0f, 6.0f, static_cast<float>(width) - 16.0f,
+                    static_cast<float>(height) - 12.0f });
+}
+
 void SwaraXtLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool)
 {
     const bool displayAction = button.getProperties().getWithDefault("swaraxtPresetNavigation", false)
@@ -314,14 +356,17 @@ void SwaraXtLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& but
                    juce::Justification::centred).draw(g);
 }
 
-juce::Font SwaraXtLookAndFeel::getLabelFont(juce::Label&)
+juce::Font SwaraXtLookAndFeel::getLabelFont(juce::Label& label)
 {
-    return regularFont(12.0f);
+    const auto fallback = dynamic_cast<juce::Slider*>(label.getParentComponent()) != nullptr
+        ? TextRole::numericValue : TextRole::parameterLabel;
+    return font(textRole(label, fallback));
 }
 
-juce::Font SwaraXtLookAndFeel::getTextButtonFont(juce::TextButton&, int buttonHeight)
+juce::Font SwaraXtLookAndFeel::getTextButtonFont(juce::TextButton& button, int buttonHeight)
 {
-    return regularFont(juce::jmin(12.0f, static_cast<float>(buttonHeight)));
+    const auto typeface = font(textRole(button, TextRole::actionText));
+    return typeface.withHeight(juce::jmin(typeface.getHeight(), static_cast<float>(buttonHeight)));
 }
 
 }  // namespace swaraxt::ui

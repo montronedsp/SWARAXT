@@ -80,7 +80,8 @@ set(SWARAXT_UI_SOURCES
 
 juce_add_binary_data(SwaraXTFonts
     SOURCES
-        resources/Fonts/din1451alt.ttf
+        resources/Fonts/AdriaticaNext-Medium.ttf
+        resources/Fonts/AdriaticaNext-CondensedBold.ttf
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/MidnightGold/braid.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Shared/montronedsp_wordmark.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Shared/stones_letters.svg"

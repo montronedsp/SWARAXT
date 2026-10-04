@@ -624,7 +624,8 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
                 + " ComboBox text geometry is deterministic";
             expect(label != nullptr
                        && label->getBounds()
-                              == combo->getLocalBounds().reduced(9, 1).withTrimmedRight(18),
+                              == combo->getLocalBounds().reduced(0, 1)
+                                     .withTrimmedLeft(6).withTrimmedRight(22),
                    geometryDescription.toRawUTF8());
             expectCanonicalComboFont(*combo, juce::String(sizeName)
                                                 + " ComboBox uses the embedded SWARA font");
@@ -650,6 +651,9 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
     expect(operatorCombo.getLookAndFeel().findColour(juce::PopupMenu::textColourId)
                == pastelComboText,
            "Pastel ComboBox popup text uses the light foreground colour");
+    expect(operatorCombo.getLookAndFeel().findColour(juce::PopupMenu::backgroundColourId)
+               == swaraxt::ui::Palette::skin().comboBackground,
+           "Pastel popup uses the dark control background for light text contrast");
     expect(operatorCombo.getLookAndFeel().findColour(
                juce::PopupMenu::highlightedTextColourId) == pastelComboText,
            "Pastel highlighted popup text uses the light foreground colour");
@@ -685,6 +689,25 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
     writeScreenshot(editor, outputRoot / "pastel-pcb-trace-large.png", false, false);
     writeScreenshot(editor, outputRoot / "swara-1.2-arp-large.png", false, true);
     writeScreenshot(editor, outputRoot / "swara-1.2-seq-large.png", false, true);
+    std::function<swaraxt::ui::SwaraXtKnob*(juce::Component&)> findCutoff;
+    findCutoff = [&findCutoff](juce::Component& component) -> swaraxt::ui::SwaraXtKnob* {
+        if (auto* knob = dynamic_cast<swaraxt::ui::SwaraXtKnob*>(&component))
+            if (knob->labelText() == "CUTOFF") return knob;
+        for (int i = 0; i < component.getNumChildComponents(); ++i)
+            if (auto* knob = findCutoff(*component.getChildComponent(i))) return knob;
+        return nullptr;
+    };
+    auto* cutoff = findCutoff(editor);
+    expect(cutoff != nullptr, "cutoff value control exists");
+    if (cutoff != nullptr) {
+        auto& slider = cutoff->slider();
+        const auto display = slider.getTextFromValue(531.294);
+        std::printf("Cutoff display probe: %s\n", display.toRawUTF8());
+        expect(display == "531 Hz", "frequency readout uses compact parameter units");
+        expect(std::abs(slider.getValueFromText("8.00 kHz") - 8000.0) < 0.1,
+               "compact frequency display preserves kHz entry parsing");
+    }
+
 }
 
 }  // namespace

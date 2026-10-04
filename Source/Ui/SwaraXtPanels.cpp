@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "Ui/SwaraXtPanels.h"
+#include "Ui/SwaraXtTypography.h"
 #include "Ui/SwaraXtBoardPanel.h"
 
 #include <cmath>
@@ -174,6 +175,7 @@ SwaraXtKnob::SwaraXtKnob(const juce::String& labelText, KnobSize size)
 {
     const bool large = size_ == KnobSize::large;
     addAndMakeVisible(label_);
+    setTextRole(label_, TextRole::parameterLabel);
     label_.setText(labelText, juce::dontSendNotification);
     label_.setJustificationType(juce::Justification::centred);
     label_.setColour(juce::Label::textColourId, large ? Palette::cream() : Palette::mutedText());
@@ -210,6 +212,7 @@ SwaraXtSelector::SwaraXtSelector(const juce::String& labelText,
     : primary_(primary)
 {
     addAndMakeVisible(label_);
+    setTextRole(label_, TextRole::parameterLabel);
     label_.setText(labelText, juce::dontSendNotification);
     label_.setJustificationType(juce::Justification::centredLeft);
     label_.setColour(juce::Label::textColourId, primary ? Palette::cream() : Palette::mutedText());
@@ -221,6 +224,7 @@ SwaraXtSelector::SwaraXtSelector(const juce::String& labelText,
     addAndMakeVisible(combo_);
 
     description_.setJustificationType(juce::Justification::centredLeft);
+    setTextRole(description_, TextRole::comboValue);
     description_.setColour(juce::Label::textColourId, Palette::mutedText());
     addAndMakeVisible(description_);
 
@@ -255,9 +259,11 @@ SwaraXtModulePanel::SwaraXtModulePanel(const juce::String& titleText,
     : secondaryDividerY_(secondaryDividerY)
 {
     addAndMakeVisible(title_);
+    setTextRole(title_, TextRole::sectionHeader);
     title_.setText(titleText, juce::dontSendNotification);
     title_.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(secondaryTitle_);
+    setTextRole(secondaryTitle_, TextRole::sectionHeader);
     secondaryTitle_.setText(secondaryTitleText, juce::dontSendNotification);
     secondaryTitle_.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(body_);
@@ -358,6 +364,7 @@ OscillatorPanel::OscillatorPanel(const juce::String& title, bool hasDetune)
       detune_("DETUNE"),
       hasDetune_(hasDetune)
 {
+    setTextRole(titleLabel_, TextRole::sectionHeader);
     titleLabel_.setText(title_, juce::dontSendNotification);
     titleLabel_.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(titleLabel_);
@@ -412,7 +419,7 @@ void OscillatorPanel::resized()
 {
     titleLabel_.setBounds((getWidth() - 64) / 2, 1, 64, 20);
     auto area = getLocalBounds().withTrimmedTop(24);
-    const int modelWidth = 88;
+    const int modelWidth = 104;
     model_.setBounds(area.removeFromLeft(modelWidth));
     area.removeFromLeft(4);
     if (hasDetune_)
@@ -694,6 +701,20 @@ void MainPanel::attach(SwaraXtAudioProcessor& processor)
         setSliderDefault(apvts, knobIds[i], knobs_[i]->slider());
         sliderAttachments_.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             apvts, knobIds[i], knobs_[i]->slider()));
+        if (dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter(knobIds[i])) != nullptr) {
+            auto& slider = knobs_[i]->slider();
+            const bool frequency = juce::String(knobIds[i]) == swaraxt::IDs::filterCutoff;
+            slider.textFromValueFunction = [frequency](double value) {
+                if (!frequency)
+                    return juce::String(value, 3);
+                if (value < 100.0)
+                    return juce::String(value, 1) + " Hz";
+                if (value < 1000.0)
+                    return juce::String(juce::roundToInt(value)) + " Hz";
+                return juce::String(value / 1000.0, value < 10000.0 ? 2 : 1) + " kHz";
+            };
+            slider.updateText();
+        }
     }
 
     const char* selectorIds[] = {
@@ -973,6 +994,7 @@ void MainPanel::reflow()
 
 ModPanel::ModPanel()
 {
+    setTextRole(pageLabel_, TextRole::smallIndex);
     pageLabel_.setJustificationType(juce::Justification::centred);
     pageLabel_.setColour(juce::Label::textColourId, Palette::mutedText());
     addAndMakeVisible(pageLabel_);
@@ -985,6 +1007,7 @@ ModPanel::ModPanel()
     for (int row = 0; row < 12; ++row)
     {
         auto r = std::make_unique<Row>();
+        setTextRole(r->indexLabel, TextRole::smallIndex);
         r->indexLabel.setText(juce::String(row + 1).paddedLeft('0', 2), juce::dontSendNotification);
         r->indexLabel.setJustificationType(juce::Justification::centred);
         r->indexLabel.setColour(juce::Label::textColourId, Palette::mutedText());
@@ -1121,6 +1144,7 @@ SeqPanel::SeqPanel()
 
     for (auto* heading : { &arpHeading_, &sequenceHeading_ }) {
         addAndMakeVisible(*heading);
+        setTextRole(*heading, TextRole::sectionHeader);
         heading->setJustificationType(juce::Justification::centredLeft);
     }
     arpHeading_.setText("ARPEGGIATOR", juce::dontSendNotification);

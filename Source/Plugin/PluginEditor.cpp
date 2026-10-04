@@ -4,6 +4,7 @@
 #include "Plugin/PluginEditor.h"
 
 #include "Ui/SwaraXtUiPalette.h"
+#include "Ui/SwaraXtText.h"
 
 namespace {
 
@@ -59,6 +60,19 @@ void paintMaterialBackground(juce::Graphics& g, juce::Rectangle<float> bounds,
     }
 }
 
+class PresetNameWindow final : public juce::AlertWindow {
+ public:
+    PresetNameWindow()
+        : juce::AlertWindow("Save user preset", "Enter a name for the complete Swara XT state.",
+                            juce::MessageBoxIconType::NoIcon)
+    {
+        setLookAndFeel(&lookAndFeel_);
+    }
+    ~PresetNameWindow() override { setLookAndFeel(nullptr); }
+ private:
+    swaraxt::ui::SwaraXtLookAndFeel lookAndFeel_;
+};
+
 class AboutPanel final : public juce::Component,
                          private juce::Button::Listener {
  public:
@@ -68,6 +82,7 @@ class AboutPanel final : public juce::Component,
                  juce::URL("mailto:support@montronedsp.com"))
     {
         addAndMakeVisible(email_);
+        email_.setFont(lookAndFeel_.font(swaraxt::ui::TextRole::aboutBody), false);
         addAndMakeVisible(close_);
         close_.addListener(this);
         setSize(360, 270);
@@ -86,12 +101,12 @@ class AboutPanel final : public juce::Component,
         g.setColour(Palette::line());
         g.drawRoundedRectangle(bounds.reduced(0.75f), 8.0f, 1.5f);
 
-        g.setColour(Palette::cream());
-        g.setFont(lookAndFeel_.regularFont(21.0f));
-        g.drawText("SWARA XT", 20, 14, 320, 28, juce::Justification::centred);
+        g.setColour(Palette::skin().displayText);
+        singleLineText(lookAndFeel_.font(TextRole::aboutHeading), "SWARA XT",
+                       { 20.0f, 14.0f, 320.0f, 28.0f }, juce::Justification::centred).draw(g);
 
-        g.setColour(Palette::mutedText());
-        g.setFont(lookAndFeel_.regularFont(12.5f));
+        g.setColour(Palette::skin().displayText.withAlpha(0.85f));
+        g.setFont(lookAndFeel_.font(swaraxt::ui::TextRole::aboutBody));
         g.drawFittedText("MontroneDSP\nAuthor: Andrea Montrone\n\u00a9 2026 MontroneDSP\n\nLicensed under the GNU GPL v3 or later.\n\nContains software derived in part from\nMutable Instruments Shruthi firmware.\n\nVersion: " SWARAXT_VERSION_STRING,
                          22, 45, 316, 174, juce::Justification::centred, 10);
     }
@@ -141,6 +156,7 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     filterQuality_ = processor_.filterQuality();
     addAndMakeVisible(designSurface_);
     designSurface_.addMouseListener(this, true);
+    swaraxt::ui::setTextRole(presetSelector_, swaraxt::ui::TextRole::presetName);
     presetSelector_.setJustificationType(juce::Justification::centred);
     presetSelector_.setScrollWheelEnabled(false);
     presetSelector_.addListener(this);
@@ -292,6 +308,7 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
                      manufacturerMark_ == ManufacturerMark::stone);
 
     juce::PopupMenu menu;
+    menu.setLookAndFeel(&lookAndFeel_);
     menu.addSubMenu("MIDI Channel", midiMenu);
     menu.addSubMenu("Filter Quality", qualityMenu);
     menu.addSeparator();
@@ -497,9 +514,7 @@ void SwaraXtAudioProcessorEditor::buttonClicked(juce::Button* button)
 
 void SwaraXtAudioProcessorEditor::promptForPresetName()
 {
-    auto* window = new juce::AlertWindow("Save user preset",
-                                          "Enter a name for the complete Swara XT state.",
-                                          juce::MessageBoxIconType::NoIcon);
+    auto* window = new PresetNameWindow();
     window->addTextEditor("name", processor_.currentPresetName(), "Preset name");
     window->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
     window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));

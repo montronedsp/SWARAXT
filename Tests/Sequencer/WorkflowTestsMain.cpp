@@ -146,6 +146,33 @@ void randomChecks() {
 }
 void textChecks() {
     swaraxt::ui::SwaraXtLookAndFeel lnf;
+    using swaraxt::ui::TextRole;
+    for (auto role : {TextRole::sectionHeader, TextRole::parameterLabel, TextRole::comboValue,
+                      TextRole::presetName, TextRole::actionText, TextRole::numericValue,
+                      TextRole::smallIndex, TextRole::aboutHeading, TextRole::aboutBody}) {
+        const auto font = lnf.font(role);
+        const bool bold = role == TextRole::sectionHeader || role == TextRole::actionText
+            || role == TextRole::aboutHeading;
+        check(font.getTypefacePtr()->getName() == (bold ? "Adriatica Next Condensed" : "Adriatica Next"),
+              "semantic role uses embedded release face");
+        check(font.getTypefacePtr()->getStyle() == (bold ? "Bold" : "Medium"),
+              "semantic role uses real release weight");
+        const juce::Rectangle<float> wide(0.0f, 0.0f, 300.0f, 24.0f);
+        const auto full = swaraxt::ui::singleLineText(font, "Analog Saw", wide, juce::Justification::left);
+        const auto narrow = swaraxt::ui::singleLineText(font, "Analog Saw", wide.withWidth(30.0f), juce::Justification::left);
+        if (narrow.getNumGlyphs() > 0 && full.getNumGlyphs() > 0)
+            check(std::abs(full.getGlyph(0).getRight() - narrow.getGlyph(0).getRight()) < 0.0001f,
+                  "width fitting never compresses release glyphs");
+    }
+    const auto digits = lnf.font(TextRole::numericValue);
+    float advance = 0.0f;
+    for (const char* text : {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}) {
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText(digits, text, 0.0f, 0.0f);
+        const float width = glyphs.getGlyph(0).getRight();
+        if (advance == 0.0f) advance = width;
+        check(std::abs(width - advance) < 0.001f, "JUCE shapes real tabular numeric glyphs");
+    }
     for (float height : {12.0f, 15.0f, 18.0f}) {
         const auto font = lnf.regularFont(height);
         for (float width : {24.0f, 44.0f, 120.0f}) {

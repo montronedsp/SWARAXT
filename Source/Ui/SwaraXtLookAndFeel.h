@@ -6,6 +6,7 @@
 #include <JuceHeader.h>
 
 #include "Ui/SwaraXtUiPalette.h"
+#include "Ui/SwaraXtTypography.h"
 
 namespace swaraxt::ui {
 
@@ -16,6 +17,7 @@ class SwaraXtLookAndFeel : public juce::LookAndFeel_V4 {
     void drawCallOutBoxBackground(juce::CallOutBox&, juce::Graphics&,
                                   const juce::Path&, juce::Image&) override;
     juce::Font regularFont(float height) const;
+    juce::Font font(TextRole role) const { return typography_.font(role); }
 
     void drawRotarySlider(juce::Graphics& g,
                           int x,
@@ -46,6 +48,15 @@ class SwaraXtLookAndFeel : public juce::LookAndFeel_V4 {
     juce::PopupMenu::Options getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
                                                              juce::Label& label) override;
     juce::Font getPopupMenuFont() override;
+    void drawPopupMenuSectionHeader(juce::Graphics&, const juce::Rectangle<int>&,
+                                    const juce::String&) override;
+    void drawToggleButton(juce::Graphics&, juce::ToggleButton&, bool, bool) override;
+    juce::Font getAlertWindowTitleFont() override { return font(TextRole::sectionHeader); }
+    juce::Font getAlertWindowMessageFont() override { return font(TextRole::aboutBody); }
+    juce::Font getAlertWindowFont() override { return font(TextRole::aboutBody); }
+    juce::Rectangle<int> getTooltipBounds(const juce::String&, juce::Point<int>,
+                                           juce::Rectangle<int>) override;
+    void drawTooltip(juce::Graphics&, const juce::String&, int, int) override;
     void drawLinearSlider(juce::Graphics& g,
                           int x,
                           int y,
@@ -62,7 +73,7 @@ class SwaraXtLookAndFeel : public juce::LookAndFeel_V4 {
     juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override;
 
  private:
-    juce::Typeface::Ptr regular_;
+    Typography typography_;
 };
 
 }  // namespace swaraxt::ui

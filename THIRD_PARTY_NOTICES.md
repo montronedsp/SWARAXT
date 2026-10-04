@@ -41,18 +41,13 @@ under GPL-3.0-or-later.
 JUCE's own license and bundled third-party notices apply to its source and VST3
 support materials.
 
-## Alte DIN 1451 Mittelschrift
+## Adriatica Next 1.0
 
-- File: `resources/Fonts/din1451alt.ttf`
-- Family: Alte DIN 1451 Mittelschrift
-- Style: Regular / Upright
-- Embedded manufacturer attribution: Ludwig Goller
-- Digital font distribution: Peter Wiegel, https://www.peter-wiegel.de/alteDin1451.html
-- Source used to verify the exact file: https://www.1001fonts.com/alte-din-1451-mittelschrift-font.html
-- License: SIL Open Font License 1.1
-- SHA-256: `3CDBDD35C7637FF4A15D22BDCB8B952F48AFADD2E41EDB5AB29D80EAAD8D48FD`
-- Usage: Swara XT GUI typography
-
-The exact redistributed file matches the published Alte DIN 1451 package by
-SHA-256. The applicable OFL text, including Peter Wiegel's copyright statement
-and Reserved Font Name, is included at `resources/Fonts/OFL-1.1.txt`.
+- Files: `resources/Fonts/AdriaticaNext-Medium.ttf` and
+  `resources/Fonts/AdriaticaNext-CondensedBold.ttf`
+- Families/styles: Adriatica Next Medium; Adriatica Next Condensed Bold
+- Version: 1.000
+- Copyright: MontroneDSP (2026), with portions derived from Fira Sans,
+  The Mozilla Foundation and Telefonica S.A. (2012--2015)
+- License: SIL Open Font License 1.1, included at `resources/Fonts/OFL-1.1.txt`
+- Usage: embedded SWARA XT GUI typography
