@@ -61,12 +61,8 @@ void testFaithfulMatchesBareModel()
     p.cutoff_hz = 800.0f;
     p.resonance = 0.4f;
     p.key_track = 0.7f;
-    p.env_amount = 2.5f;
-    p.mod_amount = 1.0f;
     p.drive = 1.0f;
     p.note_number = 60.0f;
-    p.env_value = 0.5f;
-    p.mod_value = -0.25f;
     p.matrix_cutoff_octaves = 0.75f;
     p.matrix_resonance = 0.1f;
     hd.SetParams(p);
@@ -75,12 +71,8 @@ void testFaithfulMatchesBareModel()
     bp.cutoffHz = p.cutoff_hz;
     bp.resonance = swaraxt::clampFinite(p.resonance + p.matrix_resonance, 0.0f, 1.0f);
     bp.keyTrack = p.key_track;
-    bp.envAmount = p.env_amount;
-    bp.modAmount = p.mod_amount;
     bp.drive = p.drive;
     bp.noteNumber = p.note_number;
-    bp.envValue = p.env_value;
-    bp.modValue = p.mod_value;
     bp.matrixCutoffOctaves = p.matrix_cutoff_octaves;
     bare.setParams(bp);
 
@@ -153,7 +145,6 @@ void testFaithfulVsHdBounded()
     p.cutoff_hz = 1200.0f;
     p.resonance = 0.8f;
     p.drive = 1.0f;
-    p.env_value = 0.4f;
     p.note_number = 64.0f;
 
     avrlib_hd::HdFilter hd;

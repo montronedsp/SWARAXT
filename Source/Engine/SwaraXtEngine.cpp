@@ -172,9 +172,7 @@ void SwaraXtEngine::applyParameters()
         setPostMixerTarget(postMixerLinear);
     filterCutoffHz_ = ParameterCache::load(parameterCache_->filterCutoff);
     filterResonance_ = ParameterCache::load(parameterCache_->filterResonance);
-    filterEnvAmount_ = ParameterCache::load(parameterCache_->filterEnvAmount);
     filterKeyTrack_ = ParameterCache::load(parameterCache_->filterKeyTracking);
-    filterModAmount_ = ParameterCache::load(parameterCache_->filterModAmount);
     auto* patch = part_.mutable_patch();
     patch->filter_cutoff = shruthiCutoffCode(filterCutoffHz_);
     patch->filter_resonance = static_cast<uint8_t>(juce::jlimit(0, 63,
@@ -494,11 +492,8 @@ float SwaraXtEngine::nextQualityGain() noexcept
 void SwaraXtEngine::updateFilterFromShruthi()
 {
     const auto& voice = part_.voice();
-    const float env1 = static_cast<float>(voice.modulation_source(shruthi::MOD_SRC_ENV_1)) / 255.0f;
-    const float lfo2 = static_cast<float>(
-        static_cast<int>(voice.modulation_source(shruthi::MOD_SRC_LFO_2)) - 128) / 128.0f;
     // The final firmware CV includes matrix, tracking, envelope, LFO and all
-    // original integer clipping. Decode it once; plugin controls only augment it.
+    // original integer clipping. Decode it once; only key tracking trim follows.
     const float nativeCutoffHz = 20000.0f * std::exp2(
         (static_cast<float>(voice.cutoff()) - 254.0f) / 24.0f);
     const float controlNote = static_cast<float>(voice.filter_pitch_value()) / 128.0f;
@@ -511,15 +506,10 @@ void SwaraXtEngine::updateFilterFromShruthi()
     p.cutoffHz = juce::jlimit(10.0f, 20000.0f, nativeCutoffHz);
     p.resonance = static_cast<float>(voice.resonance()) / 255.0f;
     p.keyTrack = 0.0f;
-    p.envAmount = filterEnvAmount_ * 4.0f; // up to ~4 octaves of env depth
-    p.modAmount = filterModAmount_ * 2.0f;
-    p.envValue = juce::jlimit(0.0f, 1.0f, env1);
-    p.modValue = juce::jlimit(-1.0f, 1.0f, lfo2);
     p.matrixCutoffOctaves = trackingTrim;
     p.noteNumber = controlNote;
     p.drive = 1.0f;
-    const double extraOctaves = static_cast<double>(p.envAmount) * p.envValue
-        + static_cast<double>(p.modAmount) * p.modValue + p.matrixCutoffOctaves;
+    const double extraOctaves = p.matrixCutoffOctaves;
     // Transport every native byte directly to the board CV domain; the panel-Hz
     // clamp is not authority for hardware cutoff reconstruction.
     p.boardCutoffCvVolts = std::clamp((static_cast<double>(voice.cutoff())

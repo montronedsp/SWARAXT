@@ -56,8 +56,8 @@ void configureNeutralSaw(SwaraXtAudioProcessor& proc)
     setInt(proc, swaraxt::IDs::env2Decay, 0);
     setInt(proc, swaraxt::IDs::env2Sustain, 127);
     setInt(proc, swaraxt::IDs::env2Release, 40);
-    setFloat(proc, swaraxt::IDs::filterEnvAmount, 0.0f);
-    setFloat(proc, swaraxt::IDs::filterModAmount, 0.0f);
+    setInt(proc, swaraxt::IDs::filterEnvDepth, 32);
+    setInt(proc, swaraxt::IDs::filterLfoDepth, 0);
     setFloat(proc, swaraxt::IDs::filterKeyTracking, 0.0f);
     setFloat(proc, swaraxt::IDs::master, 0.85f);
     for (int row = 1; row <= 12; ++row)

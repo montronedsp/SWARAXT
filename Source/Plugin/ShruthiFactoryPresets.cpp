@@ -99,10 +99,8 @@ void ShruthiFactoryPresets::applyPatchToApvts(const shruthi::Patch& patch,
     setFloatParam(apvts, IDs::filterCutoff, cutoffHzFromShruthiCode(patch.filter_cutoff));
     setFloatParam(apvts, IDs::filterResonance,
                   static_cast<float>(patch.filter_resonance) / 63.0f);
-    setIntParam(apvts, IDs::filterShruthiEnv, patch.filter_env);
-    setIntParam(apvts, IDs::filterShruthiLfo, patch.filter_lfo);
-    setFloatParam(apvts, IDs::filterEnvAmount, 0.0f);
-    setFloatParam(apvts, IDs::filterModAmount, 0.0f);
+    setIntParam(apvts, IDs::filterEnvDepth, patch.filter_env);
+    setIntParam(apvts, IDs::filterLfoDepth, patch.filter_lfo);
     setFloatParam(apvts, IDs::filterKeyTracking, 0.5f);
 
     setIntParam(apvts, IDs::env1Attack, patch.env[0].attack);

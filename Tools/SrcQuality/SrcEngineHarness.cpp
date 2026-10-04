@@ -97,7 +97,6 @@ struct Patch {
     int note = 60;
     float cutoff = 20000.0f;
     float resonance = 0.0f;
-    float envAmount = 0.0f;
     int subLevel = 0;
     int noiseLevel = 0;
 };
@@ -114,9 +113,9 @@ void applyPatch(SwaraXtAudioProcessor& processor, const Patch& patch)
     setParameter(processor, swaraxt::IDs::mixNoise, static_cast<float>(patch.noiseLevel));
     setParameter(processor, swaraxt::IDs::filterCutoff, patch.cutoff);
     setParameter(processor, swaraxt::IDs::filterResonance, patch.resonance);
-    setParameter(processor, swaraxt::IDs::filterEnvAmount, patch.envAmount);
+    setParameter(processor, swaraxt::IDs::filterEnvDepth, 32.0f);
+    setParameter(processor, swaraxt::IDs::filterLfoDepth, 0.0f);
     setParameter(processor, swaraxt::IDs::filterKeyTracking, 0.0f);
-    setParameter(processor, swaraxt::IDs::filterModAmount, 0.0f);
     // Flat, immediate amplitude envelope: the render is a steady tone so the
     // spectrum is not contaminated by envelope motion.
     setParameter(processor, swaraxt::IDs::env2Attack, 0.0f);
@@ -189,24 +188,24 @@ std::vector<Case> productionCases()
 
     for (const auto& [label, midiNote] : notes)
     {
-        cases.push_back({ "saw_" + label, Patch { "saw", 1, 0, midiNote, 20000.0f, 0.0f, 0.0f, 0, 0 } });
-        cases.push_back({ "pwm_" + label, Patch { "pwm", 2, 64, midiNote, 20000.0f, 0.0f, 0.0f, 0, 0 } });
+        cases.push_back({ "saw_" + label, Patch { "saw", 1, 0, midiNote, 20000.0f, 0.0f, 0, 0 } });
+        cases.push_back({ "pwm_" + label, Patch { "pwm", 2, 64, midiNote, 20000.0f, 0.0f, 0, 0 } });
     }
-    cases.push_back({ "triangle_c4", Patch { "tri", 3, 0, 60, 20000.0f, 0.0f, 0.0f, 0, 0 } });
-    cases.push_back({ "triangle_c7", Patch { "tri", 3, 0, 96, 20000.0f, 0.0f, 0.0f, 0, 0 } });
-    cases.push_back({ "wavetable1_c4", Patch { "wt", 11, 64, 60, 20000.0f, 0.0f, 0.0f, 0, 0 } });
-    cases.push_back({ "wavetable1_c6", Patch { "wt", 11, 64, 84, 20000.0f, 0.0f, 0.0f, 0, 0 } });
-    cases.push_back({ "wavetable1_c7", Patch { "wt", 11, 64, 96, 20000.0f, 0.0f, 0.0f, 0, 0 } });
-    cases.push_back({ "fm_c4", Patch { "fm", 10, 80, 60, 20000.0f, 0.0f, 0.0f, 0, 0 } });
+    cases.push_back({ "triangle_c4", Patch { "tri", 3, 0, 60, 20000.0f, 0.0f, 0, 0 } });
+    cases.push_back({ "triangle_c7", Patch { "tri", 3, 0, 96, 20000.0f, 0.0f, 0, 0 } });
+    cases.push_back({ "wavetable1_c4", Patch { "wt", 11, 64, 60, 20000.0f, 0.0f, 0, 0 } });
+    cases.push_back({ "wavetable1_c6", Patch { "wt", 11, 64, 84, 20000.0f, 0.0f, 0, 0 } });
+    cases.push_back({ "wavetable1_c7", Patch { "wt", 11, 64, 96, 20000.0f, 0.0f, 0, 0 } });
+    cases.push_back({ "fm_c4", Patch { "fm", 10, 80, 60, 20000.0f, 0.0f, 0, 0 } });
     // Filtered production cases: bright enough to still expose SRC differences.
-    cases.push_back({ "sawfilt_lowres_c4", Patch { "saw", 1, 0, 60, 12000.0f, 0.15f, 0.0f, 0, 0 } });
-    cases.push_back({ "sawfilt_modres_c4", Patch { "saw", 1, 0, 60, 12000.0f, 0.55f, 0.0f, 0, 0 } });
-    cases.push_back({ "pwmfilt_lowres_c4", Patch { "pwm", 2, 64, 60, 12000.0f, 0.15f, 0.0f, 0, 0 } });
+    cases.push_back({ "sawfilt_lowres_c4", Patch { "saw", 1, 0, 60, 12000.0f, 0.15f, 0, 0 } });
+    cases.push_back({ "sawfilt_modres_c4", Patch { "saw", 1, 0, 60, 12000.0f, 0.55f, 0, 0 } });
+    cases.push_back({ "pwmfilt_lowres_c4", Patch { "pwm", 2, 64, 60, 12000.0f, 0.15f, 0, 0 } });
     // PWM timbre sweep at three registers.
     for (int timbre : { 16, 32, 64, 96, 127 })
         for (const auto& [label, midiNote] : { note("c4", 60), note("c6", 84), note("c7", 96) })
             cases.push_back({ "pwmT" + std::to_string(timbre) + "_" + label,
-                              Patch { "pwm", 2, timbre, midiNote, 20000.0f, 0.0f, 0.0f, 0, 0 } });
+                              Patch { "pwm", 2, timbre, midiNote, 20000.0f, 0.0f, 0, 0 } });
 
     return cases;
 }
@@ -292,7 +291,7 @@ void runEngineCpu()
     for (double rate : { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 })
     {
         SwaraXtAudioProcessor processor;
-        applyPatch(processor, Patch { "saw", 1, 0, 72, 20000.0f, 0.0f, 0.0f, 0, 0 });
+        applyPatch(processor, Patch { "saw", 1, 0, 72, 20000.0f, 0.0f, 0, 0 });
         processor.prepareToPlay(rate, kBlockSize);
 
         juce::AudioBuffer<float> buffer(2, kBlockSize);
@@ -351,7 +350,7 @@ void runDormancy()
     const auto scenario = [&](double rate, int blockSize, const char* name,
                               bool noteOn, bool noteOff, int settleBlocks) {
         SwaraXtAudioProcessor processor;
-        applyPatch(processor, Patch { "saw", 1, 0, 60, 20000.0f, 0.0f, 0.0f, 0, 0 });
+        applyPatch(processor, Patch { "saw", 1, 0, 60, 20000.0f, 0.0f, 0, 0 });
         processor.prepareToPlay(rate, blockSize);
         juce::AudioBuffer<float> buffer(2, blockSize);
         juce::MidiBuffer midi;
@@ -415,7 +414,7 @@ void runDormancy()
     // tail from the previous note.
     {
         SwaraXtAudioProcessor processor;
-        applyPatch(processor, Patch { "saw", 1, 0, 60, 20000.0f, 0.0f, 0.0f, 0, 0 });
+        applyPatch(processor, Patch { "saw", 1, 0, 60, 20000.0f, 0.0f, 0, 0 });
         processor.prepareToPlay(48000.0, 256);
         juce::AudioBuffer<float> buffer(2, 256);
         juce::MidiBuffer midi;
@@ -471,7 +470,7 @@ void runBlockPartition()
     FILE* csv = openWritableFile(csvPath);
     std::fprintf(csv, "converter,host_rate,block_size,samples_compared,max_abs_difference,bit_exact\n");
 
-    const Patch patch { "saw", 1, 0, 72, 20000.0f, 0.0f, 0.0f, 0, 0 };
+    const Patch patch { "saw", 1, 0, 72, 20000.0f, 0.0f, 0, 0 };
 
     for (double rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
     {
@@ -508,7 +507,7 @@ void runOnset()
     for (double rate : { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 })
     {
         SwaraXtAudioProcessor processor;
-        applyPatch(processor, Patch { "saw", 1, 0, 60, 20000.0f, 0.0f, 0.0f, 0, 0 });
+        applyPatch(processor, Patch { "saw", 1, 0, 60, 20000.0f, 0.0f, 0, 0 });
         processor.prepareToPlay(rate, 256);
         juce::AudioBuffer<float> buffer(2, 256);
         juce::MidiBuffer midi;
@@ -566,7 +565,7 @@ void runControlLatency()
     for (double rate : { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 })
     {
         SwaraXtAudioProcessor processor;
-        applyPatch(processor, Patch { "saw", 1, 0, 48, 20000.0f, 0.0f, 0.0f, 0, 0 });
+        applyPatch(processor, Patch { "saw", 1, 0, 48, 20000.0f, 0.0f, 0, 0 });
         processor.prepareToPlay(rate, 256);
         juce::AudioBuffer<float> buffer(2, 256);
         juce::MidiBuffer midi;
@@ -606,7 +605,7 @@ void runControlLatency()
 
         // Note-off to silence, with the amplitude release already at zero.
         SwaraXtAudioProcessor releaseProcessor;
-        applyPatch(releaseProcessor, Patch { "saw", 1, 0, 48, 20000.0f, 0.0f, 0.0f, 0, 0 });
+        applyPatch(releaseProcessor, Patch { "saw", 1, 0, 48, 20000.0f, 0.0f, 0, 0 });
         releaseProcessor.prepareToPlay(rate, 256);
         juce::MidiBuffer releaseMidi;
         releaseMidi.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(100)), 0);
@@ -651,7 +650,7 @@ void runPitch()
         for (int note : { 36, 60, 84, 96 })
         {
             const std::vector<float> audio =
-                render(Patch { "saw", 1, 0, note, 20000.0f, 0.0f, 0.0f, 0, 0 }, rate, 512, 4.0);
+                render(Patch { "saw", 1, 0, note, 20000.0f, 0.0f, 0, 0 }, rate, 512, 4.0);
 
             // Count upward zero crossings over a whole number of seconds of the
             // steady portion; a saw has exactly one per period.

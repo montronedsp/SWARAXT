@@ -483,7 +483,7 @@ void testJuce9ParameterMetadataCompatibility()
 {
     SwaraXtAudioProcessor proc;
     const auto& parameters = proc.getParameters();
-    expect(parameters.size() == 95, "88 existing parameters plus five Board and two mix appends");
+    expect(parameters.size() == 93, "active parameter schema excludes the two retired direct filter controls");
 
     std::set<std::string> parameterIds;
     for (const auto* parameter : parameters)
@@ -491,14 +491,18 @@ void testJuce9ParameterMetadataCompatibility()
         expect(parameter != nullptr, "parameter list contains no null entries");
         if (parameter != nullptr)
         {
-            const int index = parameter->getParameterIndex();
-            const int expectedHint = (index >= 88 && index < 93) ? 2 : 1;
-            expect(parameter->getVersionHint() == expectedHint,
-                   "existing hints stay 1; Board appends use 2; new mix IDs use 1");
             const auto* withId = dynamic_cast<const juce::AudioProcessorParameterWithID*>(parameter);
             expect(withId != nullptr, "all existing parameters retain stable string IDs");
             if (withId != nullptr)
-                parameterIds.insert(withId->paramID.toStdString());
+            {
+                const auto& id = withId->paramID;
+                const bool boardId = id == swaraxt::IDs::filterModel || id == swaraxt::IDs::dspFxProgram
+                    || id == swaraxt::IDs::dspFxParam1 || id == swaraxt::IDs::dspFxParam2
+                    || id == swaraxt::IDs::dspBoardRouting;
+                expect(parameter->getVersionHint() == (boardId ? 2 : 1),
+                       "retained parameter version hints are independent of removed indices");
+                parameterIds.insert(id.toStdString());
+            }
         }
     }
     expect(parameterIds.size() == parameters.size(), "parameter IDs remain unique");
@@ -768,9 +772,9 @@ void testSwaraFilterRouteSeparation()
 
     setPhysical(swaraxt::IDs::filterCutoff, 1000.0f);
     setPhysical(swaraxt::IDs::filterResonance, 0.5f);
-    setPhysical(swaraxt::IDs::filterEnvAmount, 0.0f);
+    setPhysical(swaraxt::IDs::filterEnvDepth, 0.0f);
     setPhysical(swaraxt::IDs::filterKeyTracking, 0.5f);
-    setPhysical(swaraxt::IDs::filterModAmount, 1.0f);
+    setPhysical(swaraxt::IDs::filterLfoDepth, 63.0f);
     for (int row = 1; row <= shruthi::kModulationMatrixSize; ++row)
         setPhysical("mod.row" + juce::String(row) + ".amount", 0.0f);
 
@@ -790,9 +794,9 @@ void testSwaraFilterRouteSeparation()
     expect(std::abs(cutoffParams.cutoffHz - std::clamp(20000.f * std::exp2((voice.cutoff() - 254.f) / 24.f), 10.f, 20000.f)) < 1.e-4f
                && cutoffParams.matrixCutoffOctaves == 0,
            "matrix cutoff is already included in final firmware CV, with no duplicate delta");
-    const int lfo2 = proc.engineForTests().shruthiPart().voice().modulation_source(shruthi::MOD_SRC_LFO_2);
-    expect(std::abs(cutoffParams.modValue - static_cast<float>(lfo2 - 128) / 128.0f) < 1.0e-6f,
-           "Filter MOD is the dedicated centered LFO2 route");
+    expect(proc.engineForTests().shruthiPart().patch().filter_lfo == 63
+               && std::abs(cutoffParams.boardCutoffCvVolts - voice.cutoff() * (5.0 / 255.0)) < 1.e-12,
+           "dedicated native LFO2 depth reaches board CV exactly once");
 
     setPhysical("mod.row1.destination", static_cast<float>(shruthi::MOD_DST_FILTER_RESONANCE));
     setPhysical("mod.row1.amount", -20.0f);

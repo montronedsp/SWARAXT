@@ -594,7 +594,7 @@ MainPanel::MainPanel()
     addKnob("RES", KnobSize::large);
     addKnob("ENV");
     addKnob("KEY TRACK");
-    addKnob("MOD");
+    addKnob("LFO");
     addKnob("A");
     addKnob("D");
     addKnob("S");
@@ -634,7 +634,7 @@ MainPanel::MainPanel()
     mixModule_.body().addAndMakeVisible(*selectors_[static_cast<size_t>(kSubShape)]);
     mixModule_.body().addChildComponent(*modulationView_);
 
-    for (int i = kFilterCutoff; i <= kFilterMod; ++i)
+    for (int i = kFilterCutoff; i <= kFilterLfo; ++i)
         filterModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(i)]);
     perfModule_.addAndMakeVisible(boardViewButton_);
     boardViewButton_.getProperties().set("swaraxtSecondaryAction", true);
@@ -685,8 +685,8 @@ void MainPanel::attach(SwaraXtAudioProcessor& processor)
     auto& apvts = processor.getApvts();
     const char* knobIds[] = {
         swaraxt::IDs::mixBalance, swaraxt::IDs::mixSub, swaraxt::IDs::mixNoise,
-        swaraxt::IDs::filterCutoff, swaraxt::IDs::filterResonance, swaraxt::IDs::filterEnvAmount,
-        swaraxt::IDs::filterKeyTracking, swaraxt::IDs::filterModAmount,
+        swaraxt::IDs::filterCutoff, swaraxt::IDs::filterResonance, swaraxt::IDs::filterEnvDepth,
+        swaraxt::IDs::filterKeyTracking, swaraxt::IDs::filterLfoDepth,
         swaraxt::IDs::env1Attack, swaraxt::IDs::env1Decay, swaraxt::IDs::env1Sustain, swaraxt::IDs::env1Release,
         swaraxt::IDs::env2Attack, swaraxt::IDs::env2Decay, swaraxt::IDs::env2Sustain, swaraxt::IDs::env2Release,
         swaraxt::IDs::lfo1Rate, swaraxt::IDs::lfo1Attack,
@@ -698,6 +698,8 @@ void MainPanel::attach(SwaraXtAudioProcessor& processor)
     sliderAttachments_.reserve(knobs_.size());
     for (size_t i = 0; i < knobs_.size(); ++i)
     {
+        if (i == kFilterEnv) knobs_[i]->slider().setTooltip("ENV 1 -> Filter Cutoff");
+        if (i == kFilterLfo) knobs_[i]->slider().setTooltip("LFO 2 -> Filter Cutoff");
         setSliderDefault(apvts, knobIds[i], knobs_[i]->slider());
         sliderAttachments_.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
             apvts, knobIds[i], knobs_[i]->slider()));
@@ -920,7 +922,7 @@ void MainPanel::reflow()
     perfModule_.setPrimaryActionBounds(boardViewButton_.getBounds());
     layoutRow(filter, { knobs_[kFilterCutoff].get(), knobs_[kFilterResonance].get(),
                         knobs_[kFilterEnv].get(), knobs_[kFilterKey].get(),
-                        knobs_[kFilterMod].get() }, 3);
+                        knobs_[kFilterLfo].get() }, 3);
 
     auto env = envModule_.body().getLocalBounds();
     auto layoutEnv = [&](juce::Rectangle<int> bounds,

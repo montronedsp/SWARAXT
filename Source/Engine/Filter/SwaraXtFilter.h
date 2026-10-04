@@ -25,12 +25,8 @@ struct SwaraXtFilterParams
     float cutoffHz = 1000.0f;
     float resonance = 0.0f;
     float keyTrack = 0.0f;
-    float envAmount = 0.0f;
-    float modAmount = 0.0f;
     float drive = 1.0f;
     float noteNumber = 69.0f;
-    float envValue = 0.0f; // 0..1
-    float modValue = 0.0f; // bipolar-ish -1..1
     float matrixCutoffOctaves = 0.0f;
     // Explicit firmware-derived board CV; negative selects the diagnostic Hz
     // interface. This avoids RAW's 20 kHz panel clamp truncating CV byte 255.
@@ -104,10 +100,6 @@ class SwaraXtFilter {
         if (params.cutoffHz == params_.cutoffHz
             && params.resonance == params_.resonance
             && params.keyTrack == params_.keyTrack
-            && params.envAmount == params_.envAmount
-            && params.modAmount == params_.modAmount
-            && params.envValue == params_.envValue
-            && params.modValue == params_.modValue
             && params.matrixCutoffOctaves == params_.matrixCutoffOctaves
             && params.noteNumber == params_.noteNumber
             && params.drive == params_.drive
@@ -125,6 +117,7 @@ class SwaraXtFilter {
     const Trace& lastTrace() const noexcept { return trace_; }
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
     const SwaraXtFilterParams& paramsForTests() const noexcept { return params_; }
+    double boardCutoffCvForTests() const noexcept { return boardCore_.cutoffCv(); }
 #endif
 
     int oversamplingFactor() const noexcept { return oversampleFactor_; }
@@ -301,9 +294,7 @@ public:
 
     void updateCoefficients() noexcept
     {
-        const double modOct = static_cast<double>(params_.envAmount) * static_cast<double>(params_.envValue)
-                            + static_cast<double>(params_.modAmount) * static_cast<double>(params_.modValue)
-                            + static_cast<double>(params_.matrixCutoffOctaves);
+        const double modOct = static_cast<double>(params_.matrixCutoffOctaves);
         const double musical = mapper_.mapCutoffHz(params_.cutoffHz,
                                                    params_.keyTrack,
                                                    params_.noteNumber,
@@ -643,9 +634,7 @@ class Ir3109ReferenceModel {
 
     void updateCoefficients() noexcept
     {
-        const double modOct = static_cast<double>(params_.envAmount) * static_cast<double>(params_.envValue)
-                            + static_cast<double>(params_.modAmount) * static_cast<double>(params_.modValue)
-                            + static_cast<double>(params_.matrixCutoffOctaves);
+        const double modOct = static_cast<double>(params_.matrixCutoffOctaves);
         const double musical = mapper_.mapCutoffHz(params_.cutoffHz,
                                                    params_.keyTrack,
                                                    params_.noteNumber,

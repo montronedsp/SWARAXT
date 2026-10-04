@@ -66,8 +66,8 @@ void PatchBridge::applyCacheToEngine(const ParameterCache& cache)
     patch->mix_noise = static_cast<uint8_t>(ParameterCache::loadInt(cache.mixNoise));
     patch->mix_sub_osc_shape = static_cast<uint8_t>(juce::jlimit(0, 10, ParameterCache::loadInt(cache.mixSubShape)));
 
-    patch->filter_env = clampS8(ParameterCache::loadInt(cache.filterShruthiEnv));
-    patch->filter_lfo = clampS8(ParameterCache::loadInt(cache.filterShruthiLfo));
+    patch->filter_env = static_cast<int8_t>(juce::jlimit(0, 63, ParameterCache::loadInt(cache.filterEnvDepth)));
+    patch->filter_lfo = static_cast<int8_t>(juce::jlimit(0, 63, ParameterCache::loadInt(cache.filterLfoDepth)));
 
     const shruthi::EnvelopeSettings envelopeSettings[2] {
         {

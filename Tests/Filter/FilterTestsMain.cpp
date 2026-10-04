@@ -576,7 +576,6 @@ void testModulationStability()
         swaraxt::SwaraXtFilterParams params;
         params.cutoffHz = static_cast<float>(600.0 * std::pow(2.0, 2.5 * std::sin(2.0 * swaraxt::kPi * 7.0 * t)));
         params.resonance = 0.65f;
-        params.modAmount = 0.0f;
         filter.setParams(params);
         const float x = static_cast<float>(0.25 * std::sin(2.0 * swaraxt::kPi * 110.0 * t));
         const float y = filter.processSample(x);

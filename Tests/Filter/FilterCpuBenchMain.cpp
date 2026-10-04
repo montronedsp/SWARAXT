@@ -86,8 +86,7 @@ Stats render(swaraxt::SwaraXtFilter& filter,
         swaraxt::SwaraXtFilterParams params;
         params.cutoffHz = static_cast<float>(scene.cutoffHz);
         params.resonance = static_cast<float>(scene.resonance);
-        params.envAmount = scene.modulate ? 4.0f : 0.0f;
-        params.envValue = 0.0f;
+        params.matrixCutoffOctaves = 0.0f;
         filter.setParams(params);
 
         const auto start = Clock::now();
@@ -96,7 +95,7 @@ Stats render(swaraxt::SwaraXtFilter& filter,
             if (scene.modulate)
             {
                 const double t = static_cast<double>(i) / sampleRate;
-                params.envValue = static_cast<float>(0.5 + 0.5 * std::sin(2.0 * swaraxt::kPi * scene.envHz * t));
+                params.matrixCutoffOctaves = static_cast<float>(2.0 + 2.0 * std::sin(2.0 * swaraxt::kPi * scene.envHz * t));
                 filter.setParams(params);
             }
             last[static_cast<size_t>(i)] = filter.processSample(input[static_cast<size_t>(i)]);

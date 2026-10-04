@@ -295,6 +295,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
     switch (index)
     {
         case 0: // Saw bass
+            setInt(swaraxt::IDs::filterEnvDepth, 45);
             setInt(swaraxt::IDs::osc1Shape, 1);
             setInt(swaraxt::IDs::osc2Shape, 1);
             setInt(swaraxt::IDs::osc2Range, -12);
@@ -305,10 +306,10 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setInt(swaraxt::IDs::env2Release, 40);
             setFloat(swaraxt::IDs::filterCutoff, 600.0f);
             setFloat(swaraxt::IDs::filterResonance, 0.35f);
-            setFloat(swaraxt::IDs::filterEnvAmount, 0.55f);
             setFloat(swaraxt::IDs::filterKeyTracking, 0.4f);
             break;
         case 1: // Pulse lead
+            setInt(swaraxt::IDs::filterEnvDepth, 41);
             setInt(swaraxt::IDs::osc1Shape, 2);
             setInt(swaraxt::IDs::osc1Param, 64);
             setInt(swaraxt::IDs::osc2Shape, 2);
@@ -319,6 +320,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterResonance, 0.25f);
             break;
         case 2: // Wavetable
+            setInt(swaraxt::IDs::filterEnvDepth, 41);
             setInt(swaraxt::IDs::osc1Shape, 11);
             setInt(swaraxt::IDs::osc1Param, 40);
             setInt(swaraxt::IDs::osc2Shape, 12);
@@ -326,6 +328,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterCutoff, 5000.0f);
             break;
         case 3: // CZ metallic
+            setInt(swaraxt::IDs::filterEnvDepth, 41);
             setInt(swaraxt::IDs::osc1Shape, 4);
             setInt(swaraxt::IDs::osc1Param, 90);
             setInt(swaraxt::IDs::osc2Shape, 5);
@@ -334,6 +337,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterResonance, 0.4f);
             break;
         case 4: // FM
+            setInt(swaraxt::IDs::filterEnvDepth, 41);
             setInt(swaraxt::IDs::osc1Shape, 10);
             setInt(swaraxt::IDs::osc1Param, 48);
             setInt(swaraxt::IDs::osc2Shape, 1);
@@ -341,6 +345,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterCutoff, 9000.0f);
             break;
         case 5: // Vowel
+            setInt(swaraxt::IDs::filterEnvDepth, 41);
             setInt(swaraxt::IDs::osc1Shape, 24);
             setInt(swaraxt::IDs::osc1Param, 64);
             setInt(swaraxt::IDs::osc2Shape, 0);
@@ -349,6 +354,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterResonance, 0.2f);
             break;
         case 6: // 8-bit
+            setInt(swaraxt::IDs::filterEnvDepth, 41);
             setInt(swaraxt::IDs::osc1Shape, 20);
             setInt(swaraxt::IDs::osc1Param, 32);
             setInt(swaraxt::IDs::osc2Shape, 21);
@@ -356,6 +362,7 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterCutoff, 6000.0f);
             break;
         case 7: // Noise perc
+            setInt(swaraxt::IDs::filterEnvDepth, 52);
             setInt(swaraxt::IDs::osc1Shape, 23);
             setInt(swaraxt::IDs::osc1Param, 80);
             setInt(swaraxt::IDs::mixNoise, 100);
@@ -366,9 +373,9 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setInt(swaraxt::IDs::env2Release, 20);
             setFloat(swaraxt::IDs::filterCutoff, 1800.0f);
             setFloat(swaraxt::IDs::filterResonance, 0.55f);
-            setFloat(swaraxt::IDs::filterEnvAmount, 0.8f);
             break;
         case 8: // Sequenced
+            setInt(swaraxt::IDs::filterEnvDepth, 41);
             setInt(swaraxt::IDs::osc1Shape, 1);
             setInt(swaraxt::IDs::osc2Shape, 3);
             setInt(swaraxt::IDs::seqMode, 1);
@@ -378,14 +385,15 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterResonance, 0.45f);
             break;
         case 9: // Resonant bass
+            setInt(swaraxt::IDs::filterEnvDepth, 48);
             setInt(swaraxt::IDs::osc1Shape, 1);
             setInt(swaraxt::IDs::mixSub, 80);
             setFloat(swaraxt::IDs::filterCutoff, 280.0f);
             setFloat(swaraxt::IDs::filterResonance, 0.72f);
-            setFloat(swaraxt::IDs::filterEnvAmount, 0.65f);
             setFloat(swaraxt::IDs::filterKeyTracking, 0.6f);
             break;
         case 10: // Self-oscillating filter tone
+            setInt(swaraxt::IDs::filterEnvDepth, 32);
             setInt(swaraxt::IDs::osc1Shape, 0);
             setInt(swaraxt::IDs::mixBalance, 0);
             setInt(swaraxt::IDs::mixNoise, 0);
@@ -393,7 +401,6 @@ void SwaraXtAudioProcessor::loadFactoryPreset(int index)
             setFloat(swaraxt::IDs::filterCutoff, 880.0f);
             setFloat(swaraxt::IDs::filterResonance, 0.96f);
             setFloat(swaraxt::IDs::filterKeyTracking, 1.0f);
-            setFloat(swaraxt::IDs::filterEnvAmount, 0.0f);
             break;
         default:
             break;
@@ -630,6 +637,13 @@ void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
             value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
             tree.addChild(value, -1, nullptr);
         }
+    }
+    // Parameter records outside the active schema are not retained in state.
+    for (int index = tree.getNumChildren(); --index >= 0;)
+    {
+        const auto child = tree.getChild(index);
+        if (child.hasType("PARAM") && apvts_.getParameter(child["id"].toString()) == nullptr)
+            tree.removeChild(index, nullptr);
     }
     canonicaliseLegacyModes(tree);
     apvts_.replaceState(tree);

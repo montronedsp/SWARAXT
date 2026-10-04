@@ -30,24 +30,16 @@ namespace avrlib_hd {
 // calculate Shruthi control destinations. The production engine decodes the
 // final firmware cutoff/resonance CV; callers must supply that decoded result.
 //
-//   envValue            = clamp01(env_source / 255)
-//   modValue            = clamp((lfo2_source - 128) / 128, -1, 1)
 //   cutoff_hz          = clamp(20000 * 2^((final_cutoff_cv - 254) / 24), 10, 20000)
 //   resonance          = final_resonance_cv / 255
 //   matrix_*           = optional extra offsets, never the native matrix twice
-//   envAmount           = panelEnvAmount * 4    (up to ~4 octaves)
-//   modAmount           = panelModAmount * 2
 //   drive               = 1.0
 struct FilterParams {
   float cutoff_hz = 1000.0f;
   float resonance = 0.0f;             // 0..1
   float key_track = 0.0f;             // 0..1
-  float env_amount = 0.0f;            // octaves (post-panel-scale)
-  float mod_amount = 0.0f;            // octaves (post-panel-scale)
   float drive = 1.0f;
   float note_number = 69.0f;          // MIDI note for key tracking
-  float env_value = 0.0f;             // 0..1
-  float mod_value = 0.0f;             // bipolar
   float matrix_cutoff_octaves = 0.0f;
   float matrix_resonance = 0.0f;      // bipolar additive on resonance
 };
@@ -90,12 +82,8 @@ class HdFilter {
     p.resonance = swaraxt::clampFinite(
         params.resonance + params.matrix_resonance, 0.0f, 1.0f);
     p.keyTrack = swaraxt::clampFinite(params.key_track, 0.0f, 1.0f);
-    p.envAmount = params.env_amount;
-    p.modAmount = params.mod_amount;
     p.drive = params.drive;
     p.noteNumber = params.note_number;
-    p.envValue = swaraxt::clampFinite(params.env_value, 0.0f, 1.0f);
-    p.modValue = swaraxt::clampFinite(params.mod_value, -1.0f, 1.0f);
     p.matrixCutoffOctaves = params.matrix_cutoff_octaves;
     filter_.setParams(p);
   }

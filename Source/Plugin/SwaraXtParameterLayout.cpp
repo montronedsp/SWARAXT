@@ -95,15 +95,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         floatParam(IDs::filterResonance, "Filter Resonance", 0.0f, 1.0f, 0.15f, 0.0f)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
-        floatParam(IDs::filterEnvAmount, "Filter Env Amount", 0.0f, 1.0f, 0.35f, 0.0f)));
-    params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         floatParam(IDs::filterKeyTracking, "Filter Key Track Trim", 0.0f, 1.0f, 0.5f, 0.0f)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
-        floatParam(IDs::filterModAmount, "Filter Mod Amount", 0.0f, 1.0f, 0.0f, 0.0f)));
+        intParam(IDs::filterEnvDepth, "Filter Env Depth", 0, 63, 32)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
-        intParam(IDs::filterShruthiEnv, "Filter Env Depth", -128, 127, 32)));
-    params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
-        intParam(IDs::filterShruthiLfo, "Filter LFO Depth", -128, 127, 0)));
+        intParam(IDs::filterLfoDepth, "Filter LFO Depth", 0, 63, 0)));
 
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         intParam(IDs::osc1Shape, "Osc 1 Shape", 0, static_cast<int>(shruthi::WAVEFORM_LAST) - 1, 1)));

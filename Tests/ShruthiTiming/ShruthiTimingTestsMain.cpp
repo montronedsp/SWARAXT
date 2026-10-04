@@ -461,9 +461,9 @@ void configureNeutralProcessor(SwaraXtAudioProcessor& proc,
     setInt(proc, swaraxt::IDs::mixSubShape, 0);
     setFloat(proc, swaraxt::IDs::filterCutoff, cutoffHz);
     setFloat(proc, swaraxt::IDs::filterResonance, 0.0f);
-    setFloat(proc, swaraxt::IDs::filterEnvAmount, 0.0f);
+    setInt(proc, swaraxt::IDs::filterEnvDepth, 32);
+    setInt(proc, swaraxt::IDs::filterLfoDepth, 0);
     setFloat(proc, swaraxt::IDs::filterKeyTracking, 0.0f);
-    setFloat(proc, swaraxt::IDs::filterModAmount, 0.0f);
     setInt(proc, swaraxt::IDs::env1Attack, 0);
     setInt(proc, swaraxt::IDs::env1Decay, 0);
     setInt(proc, swaraxt::IDs::env1Sustain, 127);
@@ -768,7 +768,7 @@ void configureShortFilterEnvelope(SwaraXtAudioProcessor& proc)
     setInt(proc, swaraxt::IDs::env1Attack, 0);
     setInt(proc, swaraxt::IDs::env1Decay, 0);
     setInt(proc, swaraxt::IDs::env1Sustain, 0);
-    setFloat(proc, swaraxt::IDs::filterEnvAmount, 1.0f);
+    setInt(proc, swaraxt::IDs::filterEnvDepth, 63);
 }
 
 void configureShortResonantFilterEnvelope(SwaraXtAudioProcessor& proc)

@@ -38,9 +38,7 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams0[] = {
         { "env2.release", 80.0 },
         { "env2.sustain", 6.0 },
         { "filter_cutoff", 182.9360961914062 },
-        { "filter_env_amount", 0.0 },
         { "filter_key_tracking", 0.6000000238418579 },
-        { "filter_mod_amount", 0.0 },
         { "filter_resonance", 1.0 },
         { "lfo1.attack", 0.0 },
         { "lfo1.division", 3.0 },
@@ -111,6 +109,8 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams0[] = {
         { "seq.mode", 0.0 },
         { "seq.swing", 0.0 },
         { "seq.tempo", 120.0 },
+        { "filter.shruthi_env", 32.0 },
+        { "filter.shruthi_lfo", 0.0 },
 };
 
 inline constexpr ApvtsFactoryParam kUserFactoryParams1[] = {
@@ -127,9 +127,7 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams1[] = {
         { "env2.release", 40.0 },
         { "env2.sustain", 100.0 },
         { "filter_cutoff", 177.8218383789062 },
-        { "filter_env_amount", 0.6620000600814819 },
         { "filter_key_tracking", 0.4000000059604645 },
-        { "filter_mod_amount", 0.0 },
         { "filter_resonance", 0.3619999885559082 },
         { "lfo1.attack", 0.0 },
         { "lfo1.division", 3.0 },
@@ -200,6 +198,8 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams1[] = {
         { "seq.mode", 0.0 },
         { "seq.swing", 0.0 },
         { "seq.tempo", 120.0 },
+        { "filter.shruthi_env", 48.0 },
+        { "filter.shruthi_lfo", 0.0 },
 };
 
 inline constexpr ApvtsFactoryParam kUserFactoryParams2[] = {
@@ -216,9 +216,7 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams2[] = {
         { "env2.release", 127.0 },
         { "env2.sustain", 52.0 },
         { "filter_cutoff", 74.2228775024414 },
-        { "filter_env_amount", 0.8867404460906982 },
         { "filter_key_tracking", 0.4000000059604645 },
-        { "filter_mod_amount", 1.0 },
         { "filter_resonance", 0.464178740978241 },
         { "lfo1.attack", 0.0 },
         { "lfo1.division", 3.0 },
@@ -289,6 +287,8 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams2[] = {
         { "seq.mode", 0.0 },
         { "seq.swing", 0.0 },
         { "seq.tempo", 120.0 },
+        { "filter.shruthi_env", 54.0 },
+        { "filter.shruthi_lfo", 24.0 },
 };
 
 inline constexpr ApvtsFactoryParam kUserFactoryParams3[] = {
@@ -305,9 +305,7 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams3[] = {
         { "env2.release", 80.0 },
         { "env2.sustain", 6.0 },
         { "filter_cutoff", 157.1371154785156 },
-        { "filter_env_amount", 0.0 },
         { "filter_key_tracking", 0.6000000238418579 },
-        { "filter_mod_amount", 0.0 },
         { "filter_resonance", 0.8159999847412109 },
         { "lfo1.attack", 0.0 },
         { "lfo1.division", 3.0 },
@@ -378,6 +376,8 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams3[] = {
         { "seq.mode", 0.0 },
         { "seq.swing", 0.0 },
         { "seq.tempo", 120.0 },
+        { "filter.shruthi_env", 32.0 },
+        { "filter.shruthi_lfo", 0.0 },
 };
 
 inline constexpr ApvtsFactoryParam kUserFactoryParams4[] = {
@@ -394,9 +394,7 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams4[] = {
         { "env2.release", 56.0 },
         { "env2.sustain", 35.0 },
         { "filter_cutoff", 238.0082397460938 },
-        { "filter_env_amount", 0.2592994868755341 },
         { "filter_key_tracking", 0.4000000059604645 },
-        { "filter_mod_amount", 0.0 },
         { "filter_resonance", 0.0 },
         { "lfo1.attack", 0.0 },
         { "lfo1.division", 3.0 },
@@ -467,6 +465,8 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams4[] = {
         { "seq.mode", 0.0 },
         { "seq.swing", 0.0 },
         { "seq.tempo", 120.0 },
+        { "filter.shruthi_env", 38.0 },
+        { "filter.shruthi_lfo", 0.0 },
 };
 
 inline constexpr ApvtsFactoryParam kUserFactoryParams5[] = {
@@ -483,9 +483,7 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams5[] = {
         { "env2.release", 30.0 },
         { "env2.sustain", 90.0 },
         { "filter_cutoff", 206.6342010498047 },
-        { "filter_env_amount", 0.3499999940395355 },
         { "filter_key_tracking", 0.5 },
-        { "filter_mod_amount", 0.0 },
         { "filter_resonance", 0.464000016450882 },
         { "lfo1.attack", 0.0 },
         { "lfo1.division", 3.0 },
@@ -556,6 +554,8 @@ inline constexpr ApvtsFactoryParam kUserFactoryParams5[] = {
         { "seq.mode", 0.0 },
         { "seq.swing", 0.0 },
         { "seq.tempo", 120.0 },
+        { "filter.shruthi_env", 41.0 },
+        { "filter.shruthi_lfo", 0.0 },
 };
 
 inline constexpr ApvtsFactoryPreset kUserFactoryPresets[] = {

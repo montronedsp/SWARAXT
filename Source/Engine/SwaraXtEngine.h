@@ -271,9 +271,7 @@ class SwaraXtEngine {
     int postMixerSamplesRemaining_ = 0;
     float filterCutoffHz_ = 8000.0f;
     float filterResonance_ = 0.2f;
-    float filterEnvAmount_ = 0.35f;
     float filterKeyTrack_ = 0.5f;
-    float filterModAmount_ = 0.0f;
     int midiChannel_ = 1;
     bool prepared_ = false;
     bool dormant_ = true;

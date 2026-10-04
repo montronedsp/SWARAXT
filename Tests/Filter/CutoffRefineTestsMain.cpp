@@ -53,10 +53,6 @@ double sineGain(double testHz, double cutoffHz, double resonance = 0.0, double a
     params.cutoffHz = static_cast<float>(cutoffHz);
     params.resonance = static_cast<float>(resonance);
     params.keyTrack = 0.0f;
-    params.envAmount = 0.0f;
-    params.modAmount = 0.0f;
-    params.envValue = 0.0f;
-    params.modValue = 0.0f;
     params.drive = 1.0f;
     filter.setParams(params);
 

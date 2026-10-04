@@ -21,6 +21,11 @@ FACTORY_HEADER = REPO / "Source/Plugin/ShruthiFactoryPresetData.h"
 OUT = REPO / "Source/Plugin/ApvtsFactoryPresetData.h"
 
 SHIPPING_NAMES = ("1996 Sub Bass", "Ibiza Bass", "Pong Fun", "Sport Sub", "Unwanted Truths", "Vowel drone")
+# Native dedicated depths for the shipping bank, fitted to cutoff-CV trajectories.
+FILTER_DEPTHS = {
+    "1996 Sub Bass": (32, 0), "Ibiza Bass": (48, 0), "Pong Fun": (54, 24),
+    "Sport Sub": (32, 0), "Unwanted Truths": (38, 0), "Vowel drone": (41, 0),
+}
 EXCLUSIONS = {"lfo mod", "duo pong", "voweano"}
 
 
@@ -102,6 +107,11 @@ def main() -> None:
         if is_excluded(p["name"]) or p["name"] not in SHIPPING_NAMES:
             excluded.append(p["name"])
             continue
+        env, lfo = FILTER_DEPTHS[p["name"]]
+        p["params"] = [(pid, value) for pid, value in p["params"]
+                       if pid not in {"filter_env_amount", "filter_mod_amount",
+                                      "filter.shruthi_env", "filter.shruthi_lfo"}]
+        p["params"].extend([("filter.shruthi_env", float(env)), ("filter.shruthi_lfo", float(lfo))])
         user_presets.append(p)
 
     # Preserve the explicit shipping program order.
@@ -155,7 +165,7 @@ def main() -> None:
 
     if user_presets:
         lines.append(
-            "inline constexpr ApvtsFactoryPreset kUserFactoryPresets[kUserFactoryPresetCount] = {"
+            "inline constexpr ApvtsFactoryPreset kUserFactoryPresets[] = {"
         )
         for idx, p in enumerate(user_presets):
             lines.append("    {")
@@ -198,8 +208,7 @@ def main() -> None:
     if "kUserFactoryPresets[" in clean:
         clean = clean.replace(
             "}  // namespace swaraxt",
-            "// Compatibility alias used by existing program-index helpers.\n"
-            "#define kCaFactoryPresets kUserFactoryPresets\n"
+            "inline constexpr const ApvtsFactoryPreset* kCaFactoryPresets = kUserFactoryPresets;\n"
             "\n"
             "}  // namespace swaraxt",
         )

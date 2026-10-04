@@ -560,11 +560,9 @@ void lowEndRenders(const std::filesystem::path& directory)
                 setParameter(processor, swaraxt::IDs::mixNoise, 0);
                 setParameter(processor, swaraxt::IDs::filterCutoff, 20000);
                 setParameter(processor, swaraxt::IDs::filterResonance, resonance);
-                setParameter(processor, swaraxt::IDs::filterEnvAmount, 0);
                 setParameter(processor, swaraxt::IDs::filterKeyTracking, 0);
-                setParameter(processor, swaraxt::IDs::filterModAmount, 0);
-                setParameter(processor, swaraxt::IDs::filterShruthiEnv, 0);
-                setParameter(processor, swaraxt::IDs::filterShruthiLfo, 0);
+                setParameter(processor, swaraxt::IDs::filterEnvDepth, 0);
+                setParameter(processor, swaraxt::IDs::filterLfoDepth, 0);
                 setParameter(processor, swaraxt::IDs::dspFxProgram, static_cast<float>(fx));
                 setParameter(processor, swaraxt::IDs::dspFxParam1, 80);
                 setParameter(processor, swaraxt::IDs::dspFxParam2, 35);

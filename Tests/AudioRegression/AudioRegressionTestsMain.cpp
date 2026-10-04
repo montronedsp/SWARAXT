@@ -288,9 +288,9 @@ void configureBasicPatch(SwaraXtAudioProcessor& proc,
     setInt(proc, swaraxt::IDs::mixNoise, noise);
     setFloat(proc, swaraxt::IDs::filterCutoff, cutoff);
     setFloat(proc, swaraxt::IDs::filterResonance, resonance);
-    setFloat(proc, swaraxt::IDs::filterEnvAmount, 0.0f);
+    setInt(proc, swaraxt::IDs::filterEnvDepth, 32);
+    setInt(proc, swaraxt::IDs::filterLfoDepth, 0);
     setFloat(proc, swaraxt::IDs::filterKeyTracking, 0.0f);
-    setFloat(proc, swaraxt::IDs::filterModAmount, 0.0f);
     setInt(proc, swaraxt::IDs::env2Attack, 0);
     setInt(proc, swaraxt::IDs::env2Decay, 30);
     setInt(proc, swaraxt::IDs::env2Sustain, 110);
@@ -410,8 +410,6 @@ FilterCapture runFilterCapture(const std::vector<float>& source, float resonance
     params.cutoffHz = 8000.0f;
     params.resonance = resonance;
     params.keyTrack = 0.0f;
-    params.envAmount = 0.0f;
-    params.modAmount = 0.0f;
     params.noteNumber = 60.0f;
     filter.setParams(params);
 

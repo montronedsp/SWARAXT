@@ -67,11 +67,9 @@ struct ParameterCache {
         arpGate = bindOne(IDs::arpGate);
         filterCutoff = bindOne(IDs::filterCutoff);
         filterResonance = bindOne(IDs::filterResonance);
-        filterEnvAmount = bindOne(IDs::filterEnvAmount);
         filterKeyTracking = bindOne(IDs::filterKeyTracking);
-        filterModAmount = bindOne(IDs::filterModAmount);
-        filterShruthiEnv = bindOne(IDs::filterShruthiEnv);
-        filterShruthiLfo = bindOne(IDs::filterShruthiLfo);
+        filterEnvDepth = bindOne(IDs::filterEnvDepth);
+        filterLfoDepth = bindOne(IDs::filterLfoDepth);
         dspFxProgram = bindOne(IDs::dspFxProgram);
         dspFxParam1 = bindOne(IDs::dspFxParam1);
         dspFxParam2 = bindOne(IDs::dspFxParam2);
@@ -162,11 +160,9 @@ struct ParameterCache {
     std::atomic<float>* arpGate = nullptr;
     std::atomic<float>* filterCutoff = nullptr;
     std::atomic<float>* filterResonance = nullptr;
-    std::atomic<float>* filterEnvAmount = nullptr;
     std::atomic<float>* filterKeyTracking = nullptr;
-    std::atomic<float>* filterModAmount = nullptr;
-    std::atomic<float>* filterShruthiEnv = nullptr;
-    std::atomic<float>* filterShruthiLfo = nullptr;
+    std::atomic<float>* filterEnvDepth = nullptr;
+    std::atomic<float>* filterLfoDepth = nullptr;
     std::array<std::atomic<float>*, 12> modSource {};
     std::array<std::atomic<float>*, 12> modDest {};
     std::array<std::atomic<float>*, 12> modAmount {};

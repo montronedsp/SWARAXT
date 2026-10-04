@@ -246,7 +246,7 @@ class MainPanel : public juce::Component {
         kFilterResonance,
         kFilterEnv,
         kFilterKey,
-        kFilterMod,
+        kFilterLfo,
         kEnv1Attack,
         kEnv1Decay,
         kEnv1Sustain,
