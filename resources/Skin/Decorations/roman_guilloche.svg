@@ -1,0 +1,47 @@
+<svg width="28" height="500" version="1.1" viewBox="0 0 28 500" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M4 20 C9 12 12 12 14 29 S19 46 24 38" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 38 C9 46 12 46 14 29 S19 12 24 20" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="29" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 50 C9 42 12 42 14 59 S19 76 24 68" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 68 C9 76 12 76 14 59 S19 42 24 50" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="59" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 80 C9 72 12 72 14 89 S19 106 24 98" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 98 C9 106 12 106 14 89 S19 72 24 80" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="89" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 110 C9 102 12 102 14 119 S19 136 24 128" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 128 C9 136 12 136 14 119 S19 102 24 110" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="119" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 140 C9 132 12 132 14 149 S19 166 24 158" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 158 C9 166 12 166 14 149 S19 132 24 140" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="149" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 170 C9 162 12 162 14 179 S19 196 24 188" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 188 C9 196 12 196 14 179 S19 162 24 170" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="179" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 200 C9 192 12 192 14 209 S19 226 24 218" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 218 C9 226 12 226 14 209 S19 192 24 200" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="209" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 230 C9 222 12 222 14 239 S19 256 24 248" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 248 C9 256 12 256 14 239 S19 222 24 230" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="239" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 260 C9 252 12 252 14 269 S19 286 24 278" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 278 C9 286 12 286 14 269 S19 252 24 260" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="269" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 290 C9 282 12 282 14 299 S19 316 24 308" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 308 C9 316 12 316 14 299 S19 282 24 290" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="299" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 320 C9 312 12 312 14 329 S19 346 24 338" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 338 C9 346 12 346 14 329 S19 312 24 320" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="329" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 350 C9 342 12 342 14 359 S19 376 24 368" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 368 C9 376 12 376 14 359 S19 342 24 350" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="359" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 380 C9 372 12 372 14 389 S19 406 24 398" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 398 C9 406 12 406 14 389 S19 372 24 380" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="389" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 410 C9 402 12 402 14 419 S19 436 24 428" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 428 C9 436 12 436 14 419 S19 402 24 410" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="419" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M4 440 C9 432 12 432 14 449 S19 466 24 458" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<path d="M4 458 C9 466 12 466 14 449 S19 432 24 440" vector-effect="non-scaling-stroke" stroke-width="1.2"/>
+<circle cx="14" cy="449" r="1.7" fill="#ffffff" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+</g></svg>

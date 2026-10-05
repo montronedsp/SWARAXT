@@ -13,12 +13,12 @@
 namespace swaraxt::ui {
 
 enum class SkinId { midnightGold, neonCobalt, pastel, jungle, rossocorsa };
-enum class DecorationId { legacy, pcbTrace };
+enum class DecorationId { legacy, pcbTrace, greekKey1Turn, greekKey4Turns, romanPlait, romanIntertwined, romanGuilloche, romanInterlace, romanWicker, romanMeander, romanKeyBorder, romanBanner, romanAcanthus, romanLion };
 enum class ManufacturerMark { montroneDspWordmark, stone };
 struct ManufacturerMarkDefinition {
     static constexpr ManufacturerMark defaultMark = ManufacturerMark::montroneDspWordmark;
     static const char* displayName(ManufacturerMark mark) {
-        return mark == ManufacturerMark::stone ? "STONE" : "MontroneDSP Wordmark";
+        return mark == ManufacturerMark::stone ? "Stones" : "MontroneDSP Wordmark";
     }
     static const char* stableId(ManufacturerMark mark) {
         return mark == ManufacturerMark::stone ? "stone" : "montronedsp_wordmark";
@@ -130,6 +130,21 @@ struct DecorationDefinition {
 
 class DecorationRegistry {
  public:
+    static constexpr std::array<DecorationId, 14> all {
+        DecorationId::legacy, DecorationId::pcbTrace,
+        DecorationId::greekKey1Turn,
+        DecorationId::greekKey4Turns,
+        DecorationId::romanPlait,
+        DecorationId::romanIntertwined,
+        DecorationId::romanGuilloche,
+        DecorationId::romanInterlace,
+        DecorationId::romanWicker,
+        DecorationId::romanMeander,
+        DecorationId::romanKeyBorder,
+        DecorationId::romanBanner,
+        DecorationId::romanAcanthus,
+        DecorationId::romanLion
+    };
     static const DecorationDefinition& get(DecorationId id);
 };
 

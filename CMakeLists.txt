@@ -99,6 +99,18 @@ juce_add_binary_data(SwaraXTFonts
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Shared/vco1_header.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Shared/vco2_header.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/pcb_trace_separator.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/greek_key_1turn.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/greek_key_4turns.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_plait.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_intertwined.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_guilloche.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_interlace.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_wicker.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_meander.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_key_border.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_banner.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_acanthus.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_lion.svg"
 )
 
 set(SWARAXT_ALL_PLUGIN_SOURCES

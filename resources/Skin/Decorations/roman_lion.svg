@@ -1,0 +1,10 @@
+<svg width="28" height="500" version="1.1" viewBox="0 0 28 500" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#ffffff" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 40 V460" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+<path d="M22 40 V460" stroke-width="1.1" vector-effect="non-scaling-stroke"/>
+<path d="M14 16.1 L8.9 22.9 L5.5 21.2 L7.2 27.15 C3.8 32.25 5.5 38.2 9.75 41.6 L12.3 46.7 L14 43.3 L15.7 46.7 L18.25 41.6 C22.5 38.2 24.2 32.25 20.8 27.15 L22.5 21.2 L19.1 22.9 Z" stroke-width="1.15" vector-effect="non-scaling-stroke"/>
+<path d="M14 483.9 L8.9 477.1 L5.5 478.8 L7.2 472.85 C3.8 467.75 5.5 461.8 9.75 458.4 L12.3 453.3 L14 456.7 L15.7 453.3 L18.25 458.4 C22.5 461.8 24.2 467.75 20.8 472.85 L22.5 478.8 L19.1 477.1 Z" stroke-width="1.15" vector-effect="non-scaling-stroke"/>
+<path d="M10 165 H18" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+<circle cx="14" cy="165" r="2" fill="none" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+<path d="M10 335 H18" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+<circle cx="14" cy="335" r="2" fill="none" stroke="#ffffff" vector-effect="non-scaling-stroke"/>
+</g></svg>

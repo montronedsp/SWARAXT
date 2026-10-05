@@ -340,9 +340,57 @@ const DecorationDefinition& DecorationRegistry::get(DecorationId id)
     static const DecorationDefinition pcbTrace {
         DecorationId::pcbTrace, "pcb_trace", "PCB Trace", "pcb_trace_separator_svg"
     };
+    static const DecorationDefinition greekKey1Turn {
+        DecorationId::greekKey1Turn, "greek_key_1turn", "Square", "greek_key_1turn_svg"
+    };
+    static const DecorationDefinition greekKey4Turns {
+        DecorationId::greekKey4Turns, "greek_key_4turns", "Eurocrack", "greek_key_4turns_svg"
+    };
+    static const DecorationDefinition romanPlait {
+        DecorationId::romanPlait, "roman_plait", "Plait", "roman_plait_svg"
+    };
+    static const DecorationDefinition romanIntertwined {
+        DecorationId::romanIntertwined, "roman_intertwined", "Intertwined", "roman_intertwined_svg"
+    };
+    static const DecorationDefinition romanGuilloche {
+        DecorationId::romanGuilloche, "roman_guilloche", "Guilloche", "roman_guilloche_svg"
+    };
+    static const DecorationDefinition romanInterlace {
+        DecorationId::romanInterlace, "roman_interlace", "Interlace", "roman_interlace_svg"
+    };
+    static const DecorationDefinition romanWicker {
+        DecorationId::romanWicker, "roman_wicker", "Wicker", "roman_wicker_svg"
+    };
+    static const DecorationDefinition romanMeander {
+        DecorationId::romanMeander, "roman_meander", "Meander", "roman_meander_svg"
+    };
+    static const DecorationDefinition romanKeyBorder {
+        DecorationId::romanKeyBorder, "roman_key_border", "Key Border", "roman_key_border_svg"
+    };
+    static const DecorationDefinition romanBanner {
+        DecorationId::romanBanner, "roman_banner", "Banner", "roman_banner_svg"
+    };
+    static const DecorationDefinition romanAcanthus {
+        DecorationId::romanAcanthus, "roman_acanthus", "Acanthus", "roman_acanthus_svg"
+    };
+    static const DecorationDefinition romanLion {
+        DecorationId::romanLion, "roman_lion", "Lion", "roman_lion_svg"
+    };
     switch (id)
     {
         case DecorationId::pcbTrace: return pcbTrace;
+        case DecorationId::greekKey1Turn: return greekKey1Turn;
+        case DecorationId::greekKey4Turns: return greekKey4Turns;
+        case DecorationId::romanPlait: return romanPlait;
+        case DecorationId::romanIntertwined: return romanIntertwined;
+        case DecorationId::romanGuilloche: return romanGuilloche;
+        case DecorationId::romanInterlace: return romanInterlace;
+        case DecorationId::romanWicker: return romanWicker;
+        case DecorationId::romanMeander: return romanMeander;
+        case DecorationId::romanKeyBorder: return romanKeyBorder;
+        case DecorationId::romanBanner: return romanBanner;
+        case DecorationId::romanAcanthus: return romanAcanthus;
+        case DecorationId::romanLion: return romanLion;
         case DecorationId::legacy: break;
     }
     return legacy;
@@ -423,7 +471,8 @@ DecorationId UiPreferences::loadDecoration()
 {
     const auto properties = open();
     const auto value = properties->getValue("decoration", "legacy");
-    if (value == "pcb_trace") return DecorationId::pcbTrace;
+    for (const auto id : DecorationRegistry::all)
+        if (value == DecorationRegistry::get(id).stableId) return id;
     return DecorationId::legacy;
 }
 

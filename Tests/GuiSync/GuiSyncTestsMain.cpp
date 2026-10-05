@@ -638,6 +638,33 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
     expectComboGeometry(swaraxt::ui::GuiSize::small, 891, 417, "Small after Normal");
     expectComboGeometry(swaraxt::ui::GuiSize::large, 1391, 651, "Large after Small");
 
+    const auto savedSkin = swaraxt::ui::UiPreferences::loadSkin();
+    const auto savedDecoration = swaraxt::ui::UiPreferences::loadDecoration();
+    const auto savedSize = swaraxt::ui::UiPreferences::loadGuiSize();
+    expect(juce::String(swaraxt::ui::ManufacturerMarkDefinition::displayName(
+               swaraxt::ui::ManufacturerMark::stone)) == "Stones", "manufacturer display name");
+    expect(juce::String(swaraxt::ui::ManufacturerMarkDefinition::stableId(
+               swaraxt::ui::ManufacturerMark::stone)) == "stone", "manufacturer stable ID unchanged");
+    for (const auto decoration : swaraxt::ui::DecorationRegistry::all)
+    {
+        swaraxt::ui::UiPreferences::save(savedSkin, decoration, savedSize);
+        expect(swaraxt::ui::UiPreferences::loadDecoration() == decoration,
+               "decoration preference round-trip");
+        editor.setDecorationForTests(decoration);
+        for (const auto skin : {swaraxt::ui::SkinId::midnightGold, swaraxt::ui::SkinId::neonCobalt,
+                               swaraxt::ui::SkinId::pastel, swaraxt::ui::SkinId::jungle,
+                               swaraxt::ui::SkinId::rossocorsa})
+        {
+            swaraxt::ui::DecorationAssetCache assets(decoration, swaraxt::ui::SkinRegistry::get(skin).palette);
+            expect(decoration == swaraxt::ui::DecorationId::legacy
+                       ? assets.get() == nullptr
+                       : assets.get() != nullptr && !assets.get()->getDrawableBounds().isEmpty(),
+                   "decoration vector loads with every skin");
+            editor.setSkinForTests(skin);
+        }
+    }
+    swaraxt::ui::UiPreferences::save(savedSkin, savedDecoration, savedSize);
+
     editor.setDecorationForTests(swaraxt::ui::DecorationId::legacy);
     editor.setSkinForTests(swaraxt::ui::SkinId::pastel);
     const auto pastelComboText = swaraxt::ui::Palette::skin().comboText;

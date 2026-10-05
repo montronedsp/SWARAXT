@@ -283,8 +283,12 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     skinMenu.addItem(104, "Rossocorsa", true, skinId_ == SkinId::rossocorsa);
 
     juce::PopupMenu decorationMenu;
-    decorationMenu.addItem(150, "Legacy", true, decorationId_ == DecorationId::legacy);
-    decorationMenu.addItem(151, "PCB Trace", true, decorationId_ == DecorationId::pcbTrace);
+    for (size_t i = 0; i < DecorationRegistry::all.size(); ++i)
+    {
+        const auto id = DecorationRegistry::all[i];
+        decorationMenu.addItem(150 + static_cast<int>(i), DecorationRegistry::get(id).displayName,
+                               true, decorationId_ == id);
+    }
 
     juce::PopupMenu sizeMenu;
     sizeMenu.addItem(201, "Small", true, guiSize_ == GuiSize::small);
@@ -334,8 +338,8 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
         if (result == 102) safeThis->applySkin(SkinId::pastel, true);
         if (result == 103) safeThis->applySkin(SkinId::jungle, true);
         if (result == 104) safeThis->applySkin(SkinId::rossocorsa, true);
-        if (result == 150) safeThis->applyDecoration(DecorationId::legacy, true);
-        if (result == 151) safeThis->applyDecoration(DecorationId::pcbTrace, true);
+        if (result >= 150 && result < 150 + static_cast<int>(DecorationRegistry::all.size()))
+            safeThis->applyDecoration(DecorationRegistry::all[static_cast<size_t>(result - 150)], true);
         if (result == 201) safeThis->applyGuiSize(GuiSize::small, true);
         if (result == 202) safeThis->applyGuiSize(GuiSize::medium, true);
         if (result == 203) safeThis->applyGuiSize(GuiSize::large, true);
