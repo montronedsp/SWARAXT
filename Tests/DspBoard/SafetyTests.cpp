@@ -76,7 +76,10 @@ void hostBoundary()
             converter.reset(); converter.setStep(sampleRate, rate);
             swaraxt::DcBlocker dc; dc.prepare(rate);
             double sum = 0, preSum = 0;
-            const int total = static_cast<int>(rate * 1.25);
+            // Constant steps through delayed feedback need time for both
+            // the effect startup and the 0.7 Hz host safety pole to settle.
+            const double observationSeconds = (input == 1 || input == 2) ? 5.0 : 1.25;
+            const int total = static_cast<int>(rate * observationSeconds);
             const int window = static_cast<int>(rate * .25);
             std::uint64_t nativeIndex = 0;
             std::uint32_t random = 21;
@@ -121,7 +124,11 @@ void hostBoundary()
         {
             swaraxt::DcBlocker dc; dc.prepare(rate);
             float last = 0;
-            for (int i = 0; i < static_cast<int>(rate); ++i) last = dc.process(value);
+            // The final safety pole is 0.7 Hz. Preserve the rejection bound,
+            // allowing its rate-compensated decay to reach that bound.
+            const auto pole = static_cast<float>(std::exp(-6.283185307179586 * 0.7 / rate));
+            const int decaySamples = 1 + static_cast<int>(std::ceil(std::log(0.5e-7) / std::log(pole)));
+            for (int i = 0; i < decaySamples; ++i) last = dc.process(value);
             require(std::abs(last) < 1.e-7f, "shared blocker constant-input decay");
             dc.reset(); require(dc.process(value) == value, "shared blocker deterministic reset");
         }

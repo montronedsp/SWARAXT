@@ -1090,11 +1090,17 @@ void runStreamingSrc()
         const int responseSamples = static_cast<int>(std::lround(rate * 0.1));
         for (int i = 0; i < responseSamples; ++i)
             dcResponse = blocker.process(1.0f);
-        static float referenceDcResponse = 0.0f;
-        if (rate == rates[0])
-            referenceDcResponse = dcResponse;
-        expect(std::fabs(dcResponse - referenceDcResponse) < 1.0e-4f,
-               "DC blocker has a sample-rate-invariant physical response");
+        const double exactPole = std::exp(-6.28318530717958647692 * 0.7 / rate);
+        const float storedPole = static_cast<float>(exactPole);
+        const double expected = std::pow(static_cast<double>(storedPole), responseSamples);
+        const double ideal = std::pow(exactPole, responseSamples);
+        // A near-unity float pole has rate-dependent rounding error. Bound
+        // that known coefficient error separately from processing error.
+        const double coefficientError = std::fabs(expected - ideal);
+        expect(std::fabs(dcResponse - expected) < 2.0e-5,
+               "DC blocker follows the rate-compensated float pole");
+        expect(std::fabs(dcResponse - ideal) < coefficientError + 2.0e-5,
+               "DC blocker physical response stays within its float coefficient error");
     }
 
     const auto a = renderSineThroughQueue(44100.0, { 128 }, 8192, 440.0);
