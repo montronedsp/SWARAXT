@@ -1,4 +1,4 @@
-Swara XT 1.2.2
+Swara XT 1.2.3
 MontroneDSP
 
 Windows requirements
@@ -26,7 +26,7 @@ support@montronedsp.com
 
 Source and licences
 -------------------
-Source repository: https://github.com/montronedsp/swara-xt
+Source repository: https://github.com/montronedsp/SWARAXT
 
 Swara XT software is licensed under GPL-3.0-or-later. See LICENSE.txt.
 Third-party notices are in THIRD_PARTY_NOTICES.txt. Attribution and CC BY-SA

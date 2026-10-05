@@ -1,4 +1,4 @@
-Swara XT
+Swara XT 1.2.3
 MontroneDSP
 
 VST3 — per-user installation:
@@ -39,4 +39,4 @@ Support:
 support@montronedsp.com
 
 Source:
-https://github.com/montronedsp/swara-xt
+https://github.com/montronedsp/SWARAXT
