@@ -24,4 +24,3 @@ Obtain builds from the project's official distribution channels and verify
 published checksums when they are available. Treat malformed or untrusted
 project, preset, state, and other input files cautiously; they should not be
 assumed harmless merely because they are local.
-
