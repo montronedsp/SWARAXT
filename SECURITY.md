@@ -25,9 +25,3 @@ published checksums when they are available. Treat malformed or untrusted
 project, preset, state, and other input files cautiously; they should not be
 assumed harmless merely because they are local.
 
-Memory-safety defects, unsafe parsing, dependency vulnerabilities, and release
-or build-integrity defects are security-relevant when applicable. The project
-does not claim to be sandboxed, memory-safe, telemetry-free, or unable to make
-network requests in every host or environment. Reports are handled by the
-project maintainer according to available capacity; no response-time or support
-guarantee is implied.
