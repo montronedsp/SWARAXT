@@ -17,6 +17,14 @@ It combines a digital dual-oscillator voice with a resonant four-pole low-pass f
 - Multiple interface skins and sizes
 - VST3 and Standalone formats
 
+## Quick start
+
+1. Download the current archive from [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases), or build from source.
+2. Install the complete VST3 bundle in a VST3-compatible host location and rescan the host, or launch the included Standalone application.
+3. Select a factory preset from the preset selector, or save a complete user preset with **SAVE**.
+4. Send MIDI notes to the instrument track and route that track to an active audio output.
+5. Open **SEQ/ARP** to use the internal sequencer or arpeggiator when desired.
+
 ## Linux installation
 
 Install the latest official Linux x86_64 release (per-user, no root):
@@ -38,13 +46,15 @@ Manual archives remain available from [GitHub Releases](https://github.com/montr
 
 The official Linux build is available free from the [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases) page.
 
-### Windows & macOS
+### Windows
 
-Official prebuilt Windows and macOS versions are available from:
+The current public Windows x64 package is available from
+[GitHub Releases](https://github.com/montronedsp/SWARAXT/releases).
 
-[**store.montronedsp.com/l/swara**](https://store.montronedsp.com/l/swara)
+### macOS
 
-The complete source code is available in this repository and may also be built locally.
+No macOS archive is published with the current 1.2.3 GitHub release; see
+[BUILDING.md](BUILDING.md) to build the current source locally.
 
 ## Performance
 
@@ -89,6 +99,17 @@ SWARA XT is an independent project and is not an official Mutable Instruments pr
 
 `main` is the canonical SWARA XT source branch.
 
+## Project information
+
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Governance](GOVERNANCE.md)
+- [Roadmap](ROADMAP.md)
+- [Security Policy](SECURITY.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Building](BUILDING.md)
+- [OpenSSF Best Practices program](https://www.bestpractices.dev/en) — SWARA XT does not currently claim an OpenSSF badge.
+
 ---
 
-**SWARA XT 1.2.2 — MontroneDSP**
+**SWARA XT 1.2.3 — MontroneDSP**
