@@ -108,7 +108,6 @@ SWARA XT is an independent project and is not an official Mutable Instruments pr
 - [Security Policy](SECURITY.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Building](BUILDING.md)
-- [OpenSSF Best Practices program](https://www.bestpractices.dev/en) — SWARA XT does not currently claim an OpenSSF badge.
 
 ---
 
