@@ -1,5 +1,7 @@
 # SWARA XT
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15241/badge)](https://www.bestpractices.dev/projects/15241)
+
 **SWARA XT** is an open-source monophonic software synthesizer by MontroneDSP, derived in part from the Mutable Instruments Shruthi firmware.
 
 It combines a digital dual-oscillator voice with a resonant four-pole low-pass filter, modulation matrix, envelopes, LFOs, sequencer/arpeggiator, presets, and a scalable themed interface.
