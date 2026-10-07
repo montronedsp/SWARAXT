@@ -19,6 +19,8 @@ It combines a digital dual-oscillator voice with a resonant four-pole low-pass f
 - Multiple interface skins and sizes
 - VST3 and Standalone formats
 
+**New to SWARA XT? Read the [Quick Start Manual](docs/QUICKSTART.md).**
+
 ## Quick start
 
 1. Download the current archive from [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases), or build from source.
