@@ -6,9 +6,38 @@
 import csv
 import sys
 from collections import OrderedDict
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+MEASUREMENTS_ROOT = ROOT / "artifacts" / "src-quality" / "measurements"
 
 TONES = ["100.0", "1000.0", "5000.0", "8000.0", "10000.0", "12000.0", "15000.0",
          "18000.0", "19000.0"]
+
+
+def safe_measurement_path(value: str) -> Path:
+    """Resolve a measurement CSV under artifacts/src-quality/measurements."""
+    if not value or not str(value).strip():
+        raise ValueError("measurement path is empty")
+    raw = Path(value)
+    if raw.is_absolute() or raw.anchor:
+        raise ValueError("measurement path must be relative")
+    if any(part == ".." for part in raw.parts):
+        raise ValueError("measurement path must not contain '..'")
+    prefix = Path("artifacts") / "src-quality" / "measurements"
+    try:
+        raw = raw.relative_to(prefix)
+    except ValueError:
+        pass
+    if raw.suffix.lower() != ".csv" or not raw.name or raw.name in {".", ".."}:
+        raise ValueError("measurement must be a .csv file")
+    root = MEASUREMENTS_ROOT.resolve()
+    candidate = (root / raw).resolve()
+    if not candidate.is_relative_to(root):
+        raise ValueError("measurement path escapes artifacts/src-quality/measurements")
+    if not candidate.is_file() or candidate.is_dir():
+        raise ValueError("measurement must be a regular .csv file under the measurements root")
+    return candidate
 
 
 def table(rows, rate, column, fmt, title):
@@ -26,8 +55,14 @@ def table(rows, rate, column, fmt, title):
 
 
 def main():
-    path = sys.argv[1]
-    rows = list(csv.DictReader(open(path)))
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: pivot.py <measurement.csv> [host_rate ...]")
+    try:
+        path = safe_measurement_path(sys.argv[1])
+    except ValueError as exc:
+        raise SystemExit(f"invalid measurement path: {exc}") from exc
+    with path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
     rates = sys.argv[2:] or list(OrderedDict.fromkeys(r["host_rate"] for r in rows))
     for rate in rates:
         table(rows, rate, "passband_err_db", "{:9.2f}", "PASSBAND ERROR dB")

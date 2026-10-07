@@ -7,6 +7,25 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+REPORT_ROOT = ROOT / "artifacts" / "audits"
+
+
+def safe_report_path(value: Path) -> Path:
+    """Resolve --report under artifacts/audits; reject absolute and traversal paths."""
+    raw = Path(value)
+    if not str(value).strip() or not raw.parts:
+        raise ValueError("report path is empty")
+    if raw.is_absolute() or raw.anchor:
+        raise ValueError("report path must be relative")
+    if any(part == ".." for part in raw.parts):
+        raise ValueError("report path must not contain '..'")
+    if raw.suffix.lower() != ".json" or not raw.name or raw.name in {".", ".."}:
+        raise ValueError("report must be a .json file name")
+    root = REPORT_ROOT.resolve()
+    candidate = (root / raw).resolve()
+    if not candidate.is_relative_to(root):
+        raise ValueError("report path escapes artifacts/audits")
+    return candidate
 
 def compare():
     upstream = ROOT / "third_party/shruthi-1"
@@ -40,11 +59,22 @@ def compare():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report", type=Path, help="Optional JSON evidence destination outside source")
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="Optional JSON report name under artifacts/audits/",
+    )
     args = parser.parse_args()
+    report_path = None
+    if args.report is not None:
+        try:
+            report_path = safe_report_path(args.report)
+        except ValueError as exc:
+            raise SystemExit(f"invalid --report: {exc}") from exc
     result = compare()
-    if args.report:
-        args.report.write_text(json.dumps(result, indent=2) + "\n")
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     for row in result["presets"]:
         print(f"{row['preset']}: {'MATCH' if row['match'] else 'DIFF'} ({row['upstream_name']})")
     print(f"{result['matches']}/{result['compared']} exact 92-byte matches; official {result['revision']}")
