@@ -53,6 +53,30 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     {
         return mainPanel_.filterKeyTrackForTests();
     }
+    swaraxt::ui::SwaraXtKnob& envelopeKnobForTests(int index) noexcept
+    {
+        return mainPanel_.envelopeKnobForTests(index);
+    }
+    juce::ComboBox& lfoRetrigComboForTests(int index) noexcept
+    {
+        return mainPanel_.lfoRetrigComboForTests(index);
+    }
+    juce::ComboBox& lfoSyncComboForTests(int index) noexcept
+    {
+        return mainPanel_.lfoSyncComboForTests(index);
+    }
+    juce::ComboBox& lfoDivisionComboForTests(int index) noexcept
+    {
+        return mainPanel_.lfoDivisionComboForTests(index);
+    }
+    swaraxt::ui::SwaraXtKnob& lfoRateKnobForTests(int index) noexcept
+    {
+        return mainPanel_.lfoRateKnobForTests(index);
+    }
+    swaraxt::ui::SwaraXtKnob& lfoAttackKnobForTests(int index) noexcept
+    {
+        return mainPanel_.lfoAttackKnobForTests(index);
+    }
     swaraxt::ui::ModPanel& modulationForTests() noexcept
     {
         return mainPanel_.modulationForTests();

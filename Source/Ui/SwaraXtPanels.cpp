@@ -930,7 +930,10 @@ void MainPanel::reflow()
                          int d,
                          int s,
                          int r) {
-        layoutRow(bounds, { knobs_[a].get(), knobs_[d].get(), knobs_[s].get(), knobs_[r].get() }, 4);
+        layoutRow(bounds, { knobs_[static_cast<size_t>(a)].get(),
+                            knobs_[static_cast<size_t>(d)].get(),
+                            knobs_[static_cast<size_t>(s)].get(),
+                            knobs_[static_cast<size_t>(r)].get() }, 4);
     };
     env1Role_.setBounds(env.removeFromTop(12).removeFromLeft(46));
     layoutEnv(env.removeFromTop(65), kEnv1Attack, kEnv1Decay, kEnv1Sustain, kEnv1Release);
@@ -952,12 +955,15 @@ void MainPanel::reflow()
         auto selectorArea = bounds.removeFromLeft(188);
         bounds.removeFromLeft(4);
         auto selectors = selectorArea.removeFromTop(selectorArea.getHeight() / 2);
-        layoutRow(selectors, { selectors_[wave].get(), selectors_[mode].get() }, 4);
+        layoutRow(selectors, { selectors_[static_cast<size_t>(wave)].get(),
+                               selectors_[static_cast<size_t>(mode)].get() }, 4);
         auto timing = selectorArea;
         const int sync = mode == kLfo1Retrig ? kLfo1Sync : kLfo2Sync;
         const int division = mode == kLfo1Retrig ? kLfo1Division : kLfo2Division;
-        layoutRow(timing, { selectors_[sync].get(), selectors_[division].get() }, 4);
-        layoutRow(bounds, { knobs_[rate].get(), knobs_[attack].get() }, 4);
+        layoutRow(timing, { selectors_[static_cast<size_t>(sync)].get(),
+                            selectors_[static_cast<size_t>(division)].get() }, 4);
+        layoutRow(bounds, { knobs_[static_cast<size_t>(rate)].get(),
+                            knobs_[static_cast<size_t>(attack)].get() }, 4);
     };
     auto lfoTraces = lfo.removeFromBottom(48);
     auto lfo1 = lfo.removeFromTop((lfo.getHeight() - Layout::moduleHeaderRow) / 2);

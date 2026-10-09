@@ -24,8 +24,18 @@ void BoardEffects::process(Block& b, Effect effect, std::uint8_t x, std::uint8_t
         case Effect::ringMod: ringMod(b, x, y); break;
         case Effect::looper: if (y < 128) loopRecord(b, x); else loopReplay(b, x); break;
         case Effect::pitch: pitch(b, x, y); break;
+        case Effect::delay:
+        case Effect::delayFeedback:
+        case Effect::delayDub:
+        case Effect::crushDelayFeedback:
+        case Effect::crushDelayDub:
+        case Effect::delay16:
+        case Effect::delay12:
+        case Effect::delay8:
+        case Effect::delay3_16:
+            delay(b, effect, x, y, tempo);
+            break;
         default:
-            if (effect >= Effect::delay && effect <= Effect::delay3_16) delay(b, effect, x, y, tempo);
             break;
     }
 }

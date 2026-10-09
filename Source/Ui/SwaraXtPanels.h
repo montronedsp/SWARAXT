@@ -204,6 +204,36 @@ class MainPanel : public juce::Component {
     {
         return *knobs_[static_cast<size_t>(kFilterKey)];
     }
+    // Envelope knobs in constructor order: Env1 A/D/S/R then Env2 A/D/S/R (0..7).
+    SwaraXtKnob& envelopeKnobForTests(int index) noexcept
+    {
+        return *knobs_[static_cast<size_t>(kEnv1Attack + index)];
+    }
+    juce::ComboBox& lfoRetrigComboForTests(int index) noexcept
+    {
+        const int selector = index == 0 ? kLfo1Retrig : kLfo2Retrig;
+        return selectors_[static_cast<size_t>(selector)]->combo();
+    }
+    juce::ComboBox& lfoSyncComboForTests(int index) noexcept
+    {
+        const int selector = index == 0 ? kLfo1Sync : kLfo2Sync;
+        return selectors_[static_cast<size_t>(selector)]->combo();
+    }
+    juce::ComboBox& lfoDivisionComboForTests(int index) noexcept
+    {
+        const int selector = index == 0 ? kLfo1Division : kLfo2Division;
+        return selectors_[static_cast<size_t>(selector)]->combo();
+    }
+    SwaraXtKnob& lfoRateKnobForTests(int index) noexcept
+    {
+        const int knob = index == 0 ? kLfo1Rate : kLfo2Rate;
+        return *knobs_[static_cast<size_t>(knob)];
+    }
+    SwaraXtKnob& lfoAttackKnobForTests(int index) noexcept
+    {
+        const int knob = index == 0 ? kLfo1Attack : kLfo2Attack;
+        return *knobs_[static_cast<size_t>(knob)];
+    }
     const SwaraXtKnob& filterKeyTrackForTests() const noexcept
     {
         return *knobs_[static_cast<size_t>(kFilterKey)];

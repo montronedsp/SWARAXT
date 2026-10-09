@@ -15,9 +15,9 @@ namespace {
 // Every host-visible choice is canonical; writes cannot change the value.
 class FixedCompatibilityChoice final : public juce::AudioParameterChoice {
 public:
-    FixedCompatibilityChoice(const juce::ParameterID& id, const juce::String& name,
-                             const juce::StringArray& choices, int fixedIndex)
-        : AudioParameterChoice(id, name, choices, fixedIndex,
+    FixedCompatibilityChoice(const juce::ParameterID& id, const juce::String& parameterName,
+                             const juce::StringArray& parameterChoices, int fixedIndex)
+        : AudioParameterChoice(id, parameterName, parameterChoices, fixedIndex,
                                juce::AudioParameterChoiceAttributes{}.withAutomatable(false)) {}
 private:
     void setValue(float) override {}

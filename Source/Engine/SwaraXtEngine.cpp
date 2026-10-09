@@ -54,6 +54,8 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
 
     // Filter always runs at the Shruthi internal rate (pre-SRC).
     filter_.prepare(kInternalSampleRate);
+    experimentalSvf_.prepare(kInternalSampleRate);
+    applyExperimentalSvfSelection();
     qualityRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.002 * kInternalSampleRate)));
     masterRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.004 * kInternalSampleRate)));
     postMixerRampSamples_ = masterRampSamples_;
@@ -80,6 +82,8 @@ void SwaraXtEngine::reset()
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
+    experimentalSvf_.reset();
+    applyExperimentalSvfSelection();
     snapFilterQuality();
     dcBlocker_.reset();
     snapMasterOnApply_ = true;
@@ -456,6 +460,11 @@ void SwaraXtEngine::applyPendingFilterQuality() noexcept
         startQualityFadeOut();
 }
 
+void SwaraXtEngine::applyExperimentalSvfSelection() noexcept
+{
+    experimentalSvfControl_.applyOnAudioThread(experimentalSvf_, experimentalSvfEnabled_);
+}
+
 float SwaraXtEngine::nextQualityGain() noexcept
 {
     if (qualitySamplesRemaining_ <= 0)
@@ -515,6 +524,8 @@ void SwaraXtEngine::updateFilterFromShruthi()
     p.boardCutoffCvVolts = std::clamp((static_cast<double>(voice.cutoff())
         + 24.0 * extraOctaves) * (5.0 / 255.0), 0.0, 5.0);
     filter_.setParams(p);
+    experimentalSvf_.setFirmwareCutoff(voice.cutoff());
+    experimentalSvf_.setFirmwareResonance(voice.resonance());
     if (activeBoard_.effect != board::Effect::off)
     {
         activeBoard_.cv1 = board::BoardControl::nativeCv(voice.cv_1());
@@ -611,6 +622,27 @@ void SwaraXtEngine::collectMidiEvents(const juce::MidiBuffer& midi,
 
 }
 
+float SwaraXtEngine::processSelectedFilterSample(float mixer, float vcaTarget) noexcept
+{
+    if (experimentalSvfEnabled_)
+        return experimentalSvf_.process(mixer, vcaTarget);
+    return filter_.processInstrumentSample(mixer, vcaTarget);
+}
+
+float SwaraXtEngine::selectedFilterVca() const noexcept
+{
+    if (experimentalSvfEnabled_)
+        return experimentalSvf_.vcaControl();
+    return filter_.instrumentVcaControl();
+}
+
+bool SwaraXtEngine::selectedFilterTailActive() const noexcept
+{
+    if (experimentalSvfEnabled_)
+        return experimentalSvf_.tailActive();
+    return filter_.instrumentTailActive();
+}
+
 void SwaraXtEngine::renderInternalBlock()
 {
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
@@ -636,6 +668,7 @@ void SwaraXtEngine::renderInternalBlock()
 #endif
     updateBoardAtBlockBoundary();
     applyPendingFilterQuality();
+    applyExperimentalSvfSelection();
     updateFilterFromShruthi();
 
     const uint8_t vca = part_.voice().vca();
@@ -679,10 +712,10 @@ void SwaraXtEngine::renderInternalBlock()
             float mixer = temp[i] * nextPostMixerGain();
             if (! std::isfinite(mixer))
                 mixer = 0.0f;
-            float filtered = filter_.processInstrumentSample(mixer, vcaTarget);
+            float filtered = processSelectedFilterSample(mixer, vcaTarget);
             if (! std::isfinite(filtered))
                 filtered = 0.0f;
-            const float vcaGain = filter_.instrumentVcaControl();
+            const float vcaGain = selectedFilterVca();
             vcaCvState_ = vcaGain;
             const float out = filtered * nextMasterGain() * nextQualityGain();
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
@@ -704,8 +737,8 @@ void SwaraXtEngine::renderInternalBlock()
             float mixer = temp[i] * nextPostMixerGain();
             if (! std::isfinite(mixer))
                 mixer = 0.0f;
-            const auto filtered = filter_.processInstrumentSample(mixer, vcaTarget);
-            const float vcaGain = filter_.instrumentVcaControl();
+            const auto filtered = processSelectedFilterSample(mixer, vcaTarget);
+            const float vcaGain = selectedFilterVca();
             vcaCvState_ = vcaGain;
             processed[index] = std::isfinite(filtered) ? filtered : 0.0f;
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
@@ -737,7 +770,7 @@ void SwaraXtEngine::renderInternalBlock()
     cpuProfile_.filterSamplesProcessed += static_cast<uint64_t>(read);
 #endif
     if (read > 0 && vcaTarget == 0.0f && vcaCvState_ < (1.0f / 512.0f)
-        && !filter_.instrumentTailActive()
+        && !selectedFilterTailActive()
         && part_.voice().amplitude_envelope_dead() && !boardRequiresAudio())
     {
         vcaCvState_ = 0.0f;
@@ -805,6 +838,8 @@ void SwaraXtEngine::updateDormantWakeState()
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
+    experimentalSvf_.reset();
+    applyExperimentalSvfSelection();
     snapFilterQuality();
     dcBlocker_.reset();
     resetVcaReconstruction();
@@ -824,6 +859,8 @@ void SwaraXtEngine::enterDormant() noexcept
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
+    experimentalSvf_.reset();
+    applyExperimentalSvfSelection();
     snapFilterQuality();
     dcBlocker_.reset();
     resetVcaReconstruction();
@@ -839,6 +876,7 @@ void SwaraXtEngine::advanceDormantControl()
         dormantNativeSamples_ -= static_cast<double>(kAudioBlockSize);
         part_.ProcessControlBlock();
         // The physical board reconstructs CV even when its VCA is closed.
+        applyExperimentalSvfSelection();
         updateFilterFromShruthi();
         filter_.advanceDormantControls(kAudioBlockSize);
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS

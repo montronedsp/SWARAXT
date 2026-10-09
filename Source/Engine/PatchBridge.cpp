@@ -15,15 +15,6 @@ namespace swaraxt {
 
 namespace {
 
-uint8_t clampU8(int value)
-{
-    if (value < 0)
-        return 0;
-    if (value > 127)
-        return 127;
-    return static_cast<uint8_t>(value);
-}
-
 int8_t clampS8(int value)
 {
     if (value < -128)

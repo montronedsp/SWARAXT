@@ -83,6 +83,30 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     juce::File userPresetDirectory() const;
     void setUserPresetDirectoryForTests(const juce::File& directory);
     void setFilterQuality(swaraxt::FilterQuality quality) noexcept { engine_.setFilterQuality(quality); }
+    swaraxt::ExperimentalSvfSelection experimentalSvfSelection() const noexcept
+    {
+        return engine_.experimentalSvfSelection();
+    }
+    void setExperimentalSvfEnabled(bool enabled) noexcept
+    {
+        engine_.setExperimentalSvfEnabledForTests(enabled);
+    }
+    void setExperimentalSvfMode1(swaraxt::ShruthiSvf2pMode mode) noexcept
+    {
+        engine_.setExperimentalSvfModeForTests(mode);
+    }
+    void setExperimentalSvfMode2(swaraxt::ShruthiSvf2pMode mode) noexcept
+    {
+        engine_.setExperimentalSvfMode2ForTests(mode);
+    }
+    void setExperimentalSvfRouting(swaraxt::ShruthiSvfDualRouting routing) noexcept
+    {
+        engine_.setExperimentalSvfRoutingForTests(routing);
+    }
+    void setExperimentalSvfCalibration(swaraxt::ShruthiSvfCalibration calibration) noexcept
+    {
+        engine_.setExperimentalSvfCalibrationForTests(calibration);
+    }
     swaraxt::FilterQuality filterQuality() const noexcept { return engine_.filterQuality(); }
 
     static constexpr int kStateVersion = 3;

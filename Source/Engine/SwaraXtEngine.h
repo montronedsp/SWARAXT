@@ -14,6 +14,7 @@ template <typename SampleType>
 class AudioBuffer;
 }  // namespace juce
 
+#include "Engine/Filter/ShruthiSvf2p.h"
 #include "Engine/Filter/SwaraXtFilter.h"
 #include "Engine/DspBoard/BoardProcessor.h"
 #include "Engine/HostTransport.h"
@@ -137,6 +138,44 @@ class SwaraXtEngine {
 
     SwaraXtFilter& filter() noexcept { return filter_; }
     const SwaraXtFilter& filter() const noexcept { return filter_; }
+
+    // Experimental native-rate Shruthi Dual-SVF. Default off: Classic.
+    // Session-only; not a public parameter contract. Setters publish a packed
+    // atomic selection. Dual DSP is applied on the audio/prepare/reset thread.
+    void setExperimentalSvfEnabledForTests(bool enabled) noexcept
+    {
+        experimentalSvfControl_.patch([enabled](ExperimentalSvfSelection& s) { s.enabled = enabled; });
+    }
+    bool experimentalSvfEnabledForTests() const noexcept
+    {
+        return experimentalSvfControl_.selection().enabled;
+    }
+    void setExperimentalSvfModeForTests(ShruthiSvf2pMode mode) noexcept
+    {
+        experimentalSvfControl_.patch([mode](ExperimentalSvfSelection& s) { s.mode1 = mode; });
+    }
+    void setExperimentalSvfMode2ForTests(ShruthiSvf2pMode mode) noexcept
+    {
+        experimentalSvfControl_.patch([mode](ExperimentalSvfSelection& s) { s.mode2 = mode; });
+    }
+    void setExperimentalSvfRoutingForTests(ShruthiSvfDualRouting routing) noexcept
+    {
+        experimentalSvfControl_.patch([routing](ExperimentalSvfSelection& s) { s.routing = routing; });
+    }
+    void setExperimentalSvfCalibrationForTests(ShruthiSvfCalibration calibration) noexcept
+    {
+        experimentalSvfControl_.patch([calibration](ExperimentalSvfSelection& s) {
+            s.calibration = calibration;
+        });
+    }
+    ExperimentalSvfSelection experimentalSvfSelection() const noexcept
+    {
+        return experimentalSvfControl_.selection();
+    }
+    ShruthiSvf2p& experimentalSvfForTests() noexcept { return experimentalSvf_.section1(); }
+    const ShruthiSvf2p& experimentalSvfForTests() const noexcept { return experimentalSvf_.section1(); }
+    ShruthiSvfDual& experimentalSvfDualForTests() noexcept { return experimentalSvf_; }
+    const ShruthiSvfDual& experimentalSvfDualForTests() const noexcept { return experimentalSvf_; }
     void setFilterQuality(FilterQuality quality) noexcept
     {
         requestedFilterQuality_.store(static_cast<uint8_t>(quality), std::memory_order_relaxed);
@@ -185,6 +224,9 @@ class SwaraXtEngine {
     };
 
     void renderInternalBlock();
+    float processSelectedFilterSample(float mixer, float vcaTarget) noexcept;
+    float selectedFilterVca() const noexcept;
+    bool selectedFilterTailActive() const noexcept;
     void updateBoardAtBlockBoundary() noexcept;
     void resetBoardState() noexcept;
     bool boardRequiresAudio() const noexcept;
@@ -198,6 +240,7 @@ class SwaraXtEngine {
     void collectMidiEvents(const juce::MidiBuffer& midi, int startSample, int numSamples);
     void updateFilterFromShruthi();
     void applyPendingFilterQuality() noexcept;
+    void applyExperimentalSvfSelection() noexcept;
     void snapFilterQuality() noexcept;
     void startQualityFadeOut() noexcept;
     void setMasterTarget(float value) noexcept;
@@ -224,6 +267,9 @@ class SwaraXtEngine {
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
+    ShruthiSvfDual experimentalSvf_;
+    ExperimentalSvfControl experimentalSvfControl_;
+    bool experimentalSvfEnabled_ = false;
     board::BoardProcessor boardProcessor_;
     board::BoardControl requestedBoard_, activeBoard_;
     static_assert(std::atomic<double>::is_always_lock_free, "Host tail publication must be realtime lock-free");

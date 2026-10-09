@@ -31,6 +31,18 @@ target_link_libraries(SwaraBoardModelTests PRIVATE SwaraBoardAlgorithm)
 swaraxt_enable_warnings(SwaraBoardModelTests)
 add_test(NAME SwaraBoardModelTests COMMAND SwaraBoardModelTests)
 
+add_executable(SwaraXTDspFxNativeExactParityTests
+    "${CMAKE_SOURCE_DIR}/Tests/Parity/DspFxNativeExactParityTestsMain.cpp")
+target_include_directories(SwaraXTDspFxNativeExactParityTests PRIVATE "${CMAKE_SOURCE_DIR}/Tests")
+target_link_libraries(SwaraXTDspFxNativeExactParityTests PRIVATE SwaraBoardAlgorithm)
+swaraxt_enable_warnings(SwaraXTDspFxNativeExactParityTests)
+add_test(NAME SwaraXTDspFxNativeExactParityTests COMMAND SwaraXTDspFxNativeExactParityTests)
+
+add_executable(SwaraXTFxEnumDispatchTests FxEnumDispatchTests.cpp)
+target_link_libraries(SwaraXTFxEnumDispatchTests PRIVATE SwaraBoardAlgorithm)
+swaraxt_enable_warnings(SwaraXTFxEnumDispatchTests)
+add_test(NAME SwaraXTFxEnumDispatchTests COMMAND SwaraXTFxEnumDispatchTests)
+
 add_executable(SwaraBoardSafetyTests SafetyTests.cpp
     "${CMAKE_SOURCE_DIR}/Source/Engine/SampleRate/HostResampler.cpp")
 target_link_libraries(SwaraBoardSafetyTests PRIVATE SwaraBoardAlgorithm)

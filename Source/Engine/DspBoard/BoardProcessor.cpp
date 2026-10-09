@@ -79,7 +79,12 @@ double BoardProcessor::tailSeconds(const BoardControl& c) noexcept
             return std::numeric_limits<double>::infinity();
         case Effect::delay16: case Effect::delay12: case Effect::delay8: case Effect::delay3_16:
             return c.cv1 != 0 ? std::numeric_limits<double>::infinity() : 2.;
-        default: return .25;
+        case Effect::distortion:
+        case Effect::crush:
+        case Effect::ringMod:
+            return .25;
+        default:
+            return .25;
     }
 }
 void BoardProcessor::observeTail(const FloatBlock& samples, const BoardControl& c, bool driven) noexcept

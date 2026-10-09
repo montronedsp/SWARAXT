@@ -28,8 +28,9 @@ struct SequenceSnapshot {
 
     static constexpr uint16_t pack(uint8_t dataA, uint8_t dataB) noexcept
     {
-        return static_cast<uint16_t>(dataA)
-            | (static_cast<uint16_t>(dataB) << 8);
+        return static_cast<uint16_t>(
+            static_cast<uint16_t>(dataA)
+            | (static_cast<uint16_t>(dataB) << 8));
     }
 
     static constexpr uint8_t dataA(uint16_t packed) noexcept

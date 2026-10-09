@@ -383,12 +383,14 @@ swaraxt_add_shruthi_timing_target(SwaraXTVcaHoldTests 7)
 
 swaraxt_add_plugin_console_test(SwaraXTCutoffRefineTests Filter/CutoffRefineTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTGuiSyncTests GuiSync/GuiSyncTestsMain.cpp)
+swaraxt_add_plugin_console_test(SwaraXTGuiIndexLayoutTests GuiSync/GuiIndexLayoutTestsMain.cpp)
 
 swaraxt_add_plugin_console_test(SwaraXTShruthiFactoryPresetTests Presets/ShruthiFactoryPresetTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTFilterPresetAuthorityTests Architecture/FilterPresetAuthorityTests.cpp)
 target_compile_definitions(SwaraXTFilterPresetAuthorityTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_add_plugin_console_test(SwaraXTPresetStateRestoreTests Presets/PresetStateRestoreTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTSequencerTests Sequencer/SequencerTestsMain.cpp)
+swaraxt_add_plugin_console_test(SwaraXTSequencePackExactTests Sequencer/SequencePackExactTestsMain.cpp)
 
 swaraxt_add_plugin_console_test(SwaraXTCorrectnessTests Correctness/CorrectnessTestsMain.cpp)
 target_compile_definitions(SwaraXTCorrectnessTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
@@ -411,10 +413,42 @@ target_include_directories(SwaraXTIR3109BoardTests PRIVATE "${CMAKE_SOURCE_DIR}/
 swaraxt_enable_warnings(SwaraXTIR3109BoardTests)
 add_test(NAME SwaraXTIR3109BoardTests COMMAND SwaraXTIR3109BoardTests)
 
+add_executable(SwaraXtShruthiSvf2pTests Filter/ShruthiSvf2pTestsMain.cpp)
+target_include_directories(SwaraXtShruthiSvf2pTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings(SwaraXtShruthiSvf2pTests)
+swaraxt_enable_warnings_as_errors(SwaraXtShruthiSvf2pTests)
+add_test(NAME SwaraXtShruthiSvf2pTests COMMAND SwaraXtShruthiSvf2pTests)
+
+if(MSVC)
+    add_executable(SwaraXtShruthiSvf2pSanitizerTests Filter/ShruthiSvf2pTestsMain.cpp)
+    target_include_directories(SwaraXtShruthiSvf2pSanitizerTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+    swaraxt_enable_warnings(SwaraXtShruthiSvf2pSanitizerTests)
+    swaraxt_enable_warnings_as_errors(SwaraXtShruthiSvf2pSanitizerTests)
+    target_compile_options(SwaraXtShruthiSvf2pSanitizerTests PRIVATE /fsanitize=address /Zi)
+    target_link_options(SwaraXtShruthiSvf2pSanitizerTests PRIVATE /INCREMENTAL:NO /DEBUG)
+    add_test(NAME SwaraXtShruthiSvf2pSanitizerTests COMMAND SwaraXtShruthiSvf2pSanitizerTests)
+    get_filename_component(swara_svf_compiler_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set_tests_properties(SwaraXtShruthiSvf2pSanitizerTests PROPERTIES
+        ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${swara_svf_compiler_directory}")
+endif()
+
+swaraxt_add_plugin_console_test(SwaraXTExperimentalSvfEngineTests Filter/ExperimentalSvfEngineTestsMain.cpp)
+
 add_executable(SwaraXTHostSrcTests Architecture/HostSrcTests.cpp)
 target_include_directories(SwaraXTHostSrcTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
 swaraxt_enable_warnings(SwaraXTHostSrcTests)
 add_test(NAME SwaraXTHostSrcTests COMMAND SwaraXTHostSrcTests)
+
+add_executable(SwaraXTHostSrcExactParityTests Parity/HostSrcExactParityTestsMain.cpp)
+target_include_directories(SwaraXTHostSrcExactParityTests PRIVATE
+    "${CMAKE_SOURCE_DIR}/Source" "${CMAKE_SOURCE_DIR}/Tests")
+swaraxt_enable_warnings(SwaraXTHostSrcExactParityTests)
+add_test(NAME SwaraXTHostSrcExactParityTests COMMAND SwaraXTHostSrcExactParityTests)
+
+swaraxt_add_plugin_console_test(SwaraXTDspFxIntegratedExactParityTests
+    Parity/DspFxIntegratedExactParityTestsMain.cpp)
+target_include_directories(SwaraXTDspFxIntegratedExactParityTests PRIVATE "${CMAKE_SOURCE_DIR}/Tests")
 
 swaraxt_add_plugin_console_test(SwaraXTConditioningTests Conditioning/ConditioningTestsMain.cpp)
 target_compile_definitions(SwaraXTConditioningTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
