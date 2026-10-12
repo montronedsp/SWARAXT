@@ -200,7 +200,7 @@ void Parameter::PrintValue(uint8_t value, char* buffer, uint8_t width) const {
       break;
     case UNIT_LFO_WAVEFORM:
       if (value >= LFO_WAVEFORM_WAVE_1) {
-        text = NULL;
+        text = ResourceId{0};
         value = value - LFO_WAVEFORM_WAVE_1 + 1;
         prefix = '\x05';
       }
