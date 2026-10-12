@@ -586,6 +586,7 @@ inline void Voice::UpdateDestinations() {
   }
 
   // Store in memory all the updated parameters.
+  filter_cutoff14_ = cutoff;
   modulation_destinations_[MOD_DST_FILTER_CUTOFF] = U14ShiftRight6(cutoff);
   modulation_destinations_[MOD_DST_FILTER_RESONANCE] = U14ShiftRight6(
       dst_[MOD_DST_FILTER_RESONANCE]);

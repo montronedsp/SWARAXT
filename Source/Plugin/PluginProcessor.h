@@ -91,6 +91,12 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     {
         engine_.setExperimentalSvfEnabledForTests(enabled);
     }
+    void setExperimentalSvfControl2(swaraxt::ShruthiSvfSection2Control control) noexcept
+    {
+        engine_.setExperimentalSvfControl2(control);
+    }
+    void setExperimentalSvfCutoff2(int value) noexcept { engine_.setExperimentalSvfCutoff2(value); }
+    void setExperimentalSvfResonance2(int value) noexcept { engine_.setExperimentalSvfResonance2(value); }
     void setExperimentalSvfMode1(swaraxt::ShruthiSvf2pMode mode) noexcept
     {
         engine_.setExperimentalSvfModeForTests(mode);

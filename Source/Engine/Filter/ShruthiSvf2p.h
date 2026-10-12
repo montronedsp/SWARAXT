@@ -7,6 +7,7 @@
 #pragma once
 
 #include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -604,6 +605,8 @@ class ShruthiSvfDual
 // Session-only Dual-SVF selector published from the message thread.
 // One packed word is a complete consistent choice so readers never observe
 // mixed routing/mode/calibration/enable from independent stores.
+enum class ShruthiSvfSection2Control : std::uint8_t { legacyFollow, independent, relative };
+
 struct ExperimentalSvfSelection
 {
     bool enabled = false;
@@ -611,6 +614,9 @@ struct ExperimentalSvfSelection
     ShruthiSvf2pMode mode1 = ShruthiSvf2pMode::lowPass;
     ShruthiSvf2pMode mode2 = ShruthiSvf2pMode::lowPass;
     ShruthiSvfCalibration calibration = ShruthiSvfCalibration::paperApproved;
+    ShruthiSvfSection2Control control2 = ShruthiSvfSection2Control::legacyFollow;
+    std::uint8_t cutoff2 = 64;
+    std::uint8_t resonance2 = 0;
 
     static constexpr std::uint32_t kEnabledMask = 1u;
     static constexpr int kRoutingShift = 1;
@@ -618,6 +624,18 @@ struct ExperimentalSvfSelection
     static constexpr int kMode2Shift = 5;
     static constexpr int kCalibrationShift = 7;
     static constexpr std::uint32_t kFieldMask = 3u;
+    // Bits 0..7 retain the original format. Cutoff's centre is encoded as zero
+    // so a legacy zero word still selects Follow with a neutral stored offset.
+    static constexpr int kControl2Shift = 8;
+    static constexpr int kCutoff2Shift = 10;
+    static constexpr int kResonance2Shift = 17;
+    static constexpr std::uint32_t kControl2Mask = 3u << kControl2Shift;
+    static constexpr std::uint32_t kCutoff2Mask = 127u << kCutoff2Shift;
+    static constexpr std::uint32_t kResonance2Mask = 63u << kResonance2Shift;
+    static_assert((kControl2Mask & 255u) == 0 && (kCutoff2Mask & (kControl2Mask | 255u)) == 0
+        && (kResonance2Mask & (kCutoff2Mask | kControl2Mask | 255u)) == 0);
+    static_assert((kResonance2Mask | kCutoff2Mask | kControl2Mask | 255u) == (1u << 23) - 1u,
+                  "23 used bits, nine reserved; cutoff 0..127, resonance 0..63");
 
     static std::uint32_t pack(const ExperimentalSvfSelection& s) noexcept
     {
@@ -627,6 +645,9 @@ struct ExperimentalSvfSelection
         v |= (static_cast<std::uint32_t>(s.mode2) & kFieldMask) << kMode2Shift;
         if (s.calibration == ShruthiSvfCalibration::eagleHardware)
             v |= 1u << kCalibrationShift;
+        v |= (static_cast<std::uint32_t>(s.control2) & kFieldMask) << kControl2Shift;
+        v |= (static_cast<std::uint32_t>(std::min<std::uint8_t>(s.cutoff2, 127)) ^ 64u) << kCutoff2Shift;
+        v |= static_cast<std::uint32_t>(std::min<std::uint8_t>(s.resonance2, 63)) << kResonance2Shift;
         return v;
     }
 
@@ -647,6 +668,11 @@ struct ExperimentalSvfSelection
         s.calibration = ((v >> kCalibrationShift) & 1u) != 0
             ? ShruthiSvfCalibration::eagleHardware
             : ShruthiSvfCalibration::paperApproved;
+        const auto control = (v >> kControl2Shift) & kFieldMask;
+        s.control2 = control == 2 ? ShruthiSvfSection2Control::relative
+            : (control == 1 ? ShruthiSvfSection2Control::independent : ShruthiSvfSection2Control::legacyFollow);
+        s.cutoff2 = static_cast<std::uint8_t>(((v >> kCutoff2Shift) & 127u) ^ 64u);
+        s.resonance2 = static_cast<std::uint8_t>((v >> kResonance2Shift) & 63u);
         return s;
     }
 };
@@ -683,7 +709,7 @@ class ExperimentalSvfControl
 
     // Audio / prepare / reset thread only. Calibration stays state-continuous.
     // Enable-on and routing changes keep the previous Dual reset semantics.
-    void applyOnAudioThread(ShruthiSvfDual& dual, bool& enabledOut) noexcept
+    ExperimentalSvfSelection applyOnAudioThread(ShruthiSvfDual& dual, bool& enabledOut) noexcept
     {
         const auto next = selection();
         if (next.enabled != applied_.enabled && next.enabled)
@@ -693,8 +719,10 @@ class ExperimentalSvfControl
         dual.setMode1(next.mode1);
         dual.setMode2(next.mode2);
         dual.setCalibration(next.calibration);
+        dual.setSection2FollowsSection1(next.control2 == ShruthiSvfSection2Control::legacyFollow);
         applied_ = next;
         enabledOut = next.enabled;
+        return next;
     }
 
  private:

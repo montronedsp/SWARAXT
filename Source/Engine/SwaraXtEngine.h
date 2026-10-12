@@ -172,6 +172,22 @@ class SwaraXtEngine {
     {
         return experimentalSvfControl_.selection();
     }
+    void setExperimentalSvfControl2(ShruthiSvfSection2Control control) noexcept
+    {
+        experimentalSvfControl_.patch([control](ExperimentalSvfSelection& s) { s.control2 = control; });
+    }
+    void setExperimentalSvfCutoff2(int value) noexcept
+    {
+        experimentalSvfControl_.patch([value](ExperimentalSvfSelection& s) {
+            s.cutoff2 = static_cast<std::uint8_t>(std::clamp(value, 0, 127));
+        });
+    }
+    void setExperimentalSvfResonance2(int value) noexcept
+    {
+        experimentalSvfControl_.patch([value](ExperimentalSvfSelection& s) {
+            s.resonance2 = static_cast<std::uint8_t>(std::clamp(value, 0, 63));
+        });
+    }
     ShruthiSvf2p& experimentalSvfForTests() noexcept { return experimentalSvf_.section1(); }
     const ShruthiSvf2p& experimentalSvfForTests() const noexcept { return experimentalSvf_.section1(); }
     ShruthiSvfDual& experimentalSvfDualForTests() noexcept { return experimentalSvf_; }
@@ -269,6 +285,7 @@ class SwaraXtEngine {
     SwaraXtFilter filter_;
     ShruthiSvfDual experimentalSvf_;
     ExperimentalSvfControl experimentalSvfControl_;
+    ExperimentalSvfSelection appliedExperimentalSvfSelection_;
     bool experimentalSvfEnabled_ = false;
     board::BoardProcessor boardProcessor_;
     board::BoardControl requestedBoard_, activeBoard_;

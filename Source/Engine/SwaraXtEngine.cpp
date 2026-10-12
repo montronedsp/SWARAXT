@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "Engine/SwaraXtEngine.h"
+#include "Engine/Filter/ShruthiSvfSection2Control.h"
 
 #include <JuceHeader.h>
 #include <algorithm>
@@ -462,7 +463,8 @@ void SwaraXtEngine::applyPendingFilterQuality() noexcept
 
 void SwaraXtEngine::applyExperimentalSvfSelection() noexcept
 {
-    experimentalSvfControl_.applyOnAudioThread(experimentalSvf_, experimentalSvfEnabled_);
+    appliedExperimentalSvfSelection_ = experimentalSvfControl_.applyOnAudioThread(
+        experimentalSvf_, experimentalSvfEnabled_);
 }
 
 float SwaraXtEngine::nextQualityGain() noexcept
@@ -526,6 +528,14 @@ void SwaraXtEngine::updateFilterFromShruthi()
     filter_.setParams(p);
     experimentalSvf_.setFirmwareCutoff(voice.cutoff());
     experimentalSvf_.setFirmwareResonance(voice.resonance());
+    const auto& selection = appliedExperimentalSvfSelection_;
+    if (experimentalSvfEnabled_ && selection.control2 != ShruthiSvfSection2Control::legacyFollow)
+    {
+        const auto cv = reconstructSvfSection2(part_.patch(), voice, selection.cutoff2,
+            selection.resonance2, selection.control2 == ShruthiSvfSection2Control::relative);
+        experimentalSvf_.setFirmwareCutoff2(cv.cutoff);
+        experimentalSvf_.setFirmwareResonance2(cv.resonance);
+    }
     if (activeBoard_.effect != board::Effect::off)
     {
         activeBoard_.cv1 = board::BoardControl::nativeCv(voice.cv_1());

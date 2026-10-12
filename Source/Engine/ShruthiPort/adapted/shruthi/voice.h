@@ -104,6 +104,13 @@ class Voice {
     return modulation_destinations_[i];
   }
   int16_t cutoff_matrix_delta() const { return cutoff_matrix_delta_; }
+  uint16_t filter_cutoff14() const {
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+    return hd_voice_.filter_cutoff14();
+#else
+    return filter_cutoff14_;
+#endif
+  }
   int16_t resonance_matrix_delta() const { return resonance_matrix_delta_; }
   int16_t filter_pitch_value() const {
 #if SWARAXT_USE_AVRLIB_HD_VOICE
@@ -195,6 +202,7 @@ class Voice {
   int16_t cutoff_matrix_delta_ = 0;
   int16_t resonance_matrix_delta_ = 0;
   int16_t filter_pitch_value_ = 0;
+  uint16_t filter_cutoff14_ = 0;
 
   // Counters/phases for the pitch envelope generator (portamento).
   // Pitches are stored on 14 bits, the 7 highest bits are the MIDI note value,

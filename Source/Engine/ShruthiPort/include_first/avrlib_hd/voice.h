@@ -364,6 +364,7 @@ class HdVoice {
   int16_t pitch_value() const { return pitch_value_; }
   // Pitch used by the last control transaction, before oscillator glide advances.
   int16_t filter_pitch_value() const { return filter_pitch_value_; }
+  uint16_t filter_cutoff14() const { return filter_cutoff14_; }
   uint8_t gate() const { return gate_; }
   uint8_t volume() const { return volume_; }
 
@@ -624,6 +625,7 @@ class HdVoice {
           dst_[kModDestCv1] + cutoff - 8192));
     }
 
+    filter_cutoff14_ = cutoff;
     modulation_destinations_[kModDestFilterCutoff] =
         U14ShiftRight6(cutoff);
     modulation_destinations_[kModDestFilterResonance] =
@@ -934,6 +936,7 @@ class HdVoice {
   int16_t pitch_target_ = 0;
   int16_t pitch_value_ = 0;
   int16_t filter_pitch_value_ = 0;
+  uint16_t filter_cutoff14_ = 0;
   int16_t pitch_bass_note_ = 0;
 
   uint8_t modulation_sources_[kNumModulationSources]{};
