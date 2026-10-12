@@ -145,7 +145,12 @@ class Lfo {
     // PLL for aligning the LFO to the phase dictated by the MIDI sync.
     uint16_t phi = phase_;
     int16_t d_error = increment - (phi - previous_phase_);
-    int16_t p_error = (step * increment) - phi;
+    // Keep the low 16 phase bits, then decode a representable signed error.
+    const uint16_t error_bits = static_cast<uint16_t>(
+        static_cast<uint32_t>(step) * increment - phi);
+    int16_t p_error = static_cast<int16_t>(error_bits < 0x8000u
+        ? static_cast<int32_t>(error_bits)
+        : static_cast<int32_t>(error_bits) - 65536);
     int32_t error = 0;
     error += d_error;
     error += p_error;
@@ -199,6 +204,9 @@ class Lfo {
   uint8_t shape_for_tests() const { return shape_; }
 
  private:
+#if defined(SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS) && SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+  friend struct LfoControlTestAccess;
+#endif
   // Phase increment.
   uint16_t phase_increment_ = 0;
   uint16_t previous_phase_ = 0;

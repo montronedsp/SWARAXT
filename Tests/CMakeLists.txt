@@ -113,6 +113,16 @@ swaraxt_enable_warnings(AvrlibHdEnvLfoParityTests)
 target_link_libraries(AvrlibHdEnvLfoParityTests PRIVATE AvrlibHdClassicOscObj AvrlibHdResourceData)
 add_test(NAME AvrlibHdEnvLfoParityTests COMMAND AvrlibHdEnvLfoParityTests)
 
+add_executable(SwaraXTLfoControlTests avrlib_hd/LfoControlTestsMain.cpp)
+target_compile_definitions(SwaraXTLfoControlTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+swaraxt_configure_shruthi_target(SwaraXTLfoControlTests)
+swaraxt_enable_warnings(SwaraXTLfoControlTests)
+if(MSVC)
+    target_compile_options(SwaraXTLfoControlTests PRIVATE /WX)
+endif()
+target_link_libraries(SwaraXTLfoControlTests PRIVATE AvrlibHdClassicOscObj AvrlibHdResourceData)
+add_test(NAME SwaraXTLfoControlTests COMMAND SwaraXTLfoControlTests)
+
 # Envelope + LFO HD unit tests (strict -Werror, synthetic tables, no Classic).
 add_executable(AvrlibHdEnvLfoTests
     avrlib_hd/EnvLfoUnitTestsMain.cpp
