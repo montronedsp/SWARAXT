@@ -311,6 +311,24 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     markMenu.addItem(501, ManufacturerMarkDefinition::displayName(ManufacturerMark::stone), true,
                      manufacturerMark_ == ManufacturerMark::stone);
 
+    auto filterModelMenu = createExperimentalFilterMenu();
+
+    juce::PopupMenu menu;
+    menu.setLookAndFeel(&lookAndFeel_);
+    menu.addSubMenu("MIDI Channel", midiMenu);
+    menu.addSubMenu("Filter Quality", qualityMenu);
+    menu.addSubMenu("Filter Model (Experimental)", filterModelMenu);
+    menu.addSeparator();
+    menu.addSubMenu("Manufacturer Mark", markMenu);
+    menu.addSubMenu("Skin", skinMenu);
+    menu.addSubMenu("Decoration", decorationMenu);
+    menu.addSubMenu("GUI Size", sizeMenu);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withDeletionCheck(*this),
+                       contextMenuCallback());
+}
+
+juce::PopupMenu SwaraXtAudioProcessorEditor::createExperimentalFilterMenu() const
+{
     // Prototype listening only: not a preset/state parameter. Default remains Classic.
     // Menu reads the packed published selection, never Dual DSP state.
     const auto svfSel = processor_.experimentalSvfSelection();
@@ -327,7 +345,7 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
                         experimentalSvf && routing == swaraxt::ShruthiSvfDualRouting::section1);
     routingMenu.addItem(631, "Serial (MIX > F1 > F2)", experimentalSvf,
                         experimentalSvf && routing == swaraxt::ShruthiSvfDualRouting::serial);
-    routingMenu.addItem(632, "Parallel (MIX + F1 + F2)", experimentalSvf,
+    routingMenu.addItem(632, "Parallel (MIX > F1 + F2 > VCA)", experimentalSvf,
                         experimentalSvf && routing == swaraxt::ShruthiSvfDualRouting::parallel);
     juce::PopupMenu svfMode1Menu;
     svfMode1Menu.addItem(610, "Low Pass", experimentalSvf,
@@ -354,19 +372,14 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     filterModelMenu.addSubMenu("Section 1 mode", svfMode1Menu, experimentalSvf);
     filterModelMenu.addSubMenu("Section 2 mode", svfMode2Menu, experimentalSvf);
 
-    juce::PopupMenu menu;
-    menu.setLookAndFeel(&lookAndFeel_);
-    menu.addSubMenu("MIDI Channel", midiMenu);
-    menu.addSubMenu("Filter Quality", qualityMenu);
-    menu.addSubMenu("Filter Model (Experimental)", filterModelMenu);
-    menu.addSeparator();
-    menu.addSubMenu("Manufacturer Mark", markMenu);
-    menu.addSubMenu("Skin", skinMenu);
-    menu.addSubMenu("Decoration", decorationMenu);
-    menu.addSubMenu("GUI Size", sizeMenu);
+    return filterModelMenu;
+}
+
+std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
+{
+    using namespace swaraxt::ui;
     juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
-                       [safeThis](int result) {
+    return [safeThis](int result) {
         if (safeThis == nullptr) return;
         if (result >= 400 && result <= 416)
         {
@@ -418,7 +431,8 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
         if (result == 641)
             safeThis->processor_.setExperimentalSvfCalibration(
                 swaraxt::ShruthiSvfCalibration::eagleHardware);
-    });
+        safeThis->mainPanel_.refreshExperimentalSvf();
+    };
 }
 
 void SwaraXtAudioProcessorEditor::applySkin(swaraxt::ui::SkinId skin, bool persist)
@@ -633,6 +647,7 @@ void SwaraXtAudioProcessorEditor::showPresetError(const juce::String& message)
 
 void SwaraXtAudioProcessorEditor::timerCallback()
 {
+    mainPanel_.refreshExperimentalSvf();
     if (presetSelector_.getText() != processor_.currentPresetName())
         refreshPresetList();
 }

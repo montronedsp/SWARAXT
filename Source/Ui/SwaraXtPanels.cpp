@@ -636,6 +636,17 @@ MainPanel::MainPanel()
 
     for (int i = kFilterCutoff; i <= kFilterLfo; ++i)
         filterModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(i)]);
+    filterModule_.addAndMakeVisible(filterModel_);
+    filterModel_.addItem("Classic IR3109", 1);
+    filterModel_.addItem("Dual SVF", 2);
+    filterModel_.setName("Filter model");
+    filterModel_.setTooltip("Classic IR3109 / experimental Dual SVF (session only)");
+    filterModel_.setScrollWheelEnabled(false);
+    filterModule_.addAndMakeVisible(dualSvfViewButton_);
+    dualSvfViewButton_.setTooltip("Open routing, section modes and Paper / Eagle calibration");
+    dualSvfViewButton_.onClick = [this] {
+        if (dualSvfView_) setDualSvfView(! dualSvfView_->isVisible());
+    };
     perfModule_.addAndMakeVisible(boardViewButton_);
     boardViewButton_.getProperties().set("swaraxtSecondaryAction", true);
     boardViewButton_.setTooltip("Effects after the Classic filter and post-mixer level");
@@ -682,6 +693,16 @@ void MainPanel::attach(SwaraXtAudioProcessor& processor)
     if (attached_)
         return;
 
+    processor_ = &processor;
+    dualSvfView_ = std::make_unique<DualSvfPanel>(processor);
+    addChildComponent(*dualSvfView_);
+    dualSvfView_->closeRequested = [this] { setDualSvfView(false); };
+    dualSvfView_->selectionChanged = [this] { refreshExperimentalSvf(); };
+    filterModel_.onChange = [this] {
+        processor_->setExperimentalSvfEnabled(filterModel_.getSelectedId() == 2);
+        refreshExperimentalSvf();
+    };
+    refreshExperimentalSvf();
     auto& apvts = processor.getApvts();
     const char* knobIds[] = {
         swaraxt::IDs::mixBalance, swaraxt::IDs::mixSub, swaraxt::IDs::mixNoise,
@@ -771,6 +792,32 @@ void MainPanel::lookAndFeelChanged()
                              Palette::skin().primaryText);
     boardViewButton_.setColour(juce::TextButton::textColourOffId, Palette::skin().secondaryText);
     boardViewButton_.setColour(juce::TextButton::textColourOnId, Palette::skin().primaryText);
+    dualSvfViewButton_.setColour(juce::TextButton::textColourOffId, Palette::skin().primaryText);
+    dualSvfViewButton_.setColour(juce::TextButton::textColourOnId, Palette::skin().primaryText);
+}
+
+void MainPanel::refreshExperimentalSvf()
+{
+    if (processor_ == nullptr) return;
+    const auto requested = processor_->experimentalSvfSelection();
+    const auto packed = ExperimentalSvfSelection::pack(requested);
+    if (displayedSvfSelection_ == packed) return;
+    displayedSvfSelection_ = packed;
+    filterModel_.setSelectedId(requested.enabled ? 2 : 1, juce::dontSendNotification);
+    dualSvfView_->sync(requested);
+}
+
+void MainPanel::setDualSvfView(bool visible)
+{
+    if (! dualSvfView_) return;
+    refreshExperimentalSvf();
+    dualSvfView_->setVisible(visible);
+    // Covered modules must also leave keyboard focus traversal while expanded.
+    perfModule_.setVisible(! visible);
+    envModule_.setVisible(! visible);
+    dualSvfViewButton_.setToggleState(visible, juce::dontSendNotification);
+    if (visible) dualSvfView_->toFront(false);
+    else if (dualSvfViewButton_.isShowing()) dualSvfViewButton_.grabKeyboardFocus();
 }
 
 void MainPanel::setBoardEditorView(bool visible)
@@ -881,6 +928,10 @@ void MainPanel::reflow()
     lfoModule_.setBounds(26, 209, 318, 298);
     mixModule_.setBounds(383, showingSequencer_ ? 105 : 180, 347, showingSequencer_ ? 398 : 323);
     filterModule_.setBounds(769, 22, 318, 132);
+    filterModel_.setBounds(0, 1, 122, 20);
+    dualSvfViewButton_.setBounds(241, 1, 77, 20);
+    filterModule_.setPrimaryActionBounds(dualSvfViewButton_.getBounds());
+    if (dualSvfView_) dualSvfView_->setBounds(769, 155, 318, 348);
     perfModule_.setBounds(769, 157, 318, 100);
     envModule_.setBounds(769, 260, 318, 243);
 

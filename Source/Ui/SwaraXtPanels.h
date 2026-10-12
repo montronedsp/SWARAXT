@@ -11,6 +11,7 @@
 #include "Ui/SwaraXtUiPalette.h"
 #include "Ui/SwaraXtModulationNames.h"
 #include "Engine/SequenceState.h"
+#include "Ui/SwaraXtDualSvfPanel.h"
 
 class SwaraXtAudioProcessor;
 
@@ -184,6 +185,11 @@ class MainPanel : public juce::Component {
     void reflow();
     void setLocalViews(bool modulation, bool sequencer);
     void setBoardEditorView(bool visible);
+    void refreshExperimentalSvf();
+    void setDualSvfView(bool visible);
+    DualSvfPanel& dualSvfPanelForTests() noexcept { return *dualSvfView_; }
+    juce::ComboBox& filterModelForTests() noexcept { return filterModel_; }
+    juce::TextButton& dualSvfViewButtonForTests() noexcept { return dualSvfViewButton_; }
     bool showingSequencer() const noexcept { return showingSequencer_; }
     std::function<void()> workspaceChanged;
     BoardPanel& boardPanelForTests() noexcept { return *boardView_; }
@@ -323,6 +329,12 @@ class MainPanel : public juce::Component {
     LfoTrace lfo2Trace_;
     juce::TextButton seqViewButton_ { "SEQ/ARP" };
     juce::TextButton boardViewButton_ { "FX" };
+    juce::ComboBox filterModel_;
+    juce::TextButton dualSvfViewButton_ { "DUAL..." };
+    std::unique_ptr<DualSvfPanel> dualSvfView_;
+    SwaraXtAudioProcessor* processor_ = nullptr;
+    // Rendering invalidation only; requests always come from the processor.
+    std::uint32_t displayedSvfSelection_ = ~std::uint32_t { 0 };
     juce::Label env1Role_;
     juce::Label env2Role_;
     std::unique_ptr<ModPanel> modulationView_;

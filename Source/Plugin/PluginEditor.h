@@ -26,6 +26,11 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void mouseDown(const juce::MouseEvent& event) override;
 
     void setModuleViewsForTests(bool modulation, bool sequencer);
+    swaraxt::ui::MainPanel& mainPanelForTests() noexcept { return mainPanel_; }
+    void refreshExperimentalSvfForTests() { mainPanel_.refreshExperimentalSvf(); }
+    juce::PopupMenu experimentalFilterMenuForTests() const { return createExperimentalFilterMenu(); }
+    std::function<void(int)> contextMenuCallbackForTests() { return contextMenuCallback(); }
+    void showContextMenuForTests() { showContextMenu(); }
     void setBoardEditorViewForTests(bool visible) { mainPanel_.setBoardEditorView(visible); }
     swaraxt::ui::BoardPanel& boardPanelForTests() noexcept { return mainPanel_.boardPanelForTests(); }
     void setSequencerHostSyncForTests(bool enabled);
@@ -158,6 +163,8 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void showPresetError(const juce::String& message);
     void paintDesignSurface(juce::Graphics& g);
     void showContextMenu();
+    juce::PopupMenu createExperimentalFilterMenu() const;
+    std::function<void(int)> contextMenuCallback();
     void showAboutPopup();
     void applySkin(swaraxt::ui::SkinId skin, bool persist);
     void applyDecoration(swaraxt::ui::DecorationId decoration, bool persist);
