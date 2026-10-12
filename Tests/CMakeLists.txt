@@ -393,6 +393,14 @@ swaraxt_add_shruthi_timing_target(SwaraXTVcaHoldTests 7)
 
 swaraxt_add_plugin_console_test(SwaraXTCutoffRefineTests Filter/CutoffRefineTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTGuiSyncTests GuiSync/GuiSyncTestsMain.cpp)
+swaraxt_add_plugin_console_test(SwaraXTPitchInputTests avrlib_hd/PitchInputTestsMain.cpp)
+target_include_directories(SwaraXTPitchInputTests PRIVATE "${CMAKE_SOURCE_DIR}/Tests")
+if(MSVC)
+    target_compile_options(SwaraXTPitchInputTests PRIVATE /WX)
+endif()
+add_test(NAME SwaraXTPitchResourceExtentTests COMMAND "${CMAKE_COMMAND}"
+    "-DROM_SOURCE=${SWARAXT_SHRUTHI_RESOURCE_SOURCE}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/avrlib_hd/PitchResourceExtentTests.cmake")
 swaraxt_add_plugin_console_test(SwaraXTGuiIndexLayoutTests GuiSync/GuiIndexLayoutTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTDualSvfGuiTests GuiSync/DualSvfGuiTestsMain.cpp)
 target_compile_definitions(SwaraXTDualSvfGuiTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
