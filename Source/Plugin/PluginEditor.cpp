@@ -369,6 +369,12 @@ juce::PopupMenu SwaraXtAudioProcessorEditor::createExperimentalFilterMenu() cons
     filterModelMenu.addSeparator();
     filterModelMenu.addSubMenu("Routing / topology", routingMenu, experimentalSvf);
     filterModelMenu.addSubMenu("SVF Calibration", calibrationMenu, experimentalSvf);
+    juce::PopupMenu control2Menu;
+    const char* names[] = { "Legacy Follow", "Independent", "Relative cutoff (64 = zero)" };
+    for (int i = 0; i < 3; ++i)
+        control2Menu.addItem(650 + i, names[i], experimentalSvf,
+            experimentalSvf && static_cast<int>(svfSel.control2) == i);
+    filterModelMenu.addSubMenu("Filter 2 Control", control2Menu, experimentalSvf);
     filterModelMenu.addSubMenu("Section 1 mode", svfMode1Menu, experimentalSvf);
     filterModelMenu.addSubMenu("Section 2 mode", svfMode2Menu, experimentalSvf);
 
@@ -431,6 +437,9 @@ std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
         if (result == 641)
             safeThis->processor_.setExperimentalSvfCalibration(
                 swaraxt::ShruthiSvfCalibration::eagleHardware);
+        if (result >= 650 && result <= 652)
+            safeThis->processor_.setExperimentalSvfControl2(
+                static_cast<swaraxt::ShruthiSvfSection2Control>(result - 650));
         safeThis->mainPanel_.refreshExperimentalSvf();
     };
 }
