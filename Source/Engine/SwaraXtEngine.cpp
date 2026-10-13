@@ -67,6 +67,7 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
 
 void SwaraXtEngine::reset()
 {
+    clearSequencePlayback();
     random_.Seed(0x21);
     part_.Init(audioRing_, random_, midiDispatcher_, storage_);
     // Envelope stage increments are written in UpdateDestinations(), which runs
@@ -1038,6 +1039,9 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         if (right != nullptr)
             right[i] = sample;
     }
+    const auto playbackStep = part_.playback_step();
+    sequencePlayback_.store(playbackStep < 16 ? static_cast<unsigned>(playbackStep) + 1u : 0u,
+                            std::memory_order_relaxed);
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     const auto processEnd = ProfileClock::now();
     cpuProfile_.processNanoseconds += static_cast<uint64_t>(

@@ -16,9 +16,9 @@ namespace swaraxt::ui {
 
 namespace {
 
-constexpr float dividerTitleGap = 7.0f;
-constexpr float dividerActionGap = 5.0f;
-constexpr float dividerThickness = 2.5f;
+constexpr float dividerTitleGap = 8.0f;
+constexpr float dividerActionGap = 7.0f;
+constexpr float dividerThickness = 1.5f;
 
 void paintSplitDivider(juce::Graphics& g,
                        float availableWidth,
@@ -1365,7 +1365,7 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
     sequenceState_ = &processor.sequenceState();
     timerCallback();
     lockButton_.setToggleState(processor.sequenceLocked(), juce::dontSendNotification);
-    startTimerHz(4);
+    visibilityChanged();
     sequenceState_->addListener(this);
     const char* knobIds[] = { swaraxt::IDs::seqTempo, swaraxt::IDs::seqSwing,
                               swaraxt::IDs::seqGate };
@@ -1466,9 +1466,42 @@ void SeqPanel::lookAndFeelChanged()
         heading->setColour(juce::Label::textColourId, Palette::skin().primaryText);
 }
 
+void SeqPanel::visibilityChanged()
+{
+    timerCallback();
+    startTimerHz(isShowing() ? 30 : 4);
+}
+
+void SeqPanel::paintOverChildren(juce::Graphics& g)
+{
+    if (activeStep_ < 0 || activeStep_ >= static_cast<int>(stepButtons_.size()))
+        return;
+    const auto bounds = stepButtons_[static_cast<size_t>(activeStep_)].getBounds().toFloat();
+    // A separate lower lamp leaves the edit-selection border and number intact.
+    g.setColour(Palette::skin().displayText);
+    g.fillRoundedRectangle(bounds.getX() + 5.0f, bounds.getBottom() - 4.0f,
+                           bounds.getWidth() - 10.0f, 2.0f, 1.0f);
+}
+
 void SeqPanel::timerCallback()
 {
+    // A cheap visibility probe also handles host peer/ancestor visibility
+    // changes, which do not necessarily notify the child component.
+    const bool showing = isShowing();
+    const int interval = showing ? 1000 / 30 : 250;
+    if (getTimerInterval() != interval)
+        startTimer(interval);
+    if (! showing)
+        return;
+
     if (processor_) {
+        const int nextStep = processor_->sequencePlaybackStep();
+        if (nextStep != activeStep_) {
+            for (const int step : { activeStep_, nextStep })
+                if (step >= 0 && step < static_cast<int>(stepButtons_.size()))
+                    repaint(stepButtons_[static_cast<size_t>(step)].getBounds());
+            activeStep_ = nextStep;
+        }
         lockButton_.setToggleState(processor_->sequenceLocked(), juce::dontSendNotification);
         const auto range = processor_->randomNoteRange();
         noteRange_.setMinAndMaxValues(range.lower, range.upper, juce::dontSendNotification);

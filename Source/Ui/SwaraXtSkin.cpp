@@ -299,6 +299,8 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
             const auto colour = [](juce::Colour value) { return "#" + value.toDisplayString(false); };
             const auto svg = juce::String::fromUTF8(data, size)
                 .replace("#ffffff", colour(skin.palette.primaryText))
+                .replace("#f5e9fb", i == indexOf(AssetRole::companyWordmark) ? colour(skin.palette.primaryText) : "#f5e9fb")
+                .replace("#9b4f9e", i == indexOf(AssetRole::companyWordmark) ? colour(skin.palette.primaryText) : "#9b4f9e")
                 .replace("#d0d0d0", colour(skin.palette.primaryText.interpolatedWith(skin.palette.editorBackground, 0.15f)))
                 .replace("#0a0608", colour(skin.palette.editorBackground.darker(0.5f)));
             assets_[i] = juce::Drawable::createFromImageData(svg.toRawUTF8(), svg.getNumBytesAsUTF8());
@@ -367,15 +369,6 @@ const DecorationDefinition& DecorationRegistry::get(DecorationId id)
     static const DecorationDefinition romanKeyBorder {
         DecorationId::romanKeyBorder, "roman_key_border", "Key Border", "roman_key_border_svg"
     };
-    static const DecorationDefinition romanBanner {
-        DecorationId::romanBanner, "roman_banner", "Banner", "roman_banner_svg"
-    };
-    static const DecorationDefinition romanAcanthus {
-        DecorationId::romanAcanthus, "roman_acanthus", "Acanthus", "roman_acanthus_svg"
-    };
-    static const DecorationDefinition romanLion {
-        DecorationId::romanLion, "roman_lion", "Lion", "roman_lion_svg"
-    };
     switch (id)
     {
         case DecorationId::pcbTrace: return pcbTrace;
@@ -388,9 +381,6 @@ const DecorationDefinition& DecorationRegistry::get(DecorationId id)
         case DecorationId::romanWicker: return romanWicker;
         case DecorationId::romanMeander: return romanMeander;
         case DecorationId::romanKeyBorder: return romanKeyBorder;
-        case DecorationId::romanBanner: return romanBanner;
-        case DecorationId::romanAcanthus: return romanAcanthus;
-        case DecorationId::romanLion: return romanLion;
         case DecorationId::legacy: break;
     }
     return legacy;

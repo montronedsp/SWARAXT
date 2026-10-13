@@ -8,7 +8,7 @@
 
 namespace {
 
-const juce::Rectangle<float> companyWordmarkBounds { 482.0f, 21.0f, 149.0f, 27.0f };
+const juce::Rectangle<float> companyWordmarkBounds { 489.5f, 24.0f, 134.0f, 21.0f };
 const juce::Rectangle<float> stoneWordmarkBounds { 492.5f, 19.5f, 128.0f, 30.0f };
 const juce::Rectangle<float> presetFrameBounds { 391.0f, 58.0f, 330.0f, 37.0f };
 

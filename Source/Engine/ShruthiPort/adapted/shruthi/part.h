@@ -125,6 +125,8 @@ class Part {
   inline bool running() const { return arp_seq_running_; }
   inline bool has_held_notes() { return pressed_keys_.size() != 0; }
   inline uint8_t step() const { return arp_seq_step_; }
+  // Last sequence element read by the clock; 0xff means no playback step.
+  inline uint8_t playback_step() const { return running() ? playback_step_ : 0xff; }
 
   inline const Patch& patch() const { return patch_; }
   inline const SequencerSettings& sequencer_settings() const {
@@ -273,6 +275,7 @@ class Part {
   bool arp_seq_running_ = false;
   uint8_t arp_seq_prescaler_ = 0;
   uint8_t arp_seq_step_ = 0;
+  uint8_t playback_step_ = 0xff;
   int8_t arp_note_ = 0;
   int8_t arp_octave_ = 0;
   int8_t arp_direction_ = 1;

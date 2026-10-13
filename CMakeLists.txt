@@ -109,9 +109,6 @@ juce_add_binary_data(SwaraXTFonts
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_wicker.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_meander.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_key_border.svg"
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_banner.svg"
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_acanthus.svg"
-        "${CMAKE_CURRENT_SOURCE_DIR}/resources/Skin/Decorations/roman_lion.svg"
 )
 
 set(SWARAXT_ALL_PLUGIN_SOURCES

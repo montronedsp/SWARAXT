@@ -60,6 +60,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     const swaraxt::SwaraXtEngine& engineForTests() const noexcept { return engine_; }
     swaraxt::SequenceState& sequenceState() noexcept { return sequenceState_; }
     const swaraxt::SequenceState& sequenceState() const noexcept { return sequenceState_; }
+    int sequencePlaybackStep() const noexcept { return engine_.sequencePlaybackStep(); }
     bool sequenceLocked() const noexcept { return sequenceLocked_.load(std::memory_order_relaxed); }
     void setSequenceLocked(bool locked) noexcept { sequenceLocked_.store(locked, std::memory_order_relaxed); }
 

@@ -396,6 +396,8 @@ class SeqPanel : public juce::Component,
                  private juce::Timer {
  public:
     SeqPanel();
+    void paintOverChildren(juce::Graphics&) override;
+    void visibilityChanged() override;
     ~SeqPanel() override;
     void attach(SwaraXtAudioProcessor& processor);
     void reflow();
@@ -466,6 +468,7 @@ class SeqPanel : public juce::Component,
         "Swing", "Shuffle", "Push", "Lag", "Human", "Monkey" } };
     swaraxt::SequenceState* sequenceState_ = nullptr;
     int selectedStep_ = 0;
+    int activeStep_ = -1;
     bool refreshingSequenceControls_ = false;
     void updateClockControls();
     void updateModeEmphasis();

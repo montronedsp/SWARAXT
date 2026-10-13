@@ -120,6 +120,7 @@ void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 
 void SwaraXtAudioProcessor::releaseResources()
 {
+    engine_.clearSequencePlayback();
     isPrepared_ = false;
 }
 

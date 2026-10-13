@@ -13,7 +13,7 @@
 namespace swaraxt::ui {
 
 enum class SkinId { midnightGold, neonCobalt, pastel, jungle, rossocorsa };
-enum class DecorationId { legacy, pcbTrace, greekKey1Turn, greekKey4Turns, romanPlait, romanIntertwined, romanGuilloche, romanInterlace, romanWicker, romanMeander, romanKeyBorder, romanBanner, romanAcanthus, romanLion };
+enum class DecorationId { legacy, pcbTrace, greekKey1Turn, greekKey4Turns, romanPlait, romanIntertwined, romanGuilloche, romanInterlace, romanWicker, romanMeander, romanKeyBorder };
 enum class ManufacturerMark { montroneDspWordmark, stone };
 struct ManufacturerMarkDefinition {
     static constexpr ManufacturerMark defaultMark = ManufacturerMark::montroneDspWordmark;
@@ -130,7 +130,7 @@ struct DecorationDefinition {
 
 class DecorationRegistry {
  public:
-    static constexpr std::array<DecorationId, 14> all {
+    static constexpr std::array<DecorationId, 11> all {
         DecorationId::legacy, DecorationId::pcbTrace,
         DecorationId::greekKey1Turn,
         DecorationId::greekKey4Turns,
@@ -140,10 +140,7 @@ class DecorationRegistry {
         DecorationId::romanInterlace,
         DecorationId::romanWicker,
         DecorationId::romanMeander,
-        DecorationId::romanKeyBorder,
-        DecorationId::romanBanner,
-        DecorationId::romanAcanthus,
-        DecorationId::romanLion
+        DecorationId::romanKeyBorder
     };
     static const DecorationDefinition& get(DecorationId id);
 };

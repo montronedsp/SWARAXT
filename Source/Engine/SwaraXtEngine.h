@@ -200,6 +200,13 @@ class SwaraXtEngine {
     {
         return static_cast<FilterQuality>(requestedFilterQuality_.load(std::memory_order_relaxed));
     }
+    // One self-contained observation: zero is inactive, 1..16 are sequence steps.
+    int sequencePlaybackStep() const noexcept
+    {
+        return static_cast<int>(sequencePlayback_.load(std::memory_order_relaxed)) - 1;
+    }
+    void clearSequencePlayback() noexcept { sequencePlayback_.store(0, std::memory_order_relaxed); }
+
     shruthi::Part& shruthiPart() noexcept { return part_; }
     const shruthi::Part& shruthiPart() const noexcept { return part_; }
     uint16_t randomStateForTests() const noexcept { return random_.state(); }
@@ -275,6 +282,8 @@ class SwaraXtEngine {
     avrlib::Random random_;
     shruthi::MidiDispatcher midiDispatcher_;
     shruthi::Storage storage_;
+    static_assert(std::atomic<unsigned>::is_always_lock_free);
+    std::atomic<unsigned> sequencePlayback_ { 0 };
     shruthi::Part part_;
     PatchBridge patchBridge_;
     SequenceState* sequenceState_ = nullptr;

@@ -62,6 +62,7 @@ void Part::Init(HostAudioRing& audio_out,
   voice_.Init(this, &audio_out, &random);
   dirty_ = false;
   arp_seq_running_ = false;
+  playback_step_ = 0xff;
   clock_.Update(120);
   nrpn_parameter_number_ = 0xff;
 }
@@ -503,6 +504,7 @@ void Part::Start(bool internal) {
 
   arp_seq_prescaler_ = 0;
   arp_seq_step_ = 0xff;
+  playback_step_ = 0xff;
   arp_seq_running_ = true;
   arp_previous_note_ = 0;
   seq_transposition_ = 0;
@@ -520,6 +522,7 @@ void Part::Start(bool internal) {
 /* static */
 void Part::Stop(bool internal, bool preserve_held_notes) {
   arp_seq_running_ = false;
+  playback_step_ = 0xff;
   ignore_note_off_messages_ = false;
   if (sequencer_settings_.mode() != SEQUENCER_MODE_STEP) {
     StopSequencerArpeggiatorNotes();
@@ -662,6 +665,7 @@ void Part::ClockArpeggiator() {
 /* static */
 void Part::ClockSequencer() {
   uint8_t n = (arp_seq_step_ + sequencer_settings_.pattern_rotation) & 0x0f;
+  playback_step_ = n;
   voice_.set_modulation_source(
       MOD_SRC_SEQ,
       sequencer_settings_.steps[n].controller() << 4);
