@@ -948,8 +948,17 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     };
 
     while (! dormant_ && ! drainingToDormant_
-           && internalQueue_.size() < queueTarget() && guard++ < 16)
+           && internalQueue_.size() < queueTarget())
+    {
+        if (guard >= 16)
+        {
+            ++guard;
+            break;
+        }
+
+        ++guard;
         renderInternalBlock();
+    }
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -991,8 +1000,17 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
 
         guard = 0;
         while (! drainingToDormant_
-               && internalQueue_.size() < queueTarget() && guard++ < 16)
+               && internalQueue_.size() < queueTarget())
+        {
+            if (guard >= 16)
+            {
+                ++guard;
+                break;
+            }
+
+            ++guard;
             renderInternalBlock();
+        }
 
         float sample = 0.0f;
         if (internalQueue_.size() >= internalQueue_.minimumReadableSize())
