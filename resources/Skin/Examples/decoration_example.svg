@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SWARA XT column-decoration template.
+
+  Load via: right-click editor ’ Decoration ’ Load SVG&
+  Stored as: <preferences>/skin_assets/decoration.svg  (max 256 KiB)
+
+  Skin-aware colour:
+    #ffffff  (or white) is recoloured to the active skin braidTint.
+
+  Drawn twice as tall separators (~513 design units high). Prefer a tall,
+  narrow viewBox (about 26×500). Paths/strokes only  no filters or text.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="26" height="500" viewBox="0 0 26 500" version="1.1">
+  <g fill="none" stroke="#ffffff" stroke-width="1.35" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M13 8 V492"/>
+    <path d="M5 40 H21 M5 80 H21 M5 120 H21 M5 160 H21 M5 200 H21
+             M5 240 H21 M5 280 H21 M5 320 H21 M5 360 H21 M5 400 H21 M5 440 H21"/>
+    <path d="M8 20 L13 12 L18 20 M8 480 L13 488 L18 480"/>
+  </g>
+  <!-- Replace with your own vertical ornament using white strokes/fills. -->
+</svg>

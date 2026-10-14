@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SWARA XT manufacturer-mark template.
+
+  Load via: right-click editor ’ Manufacturer Mark ’ Load SVG&
+  Stored as: <preferences>/skin_assets/manufacturer_mark.svg  (max 256 KiB)
+
+  Skin-aware colours (exact hex strings are rewritten to the active skin):
+    #ffffff  primary face / stroke
+    #d0d0d0  soft highlight
+    #0a0608  drop shadow
+    #f5e9fb  optional face (also mapped to primary)
+    #9b4f9e  optional accent (also mapped to primary)
+
+  Keep paths/fills only  JUCE SVG does not apply filters, masks, or text.
+  Slot aspect is roughly 149×27 (design units). viewBox can be any size.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 54" version="1.1">
+  <g id="shadow" fill="#0a0608" opacity="0.78" transform="translate(2.5 2.5)">
+    <rect x="8" y="10" width="18" height="34" rx="2"/>
+    <path d="M36 44 V10 h12 l18 22 V10 h12 v34 h-12 L48 22 v22 z"/>
+  </g>
+  <g id="outline" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linejoin="round">
+    <rect x="8" y="10" width="18" height="34" rx="2"/>
+    <path d="M36 44 V10 h12 l18 22 V10 h12 v34 h-12 L48 22 v22 z"/>
+  </g>
+  <g id="face">
+    <rect x="8" y="10" width="18" height="34" rx="2" fill="#f5e9fb"/>
+    <path fill="#9b4f9e" d="M36 44 V10 h12 l18 22 V10 h12 v34 h-12 L48 22 v22 z"/>
+  </g>
+  <!-- Replace the geometry above with your own mark. Keep the placeholder colours. -->
+</svg>

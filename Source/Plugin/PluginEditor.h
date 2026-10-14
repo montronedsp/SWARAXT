@@ -171,6 +171,12 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void applyManufacturerMark(swaraxt::ui::ManufacturerMark mark, bool persist);
     void applyGuiSize(swaraxt::ui::GuiSize size, bool persist);
     void applyFilterQuality(swaraxt::FilterQuality quality, bool persist);
+    void promptLoadManufacturerMarkSvg();
+    void clearManufacturerMarkSvg();
+    void promptLoadDecorationSvg();
+    void clearDecorationSvg();
+    void reloadSkinAssets();
+    void showSvgLoadError(const juce::String& message);
 
     SwaraXtAudioProcessor& processor_;
     swaraxt::ui::SwaraXtLookAndFeel lookAndFeel_;
@@ -184,6 +190,7 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
         swaraxt::ui::DecorationId::legacy, swaraxt::ui::SkinRegistry::pastel().palette
     };
     DesignSurface designSurface_ { *this };
+    std::unique_ptr<juce::FileChooser> fileChooser_;
 
     juce::ComboBox presetSelector_;
     juce::TextButton prevPresetButton_ { "<" };

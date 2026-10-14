@@ -279,6 +279,123 @@ void SkinRegistry::setActive(SkinId id)
     activeSkin = id;
 }
 
+namespace {
+
+juce::String hexColour(juce::Colour value)
+{
+    return "#" + value.toDisplayString(false);
+}
+
+juce::String recolourManufacturerSvg(const juce::String& svg, const SkinPalette& palette)
+{
+    // Same placeholder map as the embedded wordmarks so user SVGs that follow
+    // the shipping template pick up the active skin colours.
+    return juce::String(svg)
+        .replace("#ffffff", hexColour(palette.primaryText))
+        .replace("#f5e9fb", hexColour(palette.primaryText))
+        .replace("#9b4f9e", hexColour(palette.primaryText))
+        .replace("#d0d0d0", hexColour(palette.primaryText.interpolatedWith(palette.editorBackground, 0.15f)))
+        .replace("#0a0608", hexColour(palette.editorBackground.darker(0.5f)));
+}
+
+std::unique_ptr<juce::Drawable> parseSvgBytes(const void* data, size_t size)
+{
+    if (data == nullptr || size == 0)
+        return nullptr;
+    return juce::Drawable::createFromImageData(data, size);
+}
+
+}  // namespace
+
+juce::File SkinUserSvg::directory()
+{
+    return UiPreferences::userDataDirectory().getChildFile("skin_assets");
+}
+
+juce::File SkinUserSvg::manufacturerMarkFile()
+{
+    return directory().getChildFile("manufacturer_mark.svg");
+}
+
+juce::File SkinUserSvg::decorationFile()
+{
+    return directory().getChildFile("decoration.svg");
+}
+
+bool SkinUserSvg::hasManufacturerMark()
+{
+    return manufacturerMarkFile().existsAsFile();
+}
+
+bool SkinUserSvg::hasDecoration()
+{
+    return decorationFile().existsAsFile();
+}
+
+bool SkinUserSvg::install(const juce::File& source, const juce::File& destination, juce::String& error)
+{
+    if (! source.existsAsFile())
+    {
+        error = "File not found.";
+        return false;
+    }
+    if (source.getFileExtension().compareIgnoreCase(".svg") != 0)
+    {
+        error = "Choose an .svg file.";
+        return false;
+    }
+    const auto bytes = source.getSize();
+    if (bytes <= 0 || bytes > maxBytes)
+    {
+        error = "SVG must be between 1 byte and 256 KiB.";
+        return false;
+    }
+    const auto text = source.loadFileAsString();
+    if (! text.containsIgnoreCase("<svg"))
+    {
+        error = "File does not look like an SVG.";
+        return false;
+    }
+    if (! destination.getParentDirectory().createDirectory() && ! destination.getParentDirectory().isDirectory())
+    {
+        error = "Could not create skin_assets folder.";
+        return false;
+    }
+    destination.deleteFile();
+    if (! source.copyFileTo(destination))
+    {
+        error = "Could not copy SVG into preferences.";
+        return false;
+    }
+    return true;
+}
+
+void SkinUserSvg::clear(const juce::File& file)
+{
+    file.deleteFile();
+}
+
+std::unique_ptr<juce::Drawable> SkinUserSvg::loadManufacturerMark(const SkinPalette& palette)
+{
+    const auto file = manufacturerMarkFile();
+    if (! file.existsAsFile() || file.getSize() <= 0 || file.getSize() > maxBytes)
+        return nullptr;
+    const auto recoloured = recolourManufacturerSvg(file.loadFileAsString(), palette);
+    return parseSvgBytes(recoloured.toRawUTF8(), static_cast<size_t>(recoloured.getNumBytesAsUTF8()));
+}
+
+std::unique_ptr<juce::Drawable> SkinUserSvg::loadDecoration(const SkinPalette& palette)
+{
+    const auto file = decorationFile();
+    if (! file.existsAsFile() || file.getSize() <= 0 || file.getSize() > maxBytes)
+        return nullptr;
+    const auto text = file.loadFileAsString();
+    auto drawable = parseSvgBytes(text.toRawUTF8(), static_cast<size_t>(text.getNumBytesAsUTF8()));
+    if (drawable != nullptr)
+        drawable->replaceColour(juce::Colours::white, palette.braidTint);
+    return drawable;
+}
+
 SkinAssetCache::SkinAssetCache(const SwaraXtSkin& skin)
 {
     load(skin);
@@ -296,20 +413,23 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
         {
             // Recolour presentation attributes before parsing to preserve the
             // artwork's independent outline, shadow and highlight opacities.
-            const auto colour = [](juce::Colour value) { return "#" + value.toDisplayString(false); };
             const auto svg = juce::String::fromUTF8(data, size)
-                .replace("#ffffff", colour(skin.palette.primaryText))
-                .replace("#f5e9fb", i == indexOf(AssetRole::companyWordmark) ? colour(skin.palette.primaryText) : "#f5e9fb")
-                .replace("#9b4f9e", i == indexOf(AssetRole::companyWordmark) ? colour(skin.palette.primaryText) : "#9b4f9e")
-                .replace("#d0d0d0", colour(skin.palette.primaryText.interpolatedWith(skin.palette.editorBackground, 0.15f)))
-                .replace("#0a0608", colour(skin.palette.editorBackground.darker(0.5f)));
-            assets_[i] = juce::Drawable::createFromImageData(svg.toRawUTF8(), svg.getNumBytesAsUTF8());
+                .replace("#ffffff", hexColour(skin.palette.primaryText))
+                .replace("#f5e9fb", i == indexOf(AssetRole::companyWordmark)
+                                        ? hexColour(skin.palette.primaryText) : "#f5e9fb")
+                .replace("#9b4f9e", i == indexOf(AssetRole::companyWordmark)
+                                        ? hexColour(skin.palette.primaryText) : "#9b4f9e")
+                .replace("#d0d0d0", hexColour(skin.palette.primaryText.interpolatedWith(skin.palette.editorBackground, 0.15f)))
+                .replace("#0a0608", hexColour(skin.palette.editorBackground.darker(0.5f)));
+            assets_[i] = parseSvgBytes(svg.toRawUTF8(), static_cast<size_t>(svg.getNumBytesAsUTF8()));
         }
         else
             assets_[i] = data != nullptr && size > 0
-                ? juce::Drawable::createFromImageData(data, static_cast<size_t>(size))
+                ? parseSvgBytes(data, static_cast<size_t>(size))
                 : nullptr;
     }
+
+    manufacturerOverride_ = SkinUserSvg::loadManufacturerMark(skin.palette);
 
     const auto recolour = [this](juce::Colour source, juce::Colour target)
     {
@@ -394,12 +514,20 @@ DecorationAssetCache::DecorationAssetCache(DecorationId decoration,
 
 void DecorationAssetCache::load(DecorationId decoration, const SkinPalette& palette)
 {
+    usingCustom_ = false;
+    if (auto custom = SkinUserSvg::loadDecoration(palette))
+    {
+        asset_ = std::move(custom);
+        usingCustom_ = true;
+        return;
+    }
+
     const auto& definition = DecorationRegistry::get(decoration);
     int size = 0;
     const auto* data = definition.resourceName != nullptr
         ? BinaryData::getNamedResource(definition.resourceName, size) : nullptr;
     asset_ = data != nullptr && size > 0
-        ? juce::Drawable::createFromImageData(data, static_cast<size_t>(size))
+        ? parseSvgBytes(data, static_cast<size_t>(size))
         : nullptr;
     if (asset_ != nullptr)
         asset_->replaceColour(juce::Colours::white, palette.braidTint);
@@ -443,6 +571,11 @@ std::unique_ptr<juce::PropertiesFile> UiPreferences::open()
     options.osxLibrarySubFolder = "Application Support";
     options.storageFormat = juce::PropertiesFile::storeAsXML;
     return std::make_unique<juce::PropertiesFile>(options);
+}
+
+juce::File UiPreferences::userDataDirectory()
+{
+    return open()->getFile().getParentDirectory();
 }
 
 SkinId UiPreferences::loadSkin()

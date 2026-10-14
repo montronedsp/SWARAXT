@@ -111,14 +111,33 @@ struct ProductLockupGeometry {
     }
 };
 
+// User SVG overrides live under the preferences folder (not the plugin bundle).
+// Message-thread only: install/clear/load must not run on the audio thread.
+class SkinUserSvg {
+ public:
+    static constexpr int maxBytes = 256 * 1024;
+
+    static juce::File directory();
+    static juce::File manufacturerMarkFile();
+    static juce::File decorationFile();
+    static bool hasManufacturerMark();
+    static bool hasDecoration();
+    static bool install(const juce::File& source, const juce::File& destination, juce::String& error);
+    static void clear(const juce::File& file);
+    static std::unique_ptr<juce::Drawable> loadManufacturerMark(const SkinPalette& palette);
+    static std::unique_ptr<juce::Drawable> loadDecoration(const SkinPalette& palette);
+};
+
 class SkinAssetCache {
  public:
     explicit SkinAssetCache(const SwaraXtSkin& skin);
     void load(const SwaraXtSkin& skin);
     const juce::Drawable* get(AssetRole role) const noexcept;
+    const juce::Drawable* getManufacturerOverride() const noexcept { return manufacturerOverride_.get(); }
 
  private:
     std::array<std::unique_ptr<juce::Drawable>, static_cast<size_t>(AssetRole::count)> assets_;
+    std::unique_ptr<juce::Drawable> manufacturerOverride_;
 };
 
 struct DecorationDefinition {
@@ -150,9 +169,11 @@ class DecorationAssetCache {
     DecorationAssetCache(DecorationId decoration, const SkinPalette& palette);
     void load(DecorationId decoration, const SkinPalette& palette);
     const juce::Drawable* get() const noexcept { return asset_.get(); }
+    bool usingCustom() const noexcept { return usingCustom_; }
 
  private:
     std::unique_ptr<juce::Drawable> asset_;
+    bool usingCustom_ = false;
 };
 
 struct GuiGeometry {
@@ -175,6 +196,7 @@ class UiPreferences {
     static void save(SkinId skin, DecorationId decoration, GuiSize size);
     static void saveFilterQuality(swaraxt::FilterQuality quality);
     static void saveManufacturerMark(ManufacturerMark mark);
+    static juce::File userDataDirectory();
 
  private:
     static std::unique_ptr<juce::PropertiesFile> open();

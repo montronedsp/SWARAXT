@@ -250,10 +250,17 @@ void SwaraXtAudioProcessorEditor::paintDesignSurface(juce::Graphics& g)
             separator->drawWithin(g, { centreX - width * 0.5f, 4.0f, width, 513.0f },
                                   juce::RectanglePlacement::centred, 1.0f);
     }
-    const bool stone = manufacturerMark_ == ManufacturerMark::stone;
-    if (const auto* company = assets_.get(stone ? AssetRole::stoneWordmark : AssetRole::companyWordmark))
-        company->drawWithin(g, stone ? stoneWordmarkBounds : companyWordmarkBounds,
-                            juce::RectanglePlacement::centred, 1.0f);
+    if (const auto* customMark = assets_.getManufacturerOverride())
+    {
+        customMark->drawWithin(g, companyWordmarkBounds, juce::RectanglePlacement::centred, 1.0f);
+    }
+    else
+    {
+        const bool stone = manufacturerMark_ == ManufacturerMark::stone;
+        if (const auto* company = assets_.get(stone ? AssetRole::stoneWordmark : AssetRole::companyWordmark))
+            company->drawWithin(g, stone ? stoneWordmarkBounds : companyWordmarkBounds,
+                                juce::RectanglePlacement::centred, 1.0f);
+    }
 
     g.setColour(Palette::skin().displayBackground);
     g.fillRoundedRectangle(presetFrameBounds, 8.0f);
@@ -282,13 +289,18 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     skinMenu.addItem(103, "Jungle", true, skinId_ == SkinId::jungle);
     skinMenu.addItem(104, "Rossocorsa", true, skinId_ == SkinId::rossocorsa);
 
+    const bool customDecoration = SkinUserSvg::hasDecoration();
     juce::PopupMenu decorationMenu;
     for (size_t i = 0; i < DecorationRegistry::all.size(); ++i)
     {
         const auto id = DecorationRegistry::all[i];
         decorationMenu.addItem(150 + static_cast<int>(i), DecorationRegistry::get(id).displayName,
-                               true, decorationId_ == id);
+                               true, ! customDecoration && decorationId_ == id);
     }
+    decorationMenu.addSeparator();
+    decorationMenu.addItem(170, "Custom SVG", false, customDecoration);
+    decorationMenu.addItem(171, "Load SVG...");
+    decorationMenu.addItem(172, "Clear custom SVG", customDecoration, false);
 
     juce::PopupMenu sizeMenu;
     sizeMenu.addItem(201, "Small", true, guiSize_ == GuiSize::small);
@@ -305,11 +317,16 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     for (int channel = 0; channel <= 16; ++channel)
         midiMenu.addItem(400 + channel, channel == 0 ? "Omni" : "Channel " + juce::String(channel),
                          true, channel == midiChannel);
+    const bool customMark = SkinUserSvg::hasManufacturerMark();
     juce::PopupMenu markMenu;
     markMenu.addItem(500, ManufacturerMarkDefinition::displayName(ManufacturerMark::montroneDspWordmark), true,
-                     manufacturerMark_ == ManufacturerMark::montroneDspWordmark);
+                     ! customMark && manufacturerMark_ == ManufacturerMark::montroneDspWordmark);
     markMenu.addItem(501, ManufacturerMarkDefinition::displayName(ManufacturerMark::stone), true,
-                     manufacturerMark_ == ManufacturerMark::stone);
+                     ! customMark && manufacturerMark_ == ManufacturerMark::stone);
+    markMenu.addSeparator();
+    markMenu.addItem(502, "Custom SVG", false, customMark);
+    markMenu.addItem(503, "Load SVG...");
+    markMenu.addItem(504, "Clear custom SVG", customMark, false);
 
     auto filterModelMenu = createExperimentalFilterMenu();
 
@@ -396,6 +413,8 @@ std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
         }
         if (result == 500) safeThis->applyManufacturerMark(ManufacturerMark::montroneDspWordmark, true);
         if (result == 501) safeThis->applyManufacturerMark(ManufacturerMark::stone, true);
+        if (result == 503) safeThis->promptLoadManufacturerMarkSvg();
+        if (result == 504) safeThis->clearManufacturerMarkSvg();
         if (result == 100) safeThis->applySkin(SkinId::midnightGold, true);
         if (result == 101) safeThis->applySkin(SkinId::neonCobalt, true);
         if (result == 102) safeThis->applySkin(SkinId::pastel, true);
@@ -403,6 +422,8 @@ std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
         if (result == 104) safeThis->applySkin(SkinId::rossocorsa, true);
         if (result >= 150 && result < 150 + static_cast<int>(DecorationRegistry::all.size()))
             safeThis->applyDecoration(DecorationRegistry::all[static_cast<size_t>(result - 150)], true);
+        if (result == 171) safeThis->promptLoadDecorationSvg();
+        if (result == 172) safeThis->clearDecorationSvg();
         if (result == 201) safeThis->applyGuiSize(GuiSize::small, true);
         if (result == 202) safeThis->applyGuiSize(GuiSize::medium, true);
         if (result == 203) safeThis->applyGuiSize(GuiSize::large, true);
@@ -444,6 +465,79 @@ std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
     };
 }
 
+void SwaraXtAudioProcessorEditor::reloadSkinAssets()
+{
+    assets_.load(swaraxt::ui::SkinRegistry::get(skinId_));
+    decorationAssets_.load(decorationId_, swaraxt::ui::SkinRegistry::get(skinId_).palette);
+    mainPanel_.setSkinAssets(assets_);
+    designSurface_.repaint();
+    repaint();
+}
+
+void SwaraXtAudioProcessorEditor::showSvgLoadError(const juce::String& message)
+{
+    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                                           "SVG not loaded", message);
+}
+
+void SwaraXtAudioProcessorEditor::promptLoadManufacturerMarkSvg()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load manufacturer mark SVG", juce::File(), "*.svg");
+    constexpr auto flags = juce::FileBrowserComponent::openMode
+                         | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(flags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinUserSvg::install(results.getReference(0),
+                                                swaraxt::ui::SkinUserSvg::manufacturerMarkFile(),
+                                                error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->reloadSkinAssets();
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearManufacturerMarkSvg()
+{
+    swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::manufacturerMarkFile());
+    reloadSkinAssets();
+}
+
+void SwaraXtAudioProcessorEditor::promptLoadDecorationSvg()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load decoration SVG", juce::File(), "*.svg");
+    constexpr auto flags = juce::FileBrowserComponent::openMode
+                         | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(flags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinUserSvg::install(results.getReference(0),
+                                                swaraxt::ui::SkinUserSvg::decorationFile(),
+                                                error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->reloadSkinAssets();
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearDecorationSvg()
+{
+    swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::decorationFile());
+    reloadSkinAssets();
+}
+
 void SwaraXtAudioProcessorEditor::applySkin(swaraxt::ui::SkinId skin, bool persist)
 {
     skinId_ = skin;
@@ -466,6 +560,11 @@ void SwaraXtAudioProcessorEditor::applySkin(swaraxt::ui::SkinId skin, bool persi
 
 void SwaraXtAudioProcessorEditor::applyManufacturerMark(swaraxt::ui::ManufacturerMark mark, bool persist)
 {
+    if (swaraxt::ui::SkinUserSvg::hasManufacturerMark())
+    {
+        swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::manufacturerMarkFile());
+        reloadSkinAssets();
+    }
     if (manufacturerMark_ == mark) return;
     manufacturerMark_ = mark;
     if (persist) swaraxt::ui::UiPreferences::saveManufacturerMark(mark);
@@ -475,6 +574,8 @@ void SwaraXtAudioProcessorEditor::applyManufacturerMark(swaraxt::ui::Manufacture
 void SwaraXtAudioProcessorEditor::applyDecoration(swaraxt::ui::DecorationId decoration,
                                                   bool persist)
 {
+    if (swaraxt::ui::SkinUserSvg::hasDecoration())
+        swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::decorationFile());
     decorationId_ = decoration;
     decorationAssets_.load(decorationId_, swaraxt::ui::SkinRegistry::active().palette);
     repaint();
