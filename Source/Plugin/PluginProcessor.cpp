@@ -203,18 +203,17 @@ void SwaraXtAudioProcessor::setCurrentProgram(int index)
     if (clamped == currentProgram_)
         return;
 
-    currentProgram_ = clamped;
     if (hostSessionStateRestored_)
     {
         // APVTS from setStateInformation is authoritative; sync program index only.
+        currentProgram_ = clamped;
         if (currentUserPresetName_.isEmpty())
             return;
         currentUserPresetName_.clear();
         return;
     }
 
-    currentUserPresetName_.clear();
-    loadFactoryPreset(currentProgram_);
+    loadFactoryPreset(clamped);
 }
 
 const juce::String SwaraXtAudioProcessor::getProgramName(int index)
@@ -247,8 +246,11 @@ const juce::String SwaraXtAudioProcessor::getProgramName(int index)
 void SwaraXtAudioProcessor::loadFactoryPreset(int index)
 {
     const StateUpdateScope publication(stateUpdateGate_, true);
+    const BulkPublicationScope bulk(*this);
     const int programCount = getNumPrograms();
     index = juce::jlimit(0, programCount - 1, index);
+    // Snapshot above still carries the previous program and user-preset name.
+    currentUserPresetName_.clear();
     currentProgram_ = index;
 
     // Start from APVTS defaults (Shruthi-aligned init), then specialize.
@@ -484,9 +486,7 @@ bool SwaraXtAudioProcessor::loadPresetEntry(const PresetEntry& entry, juce::Stri
         // Explicit UI/host-adjacent load must apply even if the factory index
         // already matches (reload factory defaults after edits).
         hostSessionStateRestored_ = false;
-        currentUserPresetName_.clear();
-        currentProgram_ = juce::jlimit(0, getNumPrograms() - 1, entry.factoryIndex);
-        loadFactoryPreset(currentProgram_);
+        loadFactoryPreset(entry.factoryIndex);
         return true;
     }
 
@@ -557,7 +557,42 @@ bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
     return true;
 }
 
+void SwaraXtAudioProcessor::beginBulkPublication()
+{
+    bulkPublicationEpoch_.fetch_add(1u, std::memory_order_acq_rel);
+    juce::MemoryBlock fresh;
+    writeStateInformation(fresh);
+    const juce::ScopedLock lock(committedStateLock_);
+    committedState_ = fresh;
+}
+
+void SwaraXtAudioProcessor::endBulkPublication()
+{
+    juce::MemoryBlock fresh;
+    writeStateInformation(fresh);
+    {
+        const juce::ScopedLock lock(committedStateLock_);
+        committedState_ = fresh;
+    }
+    bulkPublicationEpoch_.fetch_add(1u, std::memory_order_release);
+}
+
 void SwaraXtAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+  #if JUCE_ANDROID
+    juce::ignoreUnused(destData);
+  #else
+    if ((bulkPublicationEpoch_.load(std::memory_order_acquire) & 1u) != 0u)
+    {
+        const juce::ScopedLock lock(committedStateLock_);
+        destData = committedState_;
+        return;
+    }
+    writeStateInformation(destData);
+  #endif
+}
+
+void SwaraXtAudioProcessor::writeStateInformation(juce::MemoryBlock& destData)
 {
   #if JUCE_ANDROID
     juce::ignoreUnused(destData);
@@ -593,6 +628,7 @@ void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
     const int version = static_cast<int>(tree.getProperty("stateVersion", 1));
     if (version > kStateVersion || version < 1) return;
     const StateUpdateScope publication(stateUpdateGate_, true);
+    const BulkPublicationScope bulk(*this);
     const bool preserveSequence = fromPreset && sequenceLocked();
     if (preserveSequence)
     {

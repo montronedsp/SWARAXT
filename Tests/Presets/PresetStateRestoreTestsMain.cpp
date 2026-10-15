@@ -451,6 +451,54 @@ void testBulkPublicationKeepsPreviousEngineState()
     std::printf("Bulk publication: %d intermediate audio callbacks retained previous patch\n", probe.callbacks);
 }
 
+void testHostSaveDuringBulkPublicationMatchesPreviousState()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 128);
+    setInt(processor, swaraxt::IDs::osc1Shape, shruthi::WAVEFORM_FM);
+    setInt(processor, swaraxt::IDs::env2Release, 100);
+    setInt(processor, swaraxt::IDs::mixBalance, 106);
+    const auto before = captureState(processor);
+    const int programBefore = processor.getCurrentProgram();
+
+    struct Probe final : juce::AudioProcessorValueTreeState::Listener {
+        explicit Probe(SwaraXtAudioProcessor& p) : processor(p) {}
+        void parameterChanged(const juce::String&, float) override
+        {
+            if (captured)
+                return;
+            captured = true;
+            mid = captureState(processor);
+        }
+        SwaraXtAudioProcessor& processor;
+        juce::MemoryBlock mid;
+        bool captured = false;
+    } probe(processor);
+
+    processor.getApvts().addParameterListener(swaraxt::IDs::osc1Shape, &probe);
+    processor.setCurrentProgram(1);
+    processor.getApvts().removeParameterListener(swaraxt::IDs::osc1Shape, &probe);
+
+    expect(probe.captured, "factory load notifies a parameter listener");
+    expect(probe.mid.getSize() > 0, "host save during factory load returns a state");
+    SwaraXtAudioProcessor previous;
+    SwaraXtAudioProcessor during;
+    restoreState(previous, before);
+    restoreState(during, probe.mid);
+    expect(maxParameterDifference(previous, during) == 0.0f,
+           "host save during factory load matches the previous complete preset");
+    expect(previous.getCurrentProgram() == during.getCurrentProgram(),
+           "host save during factory load keeps the previous program");
+    expect(during.getCurrentProgram() == programBefore,
+           "mid-load snapshot is not the destination program");
+    expect(processor.getCurrentProgram() == 1, "factory load still finishes on the destination program");
+    const auto after = captureState(processor);
+    SwaraXtAudioProcessor finished;
+    restoreState(finished, after);
+    expect(maxParameterDifference(finished, during) > 0.0f,
+           "completed factory load is distinct from the mid-load snapshot");
+}
+
 }  // namespace
 
 int main(int argc, char* argv[])
@@ -469,6 +517,7 @@ int main(int argc, char* argv[])
     testFilterQualityDefaultAndStateLifecycle();
     testLfoPresetSwitchAndMatrixRoundtrip();
     testBulkPublicationKeepsPreviousEngineState();
+    testHostSaveDuringBulkPublicationMatchesPreviousState();
 
     if (failures == 0)
     {

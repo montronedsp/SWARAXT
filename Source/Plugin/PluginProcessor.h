@@ -124,6 +124,21 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
  private:
     void loadFactoryPreset(int index);
     void restoreState(juce::ValueTree tree, bool fromPreset);
+    void beginBulkPublication();
+    void endBulkPublication();
+    void writeStateInformation(juce::MemoryBlock& destData);
+
+    struct BulkPublicationScope {
+        explicit BulkPublicationScope(SwaraXtAudioProcessor& processor) noexcept
+            : processor_(processor)
+        {
+            processor_.beginBulkPublication();
+        }
+        ~BulkPublicationScope() { processor_.endBulkPublication(); }
+        BulkPublicationScope(const BulkPublicationScope&) = delete;
+        BulkPublicationScope& operator=(const BulkPublicationScope&) = delete;
+        SwaraXtAudioProcessor& processor_;
+    };
     swaraxt::HostTransportSnapshot captureHostTransport() noexcept;
     static bool validatePresetName(const juce::String& name, juce::String& cleanName);
     bool decodePresetData(const void* data, int sizeInBytes, juce::ValueTree& state) const;
@@ -135,6 +150,12 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     swaraxt::SwaraXtEngine engine_;
     int currentProgram_ = 0;
     std::atomic_flag stateUpdateGate_ = ATOMIC_FLAG_INIT;
+    // Odd while a factory/user/session transaction is mutating APVTS. Host
+    // getStateInformation calls that re-enter from setValueNotifyingHost read
+    // committedState_ instead of the half-applied tree. Not taken by processBlock.
+    std::atomic<uint32_t> bulkPublicationEpoch_ { 0 };
+    juce::CriticalSection committedStateLock_;
+    juce::MemoryBlock committedState_;
     std::atomic<bool> requestEngineReset_ { false };
     std::atomic<bool> sequenceLocked_ { false };
     std::atomic<unsigned> randomNoteRange_ { 36u | (12u << 8) };
