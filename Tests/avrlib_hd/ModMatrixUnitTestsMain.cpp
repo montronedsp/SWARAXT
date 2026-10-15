@@ -197,7 +197,28 @@ void testVcaBalanceExhaustive() {
                                     avrlib_hd::kModDestVca};
     uint8_t vca = 255;
     M::ProcessMatrixByte(1, &row, sources, dst, &vca, 0, nullptr);
-    expect(vca <= 255, "VCA destination stays in uint8 for every int8 amount");
+    // Independent of HdModMatrix::MixU8 / U8U8MulShift8. Spec:
+    //   mix(a,b,balance) = (a * (255 - balance) + b * balance) >> 8
+    //   mul(a,b) = (a * b) >> 8
+    // VCA row: negative amount flips the source then uses the magnitude;
+    // int8 negation of -128 stays -128; amount 63 skips the mix.
+    int8_t scaled = static_cast<int8_t>(i);
+    int source = 255;
+    if (scaled < 0) {
+      scaled = static_cast<int8_t>(-scaled);
+      source = 255 - source;
+    }
+    if (scaled != 63) {
+      const int balance = static_cast<int>(static_cast<int16_t>(scaled) * 4) & 0xff;
+      source = ((255 * (255 - balance)) + (source * balance)) >> 8;
+    }
+    const int expected = (255 * source) >> 8;
+    if (i == 63) expect(expected == 254, "hand vector amount 63 -> 254");
+    if (i == 1) expect(expected == 253, "hand vector amount 1 -> 253");
+    if (i == -1) expect(expected == 249, "hand vector amount -1 -> 249");
+    if (i == -64) expect(expected == 253, "hand vector amount -64 -> 253");
+    if (i == -128) expect(expected == 253, "hand vector amount -128 -> 253");
+    expect(static_cast<int>(vca) == expected, "VCA byte matches independent uint8 spec for every int8 amount");
   }
 }
 
