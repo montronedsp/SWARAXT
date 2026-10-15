@@ -23,6 +23,8 @@
 #include <string.h>
 
 #include "Engine/FreeCvPitch.h"
+#include "Tuning/PublishedTuning.h"
+#include "Tuning/ScalePitch.h"
 
 #include "avrlib/op.h"
 #include "avrlib/random.h"
@@ -681,6 +683,8 @@ void Part::ClockSequencer() {
   if (sequencer_settings_.mode() == SEQUENCER_MODE_SEQ) {
     if (free_cv_active_) {
       clockSequencerFreeCv(n);
+    } else if (scale_active_) {
+      clockSequencerScale(n);
     } else {
     SequenceStep& step = sequencer_settings_.steps[n];
     if (step.gate()) {
@@ -1053,6 +1057,45 @@ void Part::InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitc
       voice_.set_bass_note(bass_note != after.note ? Tune(bass_note) : 0);
     }
   }
+}
+
+void Part::setSequencerScale(bool active, const int16_t* degrees, const void* tuning) noexcept {
+  scale_active_ = active;
+  scale_tuning_ = tuning;
+  if (degrees == nullptr)
+    return;
+  for (int i = 0; i < 16; ++i)
+    scale_degrees_[i] = degrees[i];
+}
+
+void Part::clockSequencerScale(uint8_t step_index) {
+  SequenceStep& step = sequencer_settings_.steps[step_index];
+  if (!step.gate())
+    return;
+  int8_t transposition = pressed_keys_.size() ?
+      pressed_keys_.most_recent_note().note - 60 : seq_transposition_;
+  seq_transposition_ = transposition;
+  int8_t note = step.note() + transposition;
+  while (note < 0) note += 12;
+  const uint8_t identity = static_cast<uint8_t>(note);
+  int degree = scale_degrees_[step_index & 15];
+  const auto* tuning = static_cast<const swaraxt::tuning::PublishedTuning*>(scale_tuning_);
+  if (pressed_keys_.size() && tuning != nullptr)
+    degree += tuning->transpositionDegrees(pressed_keys_.most_recent_note().note);
+  const double hz = tuning != nullptr ? tuning->hzForDegree(degree) : 0.0;
+  const uint16_t pitch = swaraxt::ScalePitch::toVoicePitchFromHz(hz);
+  if (!step.legato()) {
+    StopSequencerArpeggiatorNotes();
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch);
+  } else if (generated_notes_.most_recent_note().note != identity) {
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch);
+    StopSequencerArpeggiatorNotes();
+  } else {
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch);
+  }
+  generated_notes_.NoteOn(identity, step.velocity());
+  arp_seq_gate_length_counter_ =
+      static_cast<uint16_t>((step_duration() * gate_percent_ + 99) / 100);
 }
 
 void Part::setSequencerFreeCv(bool active, const int32_t* units) noexcept {

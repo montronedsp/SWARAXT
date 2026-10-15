@@ -614,6 +614,9 @@ void SwaraXtAudioProcessor::writeStateInformation(juce::MemoryBlock& destData)
     if (const auto existing = state.getChildWithName("SEQUENCE"); existing.isValid())
         state.removeChild(existing, nullptr);
     state.addChild(sequenceState_.toValueTree(), -1, nullptr);
+    if (! engine_.tuningBytesForState().empty())
+        state.setProperty("tuningTable", juce::Base64::toBase64(engine_.tuningBytesForState().data(),
+                                                                engine_.tuningBytesForState().size()), nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
   #endif
@@ -687,6 +690,16 @@ void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
     }
     canonicaliseLegacyModes(tree);
     apvts_.replaceState(tree);
+    if (! preserveSequence)
+    {
+        const auto encoded = tree.getProperty("tuningTable").toString();
+        juce::MemoryBlock decoded;
+        if (encoded.isNotEmpty() && decoded.fromBase64Encoding(encoded))
+        {
+            if (! engine_.loadTuningBytes(static_cast<const uint8_t*>(decoded.getData()), decoded.getSize()))
+                engine_.loadBuiltinTuning(0);
+        }
+    }
     if (!preserveSequence && !sequenceState_.restoreFromValueTree(tree.getChildWithName("SEQUENCE")))
     {
         auto legacySequence = swaraxt::SequenceState::defaultSnapshot();

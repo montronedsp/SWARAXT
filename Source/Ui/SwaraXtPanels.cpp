@@ -1208,18 +1208,47 @@ SeqPanel::SeqPanel()
     }
     arpHeading_.setText("ARPEGGIATOR", juce::dontSendNotification);
     sequenceHeading_.setText("SEQUENCER", juce::dontSendNotification);
-    for (auto* button : { &midiOutButton_, &linearButton_, &lockButton_, &randomNotes_, &randomVelocity_, &randomEvent_, &randomValue_, &randomSequence_ }) {
+    for (auto* button : { &midiOutButton_, &importTuning_, &lockButton_, &randomNotes_, &randomVelocity_, &randomEvent_, &randomValue_, &randomSequence_ }) {
         addAndMakeVisible(*button);
         button->getProperties().set("swaraxtSecondaryAction", true);
     }
     midiOutButton_.setClickingTogglesState(true);
     midiOutButton_.setTooltip("Send sequencer notes to the host MIDI output. Legacy mode only.");
-    linearButton_.setClickingTogglesState(true);
-    linearButton_.setTooltip("Sequence pitch only. Off keeps integer notes. On plays unquantized semitone CV and does not change Step, Arp, or the keyboard.");
-    linearButton_.onClick = [this] {
-        if (sequenceState_ == nullptr)
+    addAndMakeVisible(pitchModeBox_);
+    pitchModeBox_.addItem("LEGACY", 1);
+    pitchModeBox_.addItem("LINEAR", 2);
+    pitchModeBox_.addItem("SCALE", 3);
+    pitchModeBox_.setSelectedId(1, juce::dontSendNotification);
+    pitchModeBox_.setTooltip("Sequencer pitch. LEGACY uses integer notes. LINEAR uses free CV. SCALE uses tuning degrees.");
+    pitchModeBox_.onChange = [this] {
+        if (refreshingSequenceControls_ || sequenceState_ == nullptr)
             return;
-        sequenceState_->setPitchMode(linearButton_.getToggleState() ? 1 : 0);
+        int16_t midiDegree[128];
+        for (int note = 0; note < 128; ++note)
+            midiDegree[note] = -1;
+        if (processor_ != nullptr)
+            processor_->copyTuningDegrees(midiDegree, 128);
+        sequenceState_->setPitchMode(static_cast<uint8_t>(juce::jlimit(0, 2, pitchModeBox_.getSelectedId() - 1)),
+                                     midiDegree);
+    };
+    addAndMakeVisible(tuningBox_);
+    tuningBox_.setTooltip("Built-in tuning table. SCALE playback uses this table.");
+    importTuning_.setTooltip("Import a validated SWT1 tuning table. Scala files are converted offline.");
+    importTuning_.onClick = [this] {
+        if (processor_ == nullptr)
+            return;
+        tuningChooser_ = std::make_unique<juce::FileChooser>("Import SWT1 tuning", juce::File(), "*.swt");
+        tuningChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                    [this](const juce::FileChooser& chooser) {
+            const auto file = chooser.getResult();
+            if (file == juce::File() || processor_ == nullptr)
+                return;
+            juce::MemoryBlock bytes;
+            if (! file.loadFileAsData(bytes))
+                return;
+            if (processor_->loadTuningBytes(bytes.getData(), bytes.getSize()))
+                refreshSequenceControls();
+        });
     };
     lockButton_.setClickingTogglesState(true);
     lockButton_.setTooltip("Preserve Seq/Arp settings and pattern across preset changes");
@@ -1227,7 +1256,10 @@ SeqPanel::SeqPanel()
     const auto randomize = [this](SequenceState::Randomize kind) {
         if (sequenceState_) {
             const auto range = processor_ ? processor_->randomNoteRange() : SequenceState::NoteRange {};
-            sequenceState_->randomize(kind, editRandom_, range);
+            const auto scaleView = processor_ != nullptr && sequenceState_->snapshot().pitchMode == 2
+                ? processor_->scaleRandomView() : swaraxt::SequenceState::ScaleRandomView {};
+            sequenceState_->randomize(kind, editRandom_, range, swaraxt::SequenceState::RandomizationType::type1,
+                                     sequenceState_->snapshot().pitchMode == 2 ? &scaleView : nullptr);
             refreshSequenceControls();
         }
     };
@@ -1321,6 +1353,11 @@ SeqPanel::SeqPanel()
             sequenceState_->setFreePitch(selectedStep_, units);
             return;
         }
+        if (snapshot.pitchMode == 2)
+        {
+            sequenceState_->setScaleDegree(selectedStep_, static_cast<int>(std::lround(note_.slider().getValue())));
+            return;
+        }
         const auto packed = snapshot.steps[static_cast<size_t>(selectedStep_)];
         writeSelectedStep(static_cast<uint8_t>((SequenceSnapshot::dataA(packed) & 0x80)
                               | (static_cast<int>(note_.slider().getValue()) & 0x7f)),
@@ -1384,6 +1421,20 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
     if (auto* midiOut = apvts.getParameter(swaraxt::IDs::seqMidiOut))
         midiOutAttachment_ = std::make_unique<juce::ButtonParameterAttachment>(
             *midiOut, midiOutButton_, nullptr);
+    tuningBox_.clear(juce::dontSendNotification);
+    for (int index = 0; index < processor.builtinTuningCount(); ++index)
+        tuningBox_.addItem(processor.builtinTuningName(index), index + 1);
+    tuningBox_.addItem("Imported", 100);
+    const int active = processor.activeBuiltinTuning();
+    tuningBox_.setSelectedId(active >= 0 ? active + 1 : 100, juce::dontSendNotification);
+    tuningBox_.onChange = [this] {
+        if (refreshingSequenceControls_ || processor_ == nullptr)
+            return;
+        const int id = tuningBox_.getSelectedId();
+        if (id >= 1 && id <= processor_->builtinTuningCount())
+            processor_->loadBuiltinTuning(id - 1);
+        refreshSequenceControls();
+    };
     visibilityChanged();
     sequenceState_->addListener(this);
     const char* knobIds[] = { swaraxt::IDs::seqTempo, swaraxt::IDs::seqSwing,
@@ -1538,7 +1589,9 @@ void SeqPanel::updateModeEmphasis()
     arpHeading_.setAlpha(arpAlpha);
     for (int index : { kDirection, kPattern, kOctaves }) selectors_[static_cast<size_t>(index)]->setAlpha(arpAlpha);
     sequenceHeading_.setAlpha(seqAlpha);
-    linearButton_.setAlpha(seqAlpha);
+    pitchModeBox_.setAlpha(seqAlpha);
+    tuningBox_.setAlpha(seqAlpha);
+    importTuning_.setAlpha(seqAlpha);
     for (auto* control : std::array<juce::Component*, 3>{ &note_, &event_, &velocity_ }) control->setAlpha(seqAlpha);
     for (auto& button : stepButtons_) button.setAlpha(seqAlpha);
     // Controller values and cycle timing also drive modulation in Step/Arp modes.
@@ -1568,6 +1621,8 @@ void SeqPanel::refreshSequenceControls()
         if (snapshot.pitchMode == 1)
             pitch = juce::String(snapshot.freePitch[static_cast<size_t>(i)]
                                  / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone), 2);
+        else if (snapshot.pitchMode == 2)
+            pitch = juce::String::formatted("%+03d", static_cast<int>(snapshot.scaleDegree[static_cast<size_t>(i)]));
         const auto event = (a & 0x80) == 0 ? "Rest" : ((b & 0x80) != 0 ? "Tie" : "Note");
         auto& button = stepButtons_[static_cast<size_t>(i)];
         button.setButtonText(juce::String(i + 1) + ":" + ((a & 0x80) == 0 ? "-" : pitch));
@@ -1579,7 +1634,13 @@ void SeqPanel::refreshSequenceControls()
     const auto selected = snapshot.steps[static_cast<size_t>(selectedStep_)];
     const uint8_t dataA = SequenceSnapshot::dataA(selected);
     const uint8_t dataB = SequenceSnapshot::dataB(selected);
-    linearButton_.setToggleState(snapshot.pitchMode == 1, juce::dontSendNotification);
+    pitchModeBox_.setSelectedId(snapshot.pitchMode + 1, juce::dontSendNotification);
+    if (processor_ != nullptr)
+    {
+        const int active = processor_->activeBuiltinTuning();
+        tuningBox_.setSelectedId(active >= 0 ? active + 1 : 100, juce::dontSendNotification);
+        tuningBox_.setTooltip("Active tuning: " + processor_->activeTuningName());
+    }
     if (snapshot.pitchMode == 1)
     {
         note_.setLabel("CV");
@@ -1601,6 +1662,26 @@ void SeqPanel::refreshSequenceControls()
             "New continuous CV, velocities, rests/ties and controller values; packed notes stay intact");
         midiOutButton_.setTooltip(
             "MIDI OUT is on, but LINEAR does not emit notes. External notes from the previous mode are released.");
+    }
+    else if (snapshot.pitchMode == 2)
+    {
+        note_.setLabel("DEGREE");
+        note_.slider().setRange(-swaraxt::SequenceState::kScaleDegreeLimit,
+                                swaraxt::SequenceState::kScaleDegreeLimit, 1.0);
+        note_.slider().textFromValueFunction = [](double value) {
+            return juce::String::formatted("%+03d", static_cast<int>(std::lround(value)));
+        };
+        note_.slider().setValue(snapshot.scaleDegree[static_cast<size_t>(selectedStep_)],
+                                juce::dontSendNotification);
+        const double hz = processor_ != nullptr
+            ? processor_->hzForActiveDegree(snapshot.scaleDegree[static_cast<size_t>(selectedStep_)])
+            : 0.0;
+        note_.slider().setTooltip("Scale degree. " + juce::String(hz, 2) + " Hz in the active tuning. Not a MIDI note.");
+        randomType_.setTooltip("Type 1: scale-degree randomization, velocities, rests/ties and controller values");
+        noteRange_.setTooltip("Degree range around step 1, measured in semitone-sized cents, then sampled as whole degrees.");
+        randomNotes_.setTooltip("Change scale degrees only; preserve events, velocities, values, packed notes and CV");
+        randomSequence_.setTooltip("New scale degrees, velocities, rests/ties and controller values; packed notes and CV stay intact");
+        midiOutButton_.setTooltip("MIDI OUT does not emit notes in SCALE. Notes already sent are released.");
     }
     else
     {
@@ -1664,9 +1745,9 @@ void SeqPanel::reflow()
     auto heading = area.removeFromTop(20);
     lockButton_.setBounds(heading.removeFromRight(58));
     heading.removeFromRight(4);
-    linearButton_.setBounds(heading.removeFromRight(68));
+    pitchModeBox_.setBounds(heading.removeFromRight(88).reduced(0, 1));
     heading.removeFromRight(4);
-    midiOutButton_.setBounds(heading.removeFromRight(78));
+    midiOutButton_.setBounds(heading.removeFromRight(72));
     sequenceHeading_.setBounds(heading);
     area.removeFromTop(gap);
     for (int row = 0; row < 2; ++row) {
@@ -1681,9 +1762,13 @@ void SeqPanel::reflow()
     layoutRow(area.removeFromTop(58), { &note_, &event_, &velocity_, &controller_ }, gap);
     area.removeFromTop(gap);
     auto range = area.removeFromTop(25);
-    randomType_.setBounds(range.removeFromLeft(76).withHeight(Layout::selectorHeight));
+    tuningBox_.setBounds(range.removeFromLeft(78).withHeight(Layout::selectorHeight));
+    range.removeFromLeft(2);
+    importTuning_.setBounds(range.removeFromLeft(36).withHeight(Layout::selectorHeight));
     range.removeFromLeft(gap);
-    rangeLabel_.setBounds(range.removeFromLeft(108));
+    randomType_.setBounds(range.removeFromLeft(64).withHeight(Layout::selectorHeight));
+    range.removeFromLeft(gap);
+    rangeLabel_.setBounds(range.removeFromLeft(72));
     noteRange_.setBounds(range);
     area.removeFromTop(gap);
     layoutRow(area.removeFromTop(actionHeight), { &randomNotes_, &randomVelocity_, &randomEvent_ }, gap);

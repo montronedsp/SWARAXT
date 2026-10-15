@@ -414,7 +414,8 @@ class SeqPanel : public juce::Component,
     {
         return selectors_[static_cast<size_t>(juce::jlimit(0, 5, index))]->combo();
     }
-    juce::TextButton& linearButtonForTests() noexcept { return linearButton_; }
+    juce::ComboBox& pitchModeBoxForTests() noexcept { return pitchModeBox_; }
+    juce::ComboBox& tuningBoxForTests() noexcept { return tuningBox_; }
     juce::TextButton& lockButtonForTests() noexcept { return lockButton_; }
     juce::Label& sequenceHeadingForTests() noexcept { return sequenceHeading_; }
     juce::String noteLabelForTests() const { return note_.labelText(); }
@@ -461,7 +462,10 @@ class SeqPanel : public juce::Component,
     std::unique_ptr<juce::ParameterAttachment> arpPatternAttachment_;
     juce::Label arpHeading_, sequenceHeading_;
     juce::TextButton lockButton_ { "LOCK" };
-    juce::TextButton linearButton_ { "LINEAR" };
+    juce::ComboBox pitchModeBox_;
+    juce::ComboBox tuningBox_;
+    juce::TextButton importTuning_ { "SWT" };
+    std::unique_ptr<juce::FileChooser> tuningChooser_;
     juce::TextButton midiOutButton_ { "MIDI OUT" };
     std::unique_ptr<juce::ButtonParameterAttachment> midiOutAttachment_;
     juce::TextButton randomNotes_ { "RANDOM NOTES" }, randomVelocity_ { "RANDOM VELOCITY" }, randomSequence_ { "RANDOM SEQ" };

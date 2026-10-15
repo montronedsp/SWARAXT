@@ -26,7 +26,11 @@ constexpr bool sequencerRouteEmitsMidiNotes(SequencerPitchRoute route) noexcept
 
 constexpr SequencerPitchRoute routeFromStoredPitchMode(uint8_t pitchMode) noexcept
 {
-    return pitchMode == 1 ? SequencerPitchRoute::linear : SequencerPitchRoute::legacy;
+    if (pitchMode == 1)
+        return SequencerPitchRoute::linear;
+    if (pitchMode == 2)
+        return SequencerPitchRoute::scale;
+    return SequencerPitchRoute::legacy;
 }
 
 }  // namespace swaraxt

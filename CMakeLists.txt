@@ -53,7 +53,29 @@ set(SWARAXT_HOST_SOURCES
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/storage.cc"
 )
 
+set(SWARAXT_GENERATED_TUNING_HEADER
+    "${CMAKE_BINARY_DIR}/generated/BuiltinTunings.h")
+add_custom_command(
+    OUTPUT "${SWARAXT_GENERATED_TUNING_HEADER}"
+    COMMAND ${CMAKE_COMMAND}
+        -DCONVERTER=$<TARGET_FILE:SwaraXtTuningConverter>
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}/Source/Tuning/builtin
+        -DOUTPUT=${SWARAXT_GENERATED_TUNING_HEADER}
+        -P ${CMAKE_SOURCE_DIR}/cmake/EmbedBuiltinTunings.cmake
+    DEPENDS SwaraXtTuningConverter
+        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/12-edo.scl
+        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/19-edo.scl
+        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/24-edo.scl
+        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/31-edo.scl
+        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/just-major.scl
+        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/tritave.scl
+        ${CMAKE_SOURCE_DIR}/cmake/EmbedBuiltinTunings.cmake
+    VERBATIM
+)
+add_custom_target(SwaraXtBuiltinTunings DEPENDS "${SWARAXT_GENERATED_TUNING_HEADER}")
+
 set(SWARAXT_ENGINE_SOURCES
+    "${CMAKE_SOURCE_DIR}/Source/Tuning/TuningTable.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Engine/PatchBridge.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Engine/SwaraXtEngine.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Engine/SampleRate/HostResampler.cpp"
@@ -129,6 +151,7 @@ function(swaraxt_configure_shruthi_target target)
             "${SWARAXT_SHRUTHI_ROOT}/shruthi"
             "${SWARAXT_SHRUTHI_ROOT}/midi"
             "${CMAKE_SOURCE_DIR}/Source"
+            "${CMAKE_BINARY_DIR}/generated"
     )
     target_compile_options(${target}
         PRIVATE
@@ -193,6 +216,7 @@ swaraxt_enable_warnings(SwaraXT)
 swaraxt_enable_warnings_as_errors(SwaraXT)
 swaraxt_configure_shruthi_target(SwaraXT)
 swaraxt_enable_avrlib_hd_voice(SwaraXT)
+add_dependencies(SwaraXT SwaraXtBuiltinTunings)
 
 # Offline Scala/KBM converter. C++17, not linked into the plugin.
 add_executable(SwaraXtTuningConverter

@@ -3,6 +3,7 @@
 
 #include "Engine/SwaraXtEngine.h"
 #include "Engine/Filter/ShruthiSvfSection2Control.h"
+#include "BuiltinTunings.h"
 
 #include <JuceHeader.h>
 #include <algorithm>
@@ -41,6 +42,7 @@ SwaraXtEngine::SwaraXtEngine()
 {
     patchBridge_.bind(part_);
     installSequencerMidiTap();
+    loadBuiltinTuning(0);
 }
 
 void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
@@ -158,6 +160,10 @@ void SwaraXtEngine::applyParameters()
             }
             part_.setSequencerFreeCv(sequence.pitchMode == 1,
                                      sequence.freePitch.data());
+            scaleRouteActive_ = sequence.pitchMode == 2;
+            const int tuningSlot = tuningSlotThisBlock_.load(std::memory_order_acquire);
+            part_.setSequencerScale(scaleRouteActive_, sequence.scaleDegree.data(),
+                                    &tuningSlots_[static_cast<size_t>(juce::jlimit(0, kTuningSlots - 1, tuningSlot))]);
             appliedSequenceRevision_ = revision;
         }
         part_.mutable_sequencer_settings()->arp_pattern = sequenceState_->arpPattern();
@@ -939,6 +945,7 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     if (numSamples <= 0)
         return;
 
+    latchPublishedTuning();
     midiOutput_ = midiOut;
     if (releaseSequencerMidi_)
     {
@@ -1189,6 +1196,123 @@ void SwaraXtEngine::flushSequencerMidi(juce::MidiBuffer& output, int numSamples)
     }
     scheduledMidiCount_ = kept;
     hostBlockOrigin_ = blockEnd;
+}
+
+void SwaraXtEngine::latchPublishedTuning() noexcept
+{
+    int slot = publishedTuning_.load(std::memory_order_acquire);
+    if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
+        slot = 0;
+    tuningSlotThisBlock_.store(slot, std::memory_order_release);
+    part_.setSequencerScale(scaleRouteActive_, nullptr,
+                            &tuningSlots_[static_cast<size_t>(slot)]);
+}
+
+int SwaraXtEngine::freeTuningSlot() const noexcept
+{
+    const int published = publishedTuning_.load(std::memory_order_acquire);
+    const int latched = tuningSlotThisBlock_.load(std::memory_order_acquire);
+    for (int slot = 0; slot < kTuningSlots; ++slot)
+        if (slot != published && slot != latched)
+            return slot;
+    return 0;
+}
+
+bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
+{
+    if (data == nullptr || size == 0)
+        return false;
+    tuning::TuningSnapshot snapshot;
+    tuning::ParseError error;
+    if (! tuning::readTuningTable(data, size, snapshot, error))
+        return false;
+    tuning::PublishedTuning decoded;
+    if (! decoded.fillFrom(snapshot))
+        return false;
+    const int slot = tuningSlots_[0].valid ? freeTuningSlot() : 0;
+    if (slot == tuningSlotThisBlock_.load(std::memory_order_acquire)
+        && tuningSlots_[static_cast<size_t>(slot)].valid
+        && slot == publishedTuning_.load(std::memory_order_acquire))
+        return false;
+    tuningSlots_[static_cast<size_t>(slot)] = decoded;
+    publishedTuning_.store(slot, std::memory_order_release);
+    tuningBytes_.assign(data, data + size);
+    builtinTuningIndex_ = -1;
+    return true;
+}
+
+bool SwaraXtEngine::loadBuiltinTuning(int index)
+{
+    struct Item { const char* name; const uint8_t* data; size_t size; };
+    const Item items[] = {
+        { "12-EDO", tuning::kBuiltin12Edo, tuning::kBuiltin12EdoSize },
+        { "19-EDO", tuning::kBuiltin19Edo, tuning::kBuiltin19EdoSize },
+        { "24-EDO", tuning::kBuiltin24Edo, tuning::kBuiltin24EdoSize },
+        { "31-EDO", tuning::kBuiltin31Edo, tuning::kBuiltin31EdoSize },
+        { "5-limit major", tuning::kBuiltinJustMajor, tuning::kBuiltinJustMajorSize },
+        { "tritave", tuning::kBuiltinTritave, tuning::kBuiltinTritaveSize }
+    };
+    if (index < 0 || index >= static_cast<int>(std::size(items)))
+        return false;
+    if (! loadTuningBytes(items[static_cast<size_t>(index)].data, items[static_cast<size_t>(index)].size))
+        return false;
+    builtinTuningIndex_ = index;
+    juce::ignoreUnused(items[static_cast<size_t>(index)].name);
+    return true;
+}
+
+int SwaraXtEngine::builtinTuningCount() const noexcept
+{
+    return 6;
+}
+
+const char* SwaraXtEngine::builtinTuningName(int index) const noexcept
+{
+    static const char* names[] = { "12-EDO", "19-EDO", "24-EDO", "31-EDO", "5-limit major", "tritave" };
+    if (index < 0 || index >= 6)
+        return "12-EDO";
+    return names[index];
+}
+
+juce::String SwaraXtEngine::activeTuningName() const
+{
+    const int slot = publishedTuning_.load(std::memory_order_acquire);
+    if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
+        return "12-EDO";
+    return juce::String(tuningSlots_[static_cast<size_t>(slot)].name);
+}
+
+void SwaraXtEngine::copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept
+{
+    if (midiDegree == nullptr || count <= 0)
+        return;
+    const int slot = publishedTuning_.load(std::memory_order_acquire);
+    const auto& tuning = tuningSlots_[static_cast<size_t>(juce::jlimit(0, kTuningSlots - 1, slot))];
+    const int limit = juce::jmin(count, tuning::kMidiNotes);
+    for (int note = 0; note < limit; ++note)
+        midiDegree[note] = tuning.valid ? tuning.midiDegree[note] : static_cast<int16_t>(note - 60);
+    for (int note = limit; note < count; ++note)
+        midiDegree[note] = -1;
+}
+
+double SwaraXtEngine::hzForActiveDegree(int degree) const noexcept
+{
+    const int slot = publishedTuning_.load(std::memory_order_acquire);
+    if (slot < 0 || slot >= kTuningSlots)
+        return 0.0;
+    return tuningSlots_[static_cast<size_t>(slot)].hzForDegree(degree);
+}
+
+SequenceState::ScaleRandomView SwaraXtEngine::scaleRandomView() const noexcept
+{
+    const int slot = publishedTuning_.load(std::memory_order_acquire);
+    const auto& tuning = tuningSlots_[static_cast<size_t>(juce::jlimit(0, kTuningSlots - 1, slot))];
+    SequenceState::ScaleRandomView view;
+    view.formalPeriod = tuning.formalPeriod;
+    view.periodCents = tuning.periodCents;
+    view.degreeCents = tuning.degreeCents;
+    view.degreeCount = tuning.degreeCount;
+    return view;
 }
 
 void SwaraXtEngine::clearSequencerMidiOutput() noexcept

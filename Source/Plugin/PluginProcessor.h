@@ -65,6 +65,15 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     int sequencePlaybackStep() const noexcept { return engine_.sequencePlaybackStep(); }
     bool sequenceLocked() const noexcept { return sequenceLocked_.load(std::memory_order_relaxed); }
     void setSequenceLocked(bool locked) noexcept { sequenceLocked_.store(locked, std::memory_order_relaxed); }
+    bool loadTuningBytes(const void* data, size_t size) { return engine_.loadTuningBytes(static_cast<const uint8_t*>(data), size); }
+    bool loadBuiltinTuning(int index) { return engine_.loadBuiltinTuning(index); }
+    int builtinTuningCount() const noexcept { return engine_.builtinTuningCount(); }
+    const char* builtinTuningName(int index) const noexcept { return engine_.builtinTuningName(index); }
+    int activeBuiltinTuning() const noexcept { return engine_.activeBuiltinTuning(); }
+    juce::String activeTuningName() const { return engine_.activeTuningName(); }
+    void copyTuningDegrees(int16_t* midiDegree, int count) const noexcept { engine_.copyActiveTuningDegrees(midiDegree, count); }
+    swaraxt::SequenceState::ScaleRandomView scaleRandomView() const noexcept { return engine_.scaleRandomView(); }
+    double hzForActiveDegree(int degree) const noexcept { return engine_.hzForActiveDegree(degree); }
 
     swaraxt::SequenceState::NoteRange randomNoteRange() const noexcept
     {

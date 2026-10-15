@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 
 namespace swaraxt {
@@ -27,11 +28,14 @@ struct SequenceSnapshot {
         0x7cb0, 0xdcb0, 0x5cbc, 0xdcbc,
         0x74b0, 0x5430, 0x74bc, 0x543c
     };
-    // 0 = legacy integer notes. 1 = free CV. Absent in older sessions.
+    // 0 = legacy integer notes. 1 = free CV. 2 = scale degrees.
     uint8_t pitchMode = 0;
     uint8_t freePitchReady = 0;
+    uint8_t scaleReady = 0;
     // Untransposed step pitch, 1/1024 semitone from MIDI 0. Unused while legacy.
     std::array<int32_t, kNumSteps> freePitch {};
+    // Signed scale degree. Independent of packed notes and free CV.
+    std::array<int16_t, kNumSteps> scaleDegree {};
 
     static constexpr uint16_t pack(uint8_t dataA, uint8_t dataB) noexcept
     {
@@ -75,6 +79,67 @@ class SequenceState {
         int upper = 12;
         static constexpr int extent = 48;
     };
+    struct ScaleRandomView {
+        int formalPeriod = 12;
+        double periodCents = 1200.0;
+        const double* degreeCents = nullptr;
+        int degreeCount = 0;
+    };
+    static constexpr int kScaleDegreeLimit = 512;
+
+    static double scaleViewCents(const ScaleRandomView& view, int degree) noexcept
+    {
+        const int period = view.formalPeriod > 0 ? view.formalPeriod : 1;
+        int periodIndex = 0;
+        int inside = degree;
+        if (inside >= 0)
+        {
+            periodIndex = inside / period;
+            inside %= period;
+        }
+        else
+        {
+            periodIndex = -(((-inside) + period - 1) / period);
+            inside = degree - periodIndex * period;
+        }
+        double cents = static_cast<double>(periodIndex) * view.periodCents;
+        if (inside > 0 && view.degreeCents != nullptr)
+        {
+            const int index = inside - 1;
+            if (index >= 0 && index < view.degreeCount)
+                cents += view.degreeCents[index];
+        }
+        return cents;
+    }
+
+    static int16_t randomScaleDegree(juce::Random& random, int16_t root, NoteRange range,
+                                    const ScaleRandomView* view) noexcept
+    {
+        std::array<int, 1025> offsets {};
+        int count = 0;
+        const bool tuned = view != nullptr && view->formalPeriod > 0 && view->periodCents > 0.0
+            && view->degreeCents != nullptr && view->degreeCount > 0;
+        if (tuned)
+        {
+            const double lo = static_cast<double>(range.lower) * 100.0;
+            const double hi = static_cast<double>(range.upper) * 100.0;
+            for (int offset = -kScaleDegreeLimit; offset <= kScaleDegreeLimit && count < static_cast<int>(offsets.size()); ++offset)
+            {
+                const double cents = scaleViewCents(*view, offset) - scaleViewCents(*view, 0);
+                if (cents + 1.0e-6 >= lo && cents - 1.0e-6 <= hi)
+                    offsets[static_cast<size_t>(count++)] = offset;
+            }
+        }
+        else
+        {
+            for (int offset = range.lower; offset <= range.upper && count < static_cast<int>(offsets.size()); ++offset)
+                offsets[static_cast<size_t>(count++)] = offset;
+        }
+        if (count <= 0)
+            return root;
+        const int chosen = root + offsets[static_cast<size_t>(random.nextInt(count))];
+        return static_cast<int16_t>(juce::jlimit(-kScaleDegreeLimit, kScaleDegreeLimit, chosen));
+    }
 
     // Uniform continuous CV in [root+lower, root+upper] semitones at 1/1024.
     // Inclusive endpoints; zero-width ranges return the clamped root.
@@ -110,18 +175,21 @@ class SequenceState {
     }
 
     void randomize(Randomize kind, juce::Random& random, NoteRange range,
-                   RandomizationType type = RandomizationType::type1)
+                   RandomizationType type = RandomizationType::type1,
+                   const ScaleRandomView* scaleView = nullptr)
     {
         juce::ignoreUnused(type); // The production domain contains Type 1 only.
         auto pattern = snapshot();
         range.lower = juce::jlimit(-NoteRange::extent, 0, range.lower);
         range.upper = juce::jlimit(0, NoteRange::extent, range.upper);
         const bool linear = pattern.pitchMode == 1;
+        const bool scaleMode = pattern.pitchMode == 2;
         // Freeze the root before any step write so mid-pass updates cannot drift.
         const int rootMidi = SequenceSnapshot::dataA(pattern.steps[0]) & 0x7f;
         const int32_t rootCv = (linear && pattern.freePitchReady != 0)
             ? pattern.freePitch[0]
             : FreeCvPitch::fromMidiNote(rootMidi);
+        const int16_t rootDegree = pattern.scaleDegree[0];
 
         // Legacy Type 1 keeps the original pentatonic offset table and RNG draws.
         constexpr std::array<int, 5> scale { 0, 2, 4, 7, 9 };
@@ -151,6 +219,11 @@ class SequenceState {
                     // Continuous CV only. Packed integer notes stay intact.
                     pattern.freePitch[index] = randomFreeCvInRange(random, rootCv, range);
                     pattern.freePitchReady = 1;
+                }
+                else if (scaleMode)
+                {
+                    pattern.scaleDegree[index] = randomScaleDegree(random, rootDegree, range, scaleView);
+                    pattern.scaleReady = 1;
                 }
                 else
                 {
@@ -198,10 +271,12 @@ class SequenceState {
         snapshot.arpPattern = arpPattern_.load(std::memory_order_relaxed);
         snapshot.pitchMode = pitchMode_.load(std::memory_order_relaxed);
         snapshot.freePitchReady = freePitchReady_.load(std::memory_order_relaxed);
+        snapshot.scaleReady = scaleReady_.load(std::memory_order_relaxed);
         for (size_t i = 0; i < steps_.size(); ++i)
         {
             snapshot.steps[i] = steps_[i].load(std::memory_order_relaxed);
             snapshot.freePitch[i] = freePitch_[i].load(std::memory_order_relaxed);
+            snapshot.scaleDegree[i] = scaleDegree_[i].load(std::memory_order_relaxed);
         }
 
         const uint32_t after = revision_.load(std::memory_order_acquire);
@@ -239,13 +314,19 @@ class SequenceState {
         arpPattern_.store(static_cast<uint8_t>(juce::jlimit(0, 15,
                                   static_cast<int>(snapshot.arpPattern))),
                           std::memory_order_relaxed);
-        pitchMode_.store(snapshot.pitchMode == 1 ? 1 : 0, std::memory_order_relaxed);
+        const uint8_t mode = snapshot.pitchMode == 1 || snapshot.pitchMode == 2
+            ? snapshot.pitchMode : 0;
+        pitchMode_.store(mode, std::memory_order_relaxed);
         freePitchReady_.store(snapshot.freePitchReady != 0 ? 1 : 0, std::memory_order_relaxed);
+        scaleReady_.store(snapshot.scaleReady != 0 ? 1 : 0, std::memory_order_relaxed);
         for (size_t i = 0; i < steps_.size(); ++i)
         {
             steps_[i].store(snapshot.steps[i], std::memory_order_relaxed);
             freePitch_[i].store(FreeCvPitch::clampUnits(snapshot.freePitch[i]),
                                 std::memory_order_relaxed);
+            const int degree = juce::jlimit(-kScaleDegreeLimit, kScaleDegreeLimit,
+                                            static_cast<int>(snapshot.scaleDegree[i]));
+            scaleDegree_[i].store(static_cast<int16_t>(degree), std::memory_order_relaxed);
         }
         endWrite();
         if (notify)
@@ -300,10 +381,23 @@ class SequenceState {
 
     // First entry into free CV copies the current integer notes. Later
     // toggles keep both the packed notes and the edited CV values.
-    void setPitchMode(uint8_t mode)
+    void setScaleDegree(int index, int degree)
+    {
+        if (! juce::isPositiveAndBelow(index, SequenceSnapshot::kNumSteps))
+            return;
+        auto pattern = snapshot();
+        pattern.scaleDegree[static_cast<size_t>(index)] = static_cast<int16_t>(
+            juce::jlimit(-kScaleDegreeLimit, kScaleDegreeLimit, degree));
+        pattern.scaleReady = 1;
+        store(pattern);
+    }
+
+    // midiDegree is optional and used only the first time SCALE is entered.
+    // Unmapped notes fall back to degree 0. Packed notes are not rewritten.
+    void setPitchMode(uint8_t mode, const int16_t* midiDegree = nullptr)
     {
         auto pattern = snapshot();
-        const uint8_t next = mode == 1 ? 1 : 0;
+        const uint8_t next = mode == 1 ? 1 : mode == 2 ? 2 : 0;
         if (next == 1 && pattern.freePitchReady == 0)
         {
             for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
@@ -312,6 +406,19 @@ class SequenceState {
                 pattern.freePitch[static_cast<size_t>(i)] = FreeCvPitch::fromMidiNote(note);
             }
             pattern.freePitchReady = 1;
+        }
+        if (next == 2 && pattern.scaleReady == 0)
+        {
+            for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
+            {
+                const int note = SequenceSnapshot::dataA(pattern.steps[static_cast<size_t>(i)]) & 0x7f;
+                int degree = 0;
+                if (midiDegree != nullptr && note < 128 && midiDegree[note] >= 0)
+                    degree = midiDegree[note];
+                pattern.scaleDegree[static_cast<size_t>(i)] = static_cast<int16_t>(
+                    juce::jlimit(-kScaleDegreeLimit, kScaleDegreeLimit, degree));
+            }
+            pattern.scaleReady = 1;
         }
         pattern.pitchMode = next;
         store(pattern);
@@ -330,6 +437,7 @@ class SequenceState {
         tree.setProperty("arpPattern", current.arpPattern, nullptr);
         tree.setProperty("pitchMode", current.pitchMode, nullptr);
         tree.setProperty("freePitchReady", current.freePitchReady, nullptr);
+        tree.setProperty("scaleReady", current.scaleReady, nullptr);
         for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
         {
             juce::ValueTree step("STEP");
@@ -337,6 +445,7 @@ class SequenceState {
             step.setProperty("dataA", SequenceSnapshot::dataA(current.steps[static_cast<size_t>(i)]), nullptr);
             step.setProperty("dataB", SequenceSnapshot::dataB(current.steps[static_cast<size_t>(i)]), nullptr);
             step.setProperty("cv", current.freePitch[static_cast<size_t>(i)], nullptr);
+            step.setProperty("degree", static_cast<int>(current.scaleDegree[static_cast<size_t>(i)]), nullptr);
             tree.addChild(step, -1, nullptr);
         }
         return tree;
@@ -356,10 +465,12 @@ class SequenceState {
             static_cast<int>(tree.getProperty("grooveTemplate", 0))));
         restored.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 15,
             static_cast<int>(tree.getProperty("arpPattern", 1))));
-        restored.pitchMode = static_cast<uint8_t>(
-            static_cast<int>(tree.getProperty("pitchMode", 0)) == 1 ? 1 : 0);
+        const int storedMode = static_cast<int>(tree.getProperty("pitchMode", 0));
+        restored.pitchMode = static_cast<uint8_t>(storedMode == 1 ? 1 : storedMode == 2 ? 2 : 0);
         restored.freePitchReady = static_cast<uint8_t>(
             static_cast<int>(tree.getProperty("freePitchReady", 0)) != 0 ? 1 : 0);
+        restored.scaleReady = static_cast<uint8_t>(
+            static_cast<int>(tree.getProperty("scaleReady", 0)) != 0 ? 1 : 0);
 
         for (int childIndex = 0; childIndex < tree.getNumChildren(); ++childIndex)
         {
@@ -379,6 +490,12 @@ class SequenceState {
                 const auto cv = static_cast<int>(child.getProperty("cv", 0));
                 restored.freePitch[static_cast<size_t>(index)] = FreeCvPitch::clampUnits(cv);
             }
+            if (child.hasProperty("degree"))
+            {
+                restored.scaleDegree[static_cast<size_t>(index)] = static_cast<int16_t>(
+                    juce::jlimit(-kScaleDegreeLimit, kScaleDegreeLimit,
+                                 static_cast<int>(child.getProperty("degree", 0))));
+            }
         }
         if (restored.pitchMode == 1 && restored.freePitchReady == 0)
         {
@@ -389,6 +506,8 @@ class SequenceState {
             }
             restored.freePitchReady = 1;
         }
+        if (restored.pitchMode == 2 && restored.scaleReady == 0)
+            restored.scaleReady = 1;
 
         store(restored, true);
         return true;
@@ -425,8 +544,10 @@ class SequenceState {
     std::atomic<uint8_t> arpPattern_ { 1 };
     std::atomic<uint8_t> pitchMode_ { 0 };
     std::atomic<uint8_t> freePitchReady_ { 0 };
+    std::atomic<uint8_t> scaleReady_ { 0 };
     std::array<std::atomic<uint16_t>, SequenceSnapshot::kNumSteps> steps_ {};
     std::array<std::atomic<int32_t>, SequenceSnapshot::kNumSteps> freePitch_ {};
+    std::array<std::atomic<int16_t>, SequenceSnapshot::kNumSteps> scaleDegree_ {};
     juce::ListenerList<Listener> listeners_;
 };
 

@@ -100,6 +100,7 @@ class Part {
   void SetPatternLength(uint8_t length);
   // Sequence-mode free CV only. Keyboard and arp notes keep Tune().
   void setSequencerFreeCv(bool active, const int32_t* units) noexcept;
+  void setSequencerScale(bool active, const int16_t* degrees, const void* tuning) noexcept;
 
   // Patch manipulation stuff.
   void SetParameter(uint8_t index, uint8_t offset, uint8_t value,
@@ -290,6 +291,10 @@ class Part {
   int8_t seq_transposition_ = 0;
   bool free_cv_active_ = false;
   int32_t free_cv_units_[16] {};
+  bool scale_active_ = false;
+  int16_t scale_degrees_[16] {};
+  const void* scale_tuning_ = nullptr;
+  void clockSequencerScale(uint8_t step_index);
   uint8_t gate_percent_ = 50;
 
   shruthi::Clock clock_;

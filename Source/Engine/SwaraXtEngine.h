@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace juce {
 class MidiBuffer;
@@ -21,6 +22,7 @@ class AudioBuffer;
 #include "Engine/ParameterCache.h"
 #include "Engine/PatchBridge.h"
 #include "Engine/SequencerMidiRoute.h"
+#include "Tuning/PublishedTuning.h"
 #include "Engine/SequenceState.h"
 #include "Engine/SampleRate/HostResampler.h"
 #include "Engine/SampleRate/InternalSampleQueue.h"
@@ -138,6 +140,16 @@ class SwaraXtEngine {
                  const HostTransportSnapshot& transport = HostTransportSnapshot {},
                  juce::MidiBuffer* midiOut = nullptr);
     void clearSequencerMidiOutput() noexcept;
+    bool loadTuningBytes(const uint8_t* data, size_t size);
+    bool loadBuiltinTuning(int index);
+    int builtinTuningCount() const noexcept;
+    const char* builtinTuningName(int index) const noexcept;
+    int activeBuiltinTuning() const noexcept { return builtinTuningIndex_; }
+    juce::String activeTuningName() const;
+    void copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept;
+    SequenceState::ScaleRandomView scaleRandomView() const noexcept;
+    double hzForActiveDegree(int degree) const noexcept;
+    const std::vector<uint8_t>& tuningBytesForState() const noexcept { return tuningBytes_; }
 
     SwaraXtFilter& filter() noexcept { return filter_; }
     const SwaraXtFilter& filter() const noexcept { return filter_; }
@@ -310,6 +322,15 @@ class SwaraXtEngine {
     std::array<ScheduledMidi, kMaxScheduledMidi> scheduledMidi_ {};
     int scheduledMidiCount_ = 0;
     juce::MidiBuffer* midiOutput_ = nullptr;
+    static constexpr int kTuningSlots = 3;
+    std::array<tuning::PublishedTuning, kTuningSlots> tuningSlots_ {};
+    std::atomic<int> publishedTuning_ { 0 };
+    std::atomic<int> tuningSlotThisBlock_ { 0 };
+    int builtinTuningIndex_ = 0;
+    bool scaleRouteActive_ = false;
+    std::vector<uint8_t> tuningBytes_;
+    void latchPublishedTuning() noexcept;
+    int freeTuningSlot() const noexcept;
     shruthi::Storage storage_;
     static_assert(std::atomic<unsigned>::is_always_lock_free);
     std::atomic<unsigned> sequencePlayback_ { 0 };
