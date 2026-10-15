@@ -161,7 +161,9 @@ void SwaraXtEngine::applyParameters()
             part_.setSequencerFreeCv(sequence.pitchMode == 1,
                                      sequence.freePitch.data());
             scaleRouteActive_ = sequence.pitchMode == 2;
-            const int tuningSlot = tuningSlotThisBlock_.load(std::memory_order_acquire);
+            // Pair degree updates with the latest published table. process()
+            // latches that index for the remainder of the host block.
+            const int tuningSlot = publishedTuning_.load(std::memory_order_acquire);
             part_.setSequencerScale(scaleRouteActive_, sequence.scaleDegree.data(),
                                     &tuningSlots_[static_cast<size_t>(juce::jlimit(0, kTuningSlots - 1, tuningSlot))]);
             appliedSequenceRevision_ = revision;
@@ -1198,12 +1200,63 @@ void SwaraXtEngine::flushSequencerMidi(juce::MidiBuffer& output, int numSamples)
     hostBlockOrigin_ = blockEnd;
 }
 
+void SwaraXtEngine::beginTuningSlotWrite(int slot) noexcept
+{
+    if (slot < 0 || slot >= kTuningSlots)
+        return;
+    // Odd sequence value advertises an in-progress mutation of this slot.
+    tuningSlotSequence_[static_cast<size_t>(slot)].fetch_add(1u, std::memory_order_release);
+}
+
+void SwaraXtEngine::endTuningSlotWrite(int slot) noexcept
+{
+    if (slot < 0 || slot >= kTuningSlots)
+        return;
+    tuningSlotSequence_[static_cast<size_t>(slot)].fetch_add(1u, std::memory_order_release);
+}
+
+bool SwaraXtEngine::waitTuningSlotStable(int slot) const noexcept
+{
+    if (slot < 0 || slot >= kTuningSlots)
+        return false;
+    for (int attempt = 0; attempt < 64; ++attempt)
+    {
+        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
+        if ((before & 1u) != 0u)
+            continue;
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (! tuningSlots_[static_cast<size_t>(slot)].valid)
+            return false;
+        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
+        if (before == after && (after & 1u) == 0u)
+            return true;
+    }
+    return tuningSlots_[static_cast<size_t>(slot)].valid;
+}
+
 void SwaraXtEngine::latchPublishedTuning() noexcept
 {
-    int slot = publishedTuning_.load(std::memory_order_acquire);
-    if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
-        slot = 0;
-    tuningSlotThisBlock_.store(slot, std::memory_order_release);
+    // Claim the published index before the writer can recycle it. The claim is
+    // stored to tuningSlotThisBlock_ with release so freeTuningSlot()'s acquire
+    // observes ownership. If publication advances during the claim, re-sample.
+    int slot = 0;
+    for (int attempt = 0; attempt < 4; ++attempt)
+    {
+        slot = publishedTuning_.load(std::memory_order_acquire);
+        if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
+            slot = 0;
+        tuningSlotThisBlock_.store(slot, std::memory_order_release);
+        const int latest = publishedTuning_.load(std::memory_order_acquire);
+        if (latest == slot)
+            break;
+        if (latest >= 0 && latest < kTuningSlots && tuningSlots_[static_cast<size_t>(latest)].valid)
+        {
+            tuningSlotThisBlock_.store(latest, std::memory_order_release);
+            slot = latest;
+            break;
+        }
+    }
+    (void) waitTuningSlotStable(slot);
     part_.setSequencerScale(scaleRouteActive_, nullptr,
                             &tuningSlots_[static_cast<size_t>(slot)]);
 }
@@ -1215,7 +1268,8 @@ int SwaraXtEngine::freeTuningSlot() const noexcept
     for (int slot = 0; slot < kTuningSlots; ++slot)
         if (slot != published && slot != latched)
             return slot;
-    return 0;
+    // Three slots with at most two excluded always leave one free index.
+    return -1;
 }
 
 bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
@@ -1229,15 +1283,46 @@ bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
     tuning::PublishedTuning decoded;
     if (! decoded.fillFrom(snapshot))
         return false;
-    const int slot = tuningSlots_[0].valid ? freeTuningSlot() : 0;
-    if (slot == tuningSlotThisBlock_.load(std::memory_order_acquire)
-        && tuningSlots_[static_cast<size_t>(slot)].valid
-        && slot == publishedTuning_.load(std::memory_order_acquire))
+
+    // Single-writer gate: GUI / preset / import share the message thread, but
+    // nested callbacks must not select the same free slot concurrently.
+    if (tuningWriteBusy_.exchange(true, std::memory_order_acq_rel))
         return false;
+
+    const bool bootstrapping = ! tuningSlots_[0].valid;
+    const int published = publishedTuning_.load(std::memory_order_acquire);
+    const int latched = tuningSlotThisBlock_.load(std::memory_order_acquire);
+    int slot = -1;
+    if (bootstrapping)
+    {
+        slot = 0;
+    }
+    else if (published != latched && published >= 0 && published < kTuningSlots)
+    {
+        // Audio still holds an older latched slot. Replace the pending published
+        // table in place so the about-to-be-claimed index cannot be recycled.
+        slot = published;
+    }
+    else
+    {
+        // Reader has caught up (latched == published). Use the spare third slot.
+        slot = freeTuningSlot();
+    }
+
+    if (slot < 0 || slot >= kTuningSlots
+        || (! bootstrapping && slot == latched))
+    {
+        tuningWriteBusy_.store(false, std::memory_order_release);
+        return false;
+    }
+
+    beginTuningSlotWrite(slot);
     tuningSlots_[static_cast<size_t>(slot)] = decoded;
+    endTuningSlotWrite(slot);
     publishedTuning_.store(slot, std::memory_order_release);
     tuningBytes_.assign(data, data + size);
     builtinTuningIndex_ = -1;
+    tuningWriteBusy_.store(false, std::memory_order_release);
     return true;
 }
 
@@ -1276,42 +1361,88 @@ const char* SwaraXtEngine::builtinTuningName(int index) const noexcept
 
 juce::String SwaraXtEngine::activeTuningName() const
 {
-    const int slot = publishedTuning_.load(std::memory_order_acquire);
-    if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
-        return "12-EDO";
-    return juce::String(tuningSlots_[static_cast<size_t>(slot)].name);
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        const int slot = publishedTuning_.load(std::memory_order_acquire);
+        if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
+            return "12-EDO";
+        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
+        if ((before & 1u) != 0u)
+            continue;
+        const juce::String name(tuningSlots_[static_cast<size_t>(slot)].name);
+        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
+        if (before == after && (after & 1u) == 0u)
+            return name.isNotEmpty() ? name : juce::String("12-EDO");
+    }
+    return "12-EDO";
 }
 
 void SwaraXtEngine::copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept
 {
     if (midiDegree == nullptr || count <= 0)
         return;
-    const int slot = publishedTuning_.load(std::memory_order_acquire);
-    const auto& tuning = tuningSlots_[static_cast<size_t>(juce::jlimit(0, kTuningSlots - 1, slot))];
-    const int limit = juce::jmin(count, tuning::kMidiNotes);
-    for (int note = 0; note < limit; ++note)
-        midiDegree[note] = tuning.valid ? tuning.midiDegree[note] : static_cast<int16_t>(note - 60);
-    for (int note = limit; note < count; ++note)
-        midiDegree[note] = -1;
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        const int slot = publishedTuning_.load(std::memory_order_acquire);
+        const int safe = juce::jlimit(0, kTuningSlots - 1, slot);
+        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
+        if ((before & 1u) != 0u)
+            continue;
+        const auto& tuning = tuningSlots_[static_cast<size_t>(safe)];
+        const int limit = juce::jmin(count, tuning::kMidiNotes);
+        for (int note = 0; note < limit; ++note)
+            midiDegree[note] = tuning.valid ? tuning.midiDegree[note] : static_cast<int16_t>(note - 60);
+        for (int note = limit; note < count; ++note)
+            midiDegree[note] = -1;
+        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
+        if (before == after && (after & 1u) == 0u)
+            return;
+    }
+    for (int note = 0; note < count; ++note)
+        midiDegree[note] = note < tuning::kMidiNotes ? static_cast<int16_t>(note - 60) : static_cast<int16_t>(-1);
 }
 
 double SwaraXtEngine::hzForActiveDegree(int degree) const noexcept
 {
-    const int slot = publishedTuning_.load(std::memory_order_acquire);
-    if (slot < 0 || slot >= kTuningSlots)
-        return 0.0;
-    return tuningSlots_[static_cast<size_t>(slot)].hzForDegree(degree);
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        const int slot = publishedTuning_.load(std::memory_order_acquire);
+        if (slot < 0 || slot >= kTuningSlots)
+            return 0.0;
+        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
+        if ((before & 1u) != 0u)
+            continue;
+        const double hz = tuningSlots_[static_cast<size_t>(slot)].hzForDegree(degree);
+        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
+        if (before == after && (after & 1u) == 0u)
+            return hz;
+    }
+    return 0.0;
 }
 
 SequenceState::ScaleRandomView SwaraXtEngine::scaleRandomView() const noexcept
 {
-    const int slot = publishedTuning_.load(std::memory_order_acquire);
-    const auto& tuning = tuningSlots_[static_cast<size_t>(juce::jlimit(0, kTuningSlots - 1, slot))];
     SequenceState::ScaleRandomView view;
-    view.formalPeriod = tuning.formalPeriod;
-    view.periodCents = tuning.periodCents;
-    view.degreeCents = tuning.degreeCents;
-    view.degreeCount = tuning.degreeCount;
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        const int slot = publishedTuning_.load(std::memory_order_acquire);
+        const int safe = juce::jlimit(0, kTuningSlots - 1, slot);
+        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
+        if ((before & 1u) != 0u)
+            continue;
+        const auto& tuning = tuningSlots_[static_cast<size_t>(safe)];
+        view.formalPeriod = tuning.formalPeriod;
+        view.periodCents = tuning.periodCents;
+        view.degreeCents = tuning.degreeCents;
+        view.degreeCount = tuning.degreeCount;
+        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
+        if (before == after && (after & 1u) == 0u)
+            return view;
+    }
+    view.formalPeriod = 12;
+    view.periodCents = 1200.0;
+    view.degreeCents = nullptr;
+    view.degreeCount = 0;
     return view;
 }
 

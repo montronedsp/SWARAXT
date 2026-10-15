@@ -615,8 +615,12 @@ void SwaraXtAudioProcessor::writeStateInformation(juce::MemoryBlock& destData)
         state.removeChild(existing, nullptr);
     state.addChild(sequenceState_.toValueTree(), -1, nullptr);
     if (! engine_.tuningBytesForState().empty())
-        state.setProperty("tuningTable", juce::Base64::toBase64(engine_.tuningBytesForState().data(),
-                                                                engine_.tuningBytesForState().size()), nullptr);
+    {
+        // MemoryBlock's size-prefixed alphabet must match fromBase64Encoding on restore.
+        const juce::MemoryBlock tuningBlock(engine_.tuningBytesForState().data(),
+                                            engine_.tuningBytesForState().size());
+        state.setProperty("tuningTable", tuningBlock.toBase64Encoding(), nullptr);
+    }
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
   #endif

@@ -324,13 +324,19 @@ class SwaraXtEngine {
     juce::MidiBuffer* midiOutput_ = nullptr;
     static constexpr int kTuningSlots = 3;
     std::array<tuning::PublishedTuning, kTuningSlots> tuningSlots_ {};
+    // Even sequence = stable slot contents; odd = writer in progress.
+    std::array<std::atomic<uint32_t>, kTuningSlots> tuningSlotSequence_ {};
     std::atomic<int> publishedTuning_ { 0 };
     std::atomic<int> tuningSlotThisBlock_ { 0 };
+    std::atomic<bool> tuningWriteBusy_ { false };
     int builtinTuningIndex_ = 0;
     bool scaleRouteActive_ = false;
     std::vector<uint8_t> tuningBytes_;
     void latchPublishedTuning() noexcept;
     int freeTuningSlot() const noexcept;
+    void beginTuningSlotWrite(int slot) noexcept;
+    void endTuningSlotWrite(int slot) noexcept;
+    bool waitTuningSlotStable(int slot) const noexcept;
     shruthi::Storage storage_;
     static_assert(std::atomic<unsigned>::is_always_lock_free);
     std::atomic<unsigned> sequencePlayback_ { 0 };
