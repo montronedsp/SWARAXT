@@ -103,6 +103,9 @@ void testPolicy()
            "quantized CV is allowed by policy for Phase C");
     expect(swaraxt::routeFromStoredPitchMode(0) == swaraxt::SequencerPitchRoute::legacy, "mode 0 is legacy");
     expect(swaraxt::routeFromStoredPitchMode(1) == swaraxt::SequencerPitchRoute::linear, "mode 1 is linear");
+    expect(swaraxt::routeFromStoredPitchMode(2) == swaraxt::SequencerPitchRoute::scale, "mode 2 is scale");
+    expect(! swaraxt::sequencerRouteEmitsMidiNotes(swaraxt::routeFromStoredPitchMode(2)),
+           "stored SCALE mode does not emit MIDI");
 }
 
 void testMidiOutOffKeepsInputAudioAndEmitsNothing()
@@ -195,6 +198,33 @@ void testLegacyEmitsAndLinearReleases()
     }
     expect(linearOns == 0, "LINEAR emits no new MIDI notes");
     expect(sawOff || offs.size() >= ons.size(), "leaving LEGACY does not leave an open note without a note off");
+
+    SwaraXtAudioProcessor scaleProcessor;
+    scaleProcessor.prepareToPlay(48000.0, 256);
+    armLegacySequence(scaleProcessor);
+    setBool(scaleProcessor, swaraxt::IDs::seqMidiOut, true);
+    juce::AudioBuffer<float> scaleBuffer(2, 256);
+    juce::MidiBuffer prime;
+    prime.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+    for (int block = 0; block < 8; ++block)
+        scaleProcessor.processBlock(scaleBuffer, prime);
+    scaleProcessor.sequenceState().setPitchMode(2);
+    int scaleOns = 0;
+    int scaleOffs = 0;
+    for (int block = 0; block < 6; ++block)
+    {
+        juce::MidiBuffer midi;
+        scaleProcessor.processBlock(scaleBuffer, midi);
+        for (const auto& note : notesIn(midi))
+        {
+            if (note.noteOn)
+                ++scaleOns;
+            else
+                ++scaleOffs;
+        }
+    }
+    expect(scaleOns == 0, "SCALE emits no new MIDI notes");
+    expect(scaleOffs > 0, "entering SCALE releases notes already sent");
 }
 
 void testHostSyncTiming()

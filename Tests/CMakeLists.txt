@@ -350,6 +350,7 @@ function(swaraxt_add_plugin_console_test target)
     swaraxt_enable_warnings(${target})
     swaraxt_configure_shruthi_target(${target})
     swaraxt_enable_avrlib_hd_voice(${target})
+    add_dependencies(${target} SwaraXtBuiltinTunings)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
 
@@ -427,6 +428,7 @@ swaraxt_add_plugin_console_test(SwaraXTSequencerTests Sequencer/SequencerTestsMa
 target_compile_definitions(SwaraXTSequencerTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_add_plugin_console_test(SwaraXTSequencePackExactTests Sequencer/SequencePackExactTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTSequencerMidiTests Sequencer/SequencerMidiTestsMain.cpp)
+swaraxt_add_plugin_console_test(SwaraXTScaleSequencerTests Sequencer/ScaleSequencerTestsMain.cpp)
 
 swaraxt_add_plugin_console_test(SwaraXTCorrectnessTests Correctness/CorrectnessTestsMain.cpp)
 target_compile_definitions(SwaraXTCorrectnessTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)

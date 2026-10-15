@@ -879,21 +879,21 @@ void testLinearGuiVerification()
         editor.resized();
         juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
         seq.reflow();
-        seq.linearButtonForTests().setToggleState(false, juce::sendNotificationSync);
+        seq.pitchModeBoxForTests().setSelectedId(1, juce::sendNotificationSync);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
-        expect(processor.sequenceState().snapshot().pitchMode == 0, "LINEAR button clears pitchMode");
-        expect(seq.noteLabelForTests() == "NOTE", "NOTE label while LINEAR is off");
-        expect(seq.linearButtonForTests().getToggleState() == false, "LINEAR OFF visual state");
+        expect(processor.sequenceState().snapshot().pitchMode == 0, "LEGACY selection clears pitchMode");
+        expect(seq.noteLabelForTests() == "NOTE", "NOTE label while LEGACY is selected");
+        expect(seq.pitchModeBoxForTests().getSelectedId() == 1, "LEGACY visual state");
 
         const auto heading = seq.sequenceHeadingForTests().getBounds();
-        const auto linear = seq.linearButtonForTests().getBounds();
+        const auto pitch = seq.pitchModeBoxForTests().getBounds();
         const auto lock = seq.lockButtonForTests().getBounds();
-        expect(heading.getRight() <= linear.getX() + 2,
-               "LINEAR sits to the right of SEQUENCER heading");
-        expect(linear.getRight() <= lock.getX() + 2,
-               "LINEAR sits to the left of LOCK");
-        expect(std::abs(linear.getCentreY() - lock.getCentreY()) <= 2,
-               "LINEAR and LOCK share the heading row");
+        expect(heading.getRight() <= pitch.getX() + 2,
+               "pitch mode sits to the right of SEQUENCER heading");
+        expect(pitch.getRight() <= lock.getX() + 2,
+               "pitch mode sits to the left of LOCK");
+        expect(std::abs(pitch.getCentreY() - lock.getCentreY()) <= 2,
+               "pitch mode and LOCK share the heading row");
         expect(controlsWithinParent(seq), "SeqPanel children stay inside bounds");
         for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
         {
@@ -906,11 +906,11 @@ void testLinearGuiVerification()
                    juce::String("linear-off-") + sizeNames[sizeIndex] + ".png")),
                "LINEAR OFF screenshot written");
 
-        seq.linearButtonForTests().setToggleState(true, juce::sendNotificationSync);
+        seq.pitchModeBoxForTests().setSelectedId(2, juce::sendNotificationSync);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
-        expect(processor.sequenceState().snapshot().pitchMode == 1, "LINEAR button sets pitchMode");
+        expect(processor.sequenceState().snapshot().pitchMode == 1, "LINEAR selection sets pitchMode");
         expect(seq.noteLabelForTests() == "CV", "NOTE changes to CV when LINEAR is active");
-        expect(seq.linearButtonForTests().getToggleState() == true, "LINEAR ON visual state");
+        expect(seq.pitchModeBoxForTests().getSelectedId() == 2, "LINEAR visual state");
         const auto cvText = seq.noteSliderForTests().getTextFromValue(
             seq.noteSliderForTests().getValue());
         expect(cvText.contains("."), "fractional CV text shows a decimal");
@@ -923,13 +923,13 @@ void testLinearGuiVerification()
 
         const int32_t heldNote = processor.sequenceState().snapshot().steps[0];
         const int32_t heldCv = processor.sequenceState().snapshot().freePitch[0];
-        seq.linearButtonForTests().setToggleState(false, juce::sendNotificationSync);
+        seq.pitchModeBoxForTests().setSelectedId(1, juce::sendNotificationSync);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
         expect(processor.sequenceState().snapshot().steps[0] == heldNote,
                "mode switch preserves legacy packed notes");
         expect(processor.sequenceState().snapshot().freePitch[0] == heldCv,
                "mode switch preserves CV values");
-        seq.linearButtonForTests().setToggleState(true, juce::sendNotificationSync);
+        seq.pitchModeBoxForTests().setSelectedId(2, juce::sendNotificationSync);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
         expect(processor.sequenceState().snapshot().freePitch[0] == heldCv,
                "re-enabling LINEAR restores the same CV");
@@ -946,7 +946,7 @@ void testLinearGuiVerification()
         hidpi.resized();
         juce::MessageManager::getInstance()->runDispatchLoopUntil(40);
         auto& hidpiSeq = hidpi.mainPanelForTests().sequencerForTests();
-        hidpiSeq.linearButtonForTests().setToggleState(true, juce::sendNotificationSync);
+        hidpiSeq.pitchModeBoxForTests().setSelectedId(2, juce::sendNotificationSync);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
         expect(hidpiSeq.noteLabelForTests() == "CV", "HiDPI LINEAR ON shows CV");
         expect(controlsWithinParent(hidpiSeq), "HiDPI SeqPanel children inside bounds");
@@ -971,8 +971,8 @@ void testLinearGuiVerification()
     restoredEditor.resized();
     juce::MessageManager::getInstance()->runDispatchLoopUntil(40);
     auto& restoredSeq = restoredEditor.mainPanelForTests().sequencerForTests();
-    expect(restoredSeq.linearButtonForTests().getToggleState() == true,
-           "reopened editor shows LINEAR ON");
+    expect(restoredSeq.pitchModeBoxForTests().getSelectedId() == 2,
+           "reopened editor shows LINEAR");
     expect(restoredSeq.noteLabelForTests() == "CV", "reopened editor shows CV label");
     const auto restoreImage =
         restoredEditor.createComponentSnapshot(restoredEditor.getLocalBounds());
