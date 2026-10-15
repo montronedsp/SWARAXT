@@ -684,7 +684,6 @@ void Part::ClockSequencer() {
       seq_transposition_ = transposition;
       int8_t note = step.note() + transposition;
       while (note < 0) note += 12;
-      while (note > 127)  note -= 12;
       if (!step.legato()) {
         StopSequencerArpeggiatorNotes();
         InternalNoteOn(note, step.velocity());
