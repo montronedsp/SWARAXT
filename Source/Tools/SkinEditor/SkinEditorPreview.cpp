@@ -18,13 +18,14 @@ void PreviewPanel::paint(juce::Graphics& g)
     const auto bounds = getLocalBounds().toFloat();
     g.fillAll(palette_.editorBackground);
 
-    auto module = bounds.reduced(18.0f).withTrimmedBottom(bounds.getHeight() * 0.34f);
+    auto moduleBounds = bounds.reduced(18.0f)
+                            .withTrimmedBottom(bounds.getHeight() * 0.34f);
     g.setColour(palette_.panelBackground);
-    g.fillRoundedRectangle(module, 8.0f);
+    g.fillRoundedRectangle(moduleBounds, 8.0f);
     g.setColour(palette_.outline.withAlpha(0.55f));
-    g.drawRoundedRectangle(module, 8.0f, 1.2f);
+    g.drawRoundedRectangle(moduleBounds, 8.0f, 1.2f);
 
-    auto header = module.removeFromTop(28.0f);
+    auto header = moduleBounds.removeFromTop(28.0f);
     g.setColour(palette_.moduleHeaderBackground);
     g.fillRoundedRectangle(header.getX(), header.getY(), header.getWidth(), header.getHeight() + 4.0f, 8.0f);
     g.setColour(palette_.moduleHeaderText);
@@ -32,9 +33,9 @@ void PreviewPanel::paint(juce::Graphics& g)
     g.drawText("FILTER", header.reduced(10.0f, 0.0f), juce::Justification::centredLeft);
 
     g.setColour(palette_.divider);
-    g.fillRect(module.getX() + 10.0f, module.getY() + 2.0f, module.getWidth() - 20.0f, 1.0f);
+    g.fillRect(moduleBounds.getX() + 10.0f, moduleBounds.getY() + 2.0f, moduleBounds.getWidth() - 20.0f, 1.0f);
 
-    auto body = module.reduced(14.0f, 12.0f);
+    auto body = moduleBounds.reduced(14.0f, 12.0f);
     g.setColour(palette_.primaryText);
     g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
     g.drawText("Cutoff", body.removeFromTop(20.0f), juce::Justification::centredLeft);
