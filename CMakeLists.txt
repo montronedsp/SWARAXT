@@ -194,6 +194,19 @@ swaraxt_enable_warnings_as_errors(SwaraXT)
 swaraxt_configure_shruthi_target(SwaraXT)
 swaraxt_enable_avrlib_hd_voice(SwaraXT)
 
+# Offline Scala/KBM converter. C++17, not linked into the plugin.
+add_executable(SwaraXtTuningConverter
+    Source/Tools/TuningConverter/TuningConverterMain.cpp
+    Source/Tuning/TuningTable.cpp
+)
+target_include_directories(SwaraXtTuningConverter PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+target_compile_features(SwaraXtTuningConverter PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(SwaraXtTuningConverter PRIVATE /W4 /permissive- /WX)
+else()
+    target_compile_options(SwaraXtTuningConverter PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 option(SWARA_BUILD_SKIN_EDITOR "Build the standalone SWARA XT Skin Editor" ON)
 if(SWARA_BUILD_SKIN_EDITOR)
     juce_add_gui_app(SwaraXtSkinEditor

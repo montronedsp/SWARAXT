@@ -413,6 +413,16 @@ swaraxt_add_plugin_console_test(SwaraXTShruthiFactoryPresetTests Presets/Shruthi
 swaraxt_add_plugin_console_test(SwaraXTFilterPresetAuthorityTests Architecture/FilterPresetAuthorityTests.cpp)
 target_compile_definitions(SwaraXTFilterPresetAuthorityTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_add_plugin_console_test(SwaraXTPresetStateRestoreTests Presets/PresetStateRestoreTestsMain.cpp)
+add_executable(SwaraXTTuningTableTests Tuning/TuningTableTestsMain.cpp
+    "${CMAKE_SOURCE_DIR}/Source/Tuning/TuningTable.cpp")
+target_include_directories(SwaraXTTuningTableTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+if(MSVC)
+    target_compile_options(SwaraXTTuningTableTests PRIVATE /W4 /permissive- /WX)
+else()
+    target_compile_options(SwaraXTTuningTableTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME SwaraXTTuningTableTests COMMAND SwaraXTTuningTableTests)
+
 swaraxt_add_plugin_console_test(SwaraXTSequencerTests Sequencer/SequencerTestsMain.cpp)
 target_compile_definitions(SwaraXTSequencerTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_add_plugin_console_test(SwaraXTSequencePackExactTests Sequencer/SequencePackExactTestsMain.cpp)
