@@ -153,6 +153,8 @@ void SwaraXtEngine::applyParameters()
                 settings->steps[i].set_raw(SequenceSnapshot::dataA(packed),
                                            SequenceSnapshot::dataB(packed));
             }
+            part_.setSequencerFreeCv(sequence.pitchMode == 1,
+                                     sequence.freePitch.data());
             appliedSequenceRevision_ = revision;
         }
         part_.mutable_sequencer_settings()->arp_pattern = sequenceState_->arpPattern();

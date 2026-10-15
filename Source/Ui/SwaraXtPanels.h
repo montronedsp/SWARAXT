@@ -450,6 +450,7 @@ class SeqPanel : public juce::Component,
     std::unique_ptr<juce::ParameterAttachment> arpPatternAttachment_;
     juce::Label arpHeading_, sequenceHeading_;
     juce::TextButton lockButton_ { "LOCK" };
+    juce::TextButton linearButton_ { "LINEAR" };
     juce::TextButton randomNotes_ { "RANDOM NOTES" }, randomVelocity_ { "RANDOM VELOCITY" }, randomSequence_ { "RANDOM SEQ" };
     juce::TextButton randomEvent_ { "RANDOM EVENT" }, randomValue_ { "RANDOM VALUE" };
     juce::ComboBox randomType_;

@@ -22,6 +22,8 @@
 
 #include <string.h>
 
+#include "Engine/FreeCvPitch.h"
+
 #include "avrlib/op.h"
 #include "avrlib/random.h"
 #include "avrlib/resources_manager.h"
@@ -677,6 +679,9 @@ void Part::ClockSequencer() {
       sequencer_settings_.steps[(n & 0x7) + 8].controller() << 4);
 
   if (sequencer_settings_.mode() == SEQUENCER_MODE_SEQ) {
+    if (free_cv_active_) {
+      clockSequencerFreeCv(n);
+    } else {
     SequenceStep& step = sequencer_settings_.steps[n];
     if (step.gate()) {
       int8_t transposition = pressed_keys_.size() ?
@@ -696,6 +701,7 @@ void Part::ClockSequencer() {
       generated_notes_.NoteOn(note, step.velocity());
       arp_seq_gate_length_counter_ =
           static_cast<uint16_t>((step_duration() * gate_percent_ + 99) / 100);
+    }
     }
   }
 }
@@ -1016,6 +1022,72 @@ void Part::InternalNoteOn(uint8_t note, uint8_t velocity) {
       voice_.set_bass_note(bass_note != after.note ? Tune(bass_note) : 0);
     }
   }
+}
+
+void Part::InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitch) {
+  midi_dispatcher_->OnInternalNoteOn(note, velocity);
+  if (pitch == 0)
+    pitch = 128;
+
+  if (system_settings_.midi_out_mode >= MIDI_OUT_1_0) {
+    poly_allocator_.set_size(system_settings_.midi_out_mode - MIDI_OUT_1_0 + 1);
+    if (poly_allocator_.NoteOn(note) == 0) {
+      voice_.NoteOn(pitch, velocity, 0, true);
+      voice_.set_bass_note(0);
+    } else {
+      midi_dispatcher_->ForwardNoteOn(midi_dispatcher_->channel(), note, velocity);
+    }
+  } else {
+    const NoteEntry& before = mono_allocator_.most_recent_note();
+    const bool already = mono_allocator_.size() > 0 && before.note == note;
+    mono_allocator_.NoteOn(note, velocity);
+    const NoteEntry& after = mono_allocator_.most_recent_note();
+    if (before.note != after.note || already) {
+      bool legato = mono_allocator_.size() > 1;
+      voice_.NoteOn(
+          pitch,
+          after.velocity,
+          !system_settings_.legato || legato ? system_settings_.portamento : 0,
+          !already && (!system_settings_.legato || !legato));
+      uint8_t bass_note = mono_allocator_.least_recent_note().note;
+      voice_.set_bass_note(bass_note != after.note ? Tune(bass_note) : 0);
+    }
+  }
+}
+
+void Part::setSequencerFreeCv(bool active, const int32_t* units) noexcept {
+  free_cv_active_ = active;
+  if (units == nullptr)
+    return;
+  for (int i = 0; i < 16; ++i)
+    free_cv_units_[i] = units[i];
+}
+
+void Part::clockSequencerFreeCv(uint8_t step_index) {
+  SequenceStep& step = sequencer_settings_.steps[step_index];
+  if (!step.gate())
+    return;
+  int8_t transposition = pressed_keys_.size() ?
+      pressed_keys_.most_recent_note().note - 60 : seq_transposition_;
+  seq_transposition_ = transposition;
+  int8_t note = step.note() + transposition;
+  while (note < 0) note += 12;
+  const uint8_t identity = static_cast<uint8_t>(note);
+  const int32_t units = free_cv_units_[step_index & 15]
+      + static_cast<int32_t>(transposition) * swaraxt::FreeCvPitch::kUnitsPerSemitone;
+  const uint16_t pitch = swaraxt::FreeCvPitch::toVoicePitch(units);
+  if (!step.legato()) {
+    StopSequencerArpeggiatorNotes();
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch);
+  } else if (generated_notes_.most_recent_note().note != identity) {
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch);
+    StopSequencerArpeggiatorNotes();
+  } else {
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch);
+  }
+  generated_notes_.NoteOn(identity, step.velocity());
+  arp_seq_gate_length_counter_ =
+      static_cast<uint16_t>((step_duration() * gate_percent_ + 99) / 100);
 }
 
 const prog_uint8_t clock_divisions[] PROGMEM = {

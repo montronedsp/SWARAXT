@@ -119,6 +119,13 @@ class Voice {
     return filter_pitch_value_;
 #endif
   }
+  int16_t pitch_value() const {
+#if SWARAXT_USE_AVRLIB_HD_VOICE
+    return hd_voice_.pitch_value();
+#else
+    return pitch_value_;
+#endif
+  }
 
   inline void set_modulation_source(uint8_t i, uint8_t value) {
     modulation_sources_[i] = value;

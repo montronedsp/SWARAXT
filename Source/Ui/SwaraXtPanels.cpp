@@ -1208,10 +1208,17 @@ SeqPanel::SeqPanel()
     }
     arpHeading_.setText("ARPEGGIATOR", juce::dontSendNotification);
     sequenceHeading_.setText("SEQUENCER", juce::dontSendNotification);
-    for (auto* button : { &lockButton_, &randomNotes_, &randomVelocity_, &randomEvent_, &randomValue_, &randomSequence_ }) {
+    for (auto* button : { &linearButton_, &lockButton_, &randomNotes_, &randomVelocity_, &randomEvent_, &randomValue_, &randomSequence_ }) {
         addAndMakeVisible(*button);
         button->getProperties().set("swaraxtSecondaryAction", true);
     }
+    linearButton_.setClickingTogglesState(true);
+    linearButton_.setTooltip("Sequence pitch only. Off keeps integer notes. On plays unquantized semitone CV and does not change Step, Arp, or the keyboard.");
+    linearButton_.onClick = [this] {
+        if (sequenceState_ == nullptr)
+            return;
+        sequenceState_->setPitchMode(linearButton_.getToggleState() ? 1 : 0);
+    };
     lockButton_.setClickingTogglesState(true);
     lockButton_.setTooltip("Preserve Seq/Arp settings and pattern across preset changes");
     lockButton_.onClick = [this] { if (processor_) processor_->setSequenceLocked(lockButton_.getToggleState()); };
@@ -1305,6 +1312,13 @@ SeqPanel::SeqPanel()
         if (refreshingSequenceControls_ || sequenceState_ == nullptr)
             return;
         const auto snapshot = sequenceState_->snapshot();
+        if (snapshot.pitchMode == 1)
+        {
+            const double semis = note_.slider().getValue();
+            const auto units = static_cast<int32_t>(std::llround(semis * swaraxt::FreeCvPitch::kUnitsPerSemitone));
+            sequenceState_->setFreePitch(selectedStep_, units);
+            return;
+        }
         const auto packed = snapshot.steps[static_cast<size_t>(selectedStep_)];
         writeSelectedStep(static_cast<uint8_t>((SequenceSnapshot::dataA(packed) & 0x80)
                               | (static_cast<int>(note_.slider().getValue()) & 0x7f)),
@@ -1519,6 +1533,7 @@ void SeqPanel::updateModeEmphasis()
     arpHeading_.setAlpha(arpAlpha);
     for (int index : { kDirection, kPattern, kOctaves }) selectors_[static_cast<size_t>(index)]->setAlpha(arpAlpha);
     sequenceHeading_.setAlpha(seqAlpha);
+    linearButton_.setAlpha(seqAlpha);
     for (auto* control : std::array<juce::Component*, 3>{ &note_, &event_, &velocity_ }) control->setAlpha(seqAlpha);
     for (auto& button : stepButtons_) button.setAlpha(seqAlpha);
     // Controller values and cycle timing also drive modulation in Step/Arp modes.
@@ -1544,7 +1559,10 @@ void SeqPanel::refreshSequenceControls()
         const auto packed = snapshot.steps[static_cast<size_t>(i)];
         const auto a = SequenceSnapshot::dataA(packed);
         const auto b = SequenceSnapshot::dataB(packed);
-        const auto pitch = juce::MidiMessage::getMidiNoteName(a & 0x7f, true, true, 3);
+        juce::String pitch = juce::MidiMessage::getMidiNoteName(a & 0x7f, true, true, 3);
+        if (snapshot.pitchMode == 1)
+            pitch = juce::String(snapshot.freePitch[static_cast<size_t>(i)]
+                                 / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone), 2);
         const auto event = (a & 0x80) == 0 ? "Rest" : ((b & 0x80) != 0 ? "Tie" : "Note");
         auto& button = stepButtons_[static_cast<size_t>(i)];
         button.setButtonText(juce::String(i + 1) + ":" + ((a & 0x80) == 0 ? "-" : pitch));
@@ -1556,7 +1574,27 @@ void SeqPanel::refreshSequenceControls()
     const auto selected = snapshot.steps[static_cast<size_t>(selectedStep_)];
     const uint8_t dataA = SequenceSnapshot::dataA(selected);
     const uint8_t dataB = SequenceSnapshot::dataB(selected);
-    note_.slider().setValue(dataA & 0x7f, juce::dontSendNotification);
+    linearButton_.setToggleState(snapshot.pitchMode == 1, juce::dontSendNotification);
+    if (snapshot.pitchMode == 1)
+    {
+        note_.setLabel("CV");
+        note_.slider().setRange(0.0, 127.0, 0.01);
+        note_.slider().textFromValueFunction = [](double value) {
+            return juce::String(value, 2);
+        };
+        note_.slider().setValue(snapshot.freePitch[static_cast<size_t>(selectedStep_)]
+                                    / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone),
+                                juce::dontSendNotification);
+        note_.slider().setTooltip("Free CV pitch in semitones. 60.00 is C4. Not snapped to a scale.");
+    }
+    else
+    {
+        note_.setLabel("NOTE");
+        note_.slider().setRange(0.0, 127.0, 1.0);
+        note_.slider().textFromValueFunction = nullptr;
+        note_.slider().setValue(dataA & 0x7f, juce::dontSendNotification);
+        note_.slider().setTooltip("Integer sequence note");
+    }
     velocity_.slider().setValue((dataB & 0x70) >> 4, juce::dontSendNotification);
     controller_.slider().setValue(dataB & 0x0f, juce::dontSendNotification);
     event_.combo().setSelectedItemIndex((dataA & 0x80) == 0 ? 0 : ((dataB & 0x80) != 0 ? 2 : 1),
@@ -1600,6 +1638,8 @@ void SeqPanel::reflow()
     area.removeFromTop(gap);
     auto heading = area.removeFromTop(20);
     lockButton_.setBounds(heading.removeFromRight(58));
+    heading.removeFromRight(4);
+    linearButton_.setBounds(heading.removeFromRight(68));
     sequenceHeading_.setBounds(heading);
     area.removeFromTop(gap);
     for (int row = 0; row < 2; ++row) {

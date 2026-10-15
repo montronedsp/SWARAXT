@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <set>
 
+#include "Engine/FreeCvPitch.h"
 #include "Plugin/PluginEditor.h"
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
@@ -367,11 +368,105 @@ void testRuntimeModesAndAudioSafety()
     }
 }
 
+void testFreeCvDoesNotRewriteLegacyNotes()
+{
+    expect(swaraxt::FreeCvPitch::toVoicePitch(60 * swaraxt::FreeCvPitch::kUnitsPerSemitone)
+               == 60 * 128,
+           "an integer semitone uses the native 128-unit pitch word");
+    const auto centish = swaraxt::FreeCvPitch::toVoicePitch(
+        60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 10);
+    expect(centish != 60 * 128, "about one cent moves the voice pitch word");
+    expect(centish != 61 * 128, "about one cent is not a whole semitone");
+    expect(swaraxt::FreeCvPitch::toVoicePitch(0) == 128,
+           "a zero CV target does not become the muted pitch sentinel");
+
+    swaraxt::SequenceState state;
+    const auto packed = state.snapshot().steps[0];
+    state.setPitchMode(1);
+    auto linear = state.snapshot();
+    expect(linear.pitchMode == 1, "linear mode is stored");
+    expect(linear.freePitchReady == 1, "first enable initialises CV");
+    expect(linear.steps[0] == packed, "enabling linear keeps the packed note");
+    expect(linear.freePitch[0] == swaraxt::FreeCvPitch::fromMidiNote(
+               swaraxt::SequenceSnapshot::dataA(packed) & 0x7f),
+           "first enable copies the integer note into CV");
+    const int32_t edited = 60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 512;
+    state.setFreePitch(0, edited);
+    state.setPitchMode(0);
+    auto legacy = state.snapshot();
+    expect(legacy.pitchMode == 0, "linear can be switched off");
+    expect(legacy.steps[0] == packed, "switching off keeps the packed note");
+    expect(legacy.freePitch[0] == edited, "switching off keeps the CV value");
+    state.setPitchMode(1);
+    expect(state.snapshot().freePitch[0] == edited, "switching on again restores CV");
+
+    juce::ValueTree oldTree("SEQUENCE");
+    oldTree.setProperty("length", 16, nullptr);
+    oldTree.setProperty("rotation", 0, nullptr);
+    oldTree.setProperty("grooveTemplate", 0, nullptr);
+    oldTree.setProperty("arpPattern", 1, nullptr);
+    juce::ValueTree step("STEP");
+    step.setProperty("index", 0, nullptr);
+    step.setProperty("dataA", 0xb0, nullptr);
+    step.setProperty("dataB", 0x70, nullptr);
+    oldTree.addChild(step, -1, nullptr);
+    swaraxt::SequenceState loaded;
+    loaded.setPitchMode(1);
+    expect(loaded.restoreFromValueTree(oldTree), "an old sequence tree still loads");
+    expect(loaded.snapshot().pitchMode == 0, "a tree without pitchMode stays legacy");
+    expect((swaraxt::SequenceSnapshot::dataA(loaded.snapshot().steps[0]) & 0x7f) == 0x30,
+           "an old sequence tree keeps its note byte");
+
+    juce::Random random(1);
+    const auto beforeNotes = loaded.snapshot().steps;
+    loaded.randomize(swaraxt::SequenceState::Randomize::notes, random);
+    expect(loaded.snapshot().steps != beforeNotes, "legacy note random rewrites packed notes");
+    loaded.setPitchMode(1);
+    const auto heldNotes = loaded.snapshot().steps;
+    const auto heldCv = loaded.snapshot().freePitch;
+    loaded.randomize(swaraxt::SequenceState::Randomize::notes, random);
+    expect(loaded.snapshot().steps == heldNotes, "linear note random does not rewrite packed notes");
+    expect(loaded.snapshot().freePitch != heldCv, "linear note random updates CV");
+}
+
+void testFreeCvReachesVoicePitch()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 64);
+    setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+    setInt(processor, swaraxt::IDs::seqClockMode, 0);
+    setInt(processor, swaraxt::IDs::seqTempo, 240);
+    const int32_t units = 60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 512;
+    processor.sequenceState().setPitchMode(1);
+    for (int step = 0; step < swaraxt::SequenceSnapshot::kNumSteps; ++step)
+    {
+        const auto packed = processor.sequenceState().snapshot().steps[static_cast<size_t>(step)];
+        const auto dataA = static_cast<uint8_t>(swaraxt::SequenceSnapshot::dataA(packed) | 0x80);
+        const auto dataB = static_cast<uint8_t>(swaraxt::SequenceSnapshot::dataB(packed) & 0x7f);
+        processor.sequenceState().setStep(step, dataA, dataB);
+        processor.sequenceState().setFreePitch(step, units);
+    }
+    processor.engineForTests().applyParameters();
+    auto& part = processor.engineForTests().shruthiPart();
+    part.Start(false);
+    const auto target = swaraxt::FreeCvPitch::toVoicePitch(units);
+    bool heard = false;
+    for (int tick = 0; tick < 128 && ! heard; ++tick)
+    {
+        part.Clock(false);
+        if (part.voice().pitch_value() == target)
+            heard = true;
+    }
+    expect(heard, "sequence free CV reaches the oscillator pitch word");
+}
+
 }  // namespace
 
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juce;
+    testFreeCvDoesNotRewriteLegacyNotes();
+    testFreeCvReachesVoicePitch();
     testStateAndEngineBridge();
     testFullStepSemanticsAndLfo();
     testStateRoundtripAndPresetSwitching();

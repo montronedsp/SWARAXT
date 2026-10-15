@@ -5,6 +5,8 @@
 
 #include <JuceHeader.h>
 
+#include "Engine/FreeCvPitch.h"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -25,6 +27,11 @@ struct SequenceSnapshot {
         0x7cb0, 0xdcb0, 0x5cbc, 0xdcbc,
         0x74b0, 0x5430, 0x74bc, 0x543c
     };
+    // 0 = legacy integer notes. 1 = free CV. Absent in older sessions.
+    uint8_t pitchMode = 0;
+    uint8_t freePitchReady = 0;
+    // Untransposed step pitch, 1/1024 semitone from MIDI 0. Unused while legacy.
+    std::array<int32_t, kNumSteps> freePitch {};
 
     static constexpr uint16_t pack(uint8_t dataA, uint8_t dataB) noexcept
     {
@@ -99,7 +106,15 @@ class SequenceState {
                 // playable random note. Existing/manual pattern bytes stay intact.
                 const int pitch = juce::jlimit(1, 127,
                     root + offsets[static_cast<size_t>(random.nextInt(count))]);
-                a = static_cast<uint8_t>((a & 0x80) | pitch);
+                if (pattern.pitchMode == 1)
+                {
+                    pattern.freePitch[index] = FreeCvPitch::fromMidiNote(pitch);
+                    pattern.freePitchReady = 1;
+                }
+                else
+                {
+                    a = static_cast<uint8_t>((a & 0x80) | pitch);
+                }
             }
             if (kind == Randomize::velocity || kind == Randomize::sequence)
                 b = static_cast<uint8_t>((b & 0x8f) | ((1 + random.nextInt(7)) << 4));
@@ -136,8 +151,13 @@ class SequenceState {
         snapshot.rotation = rotation_.load(std::memory_order_relaxed);
         snapshot.grooveTemplate = grooveTemplate_.load(std::memory_order_relaxed);
         snapshot.arpPattern = arpPattern_.load(std::memory_order_relaxed);
+        snapshot.pitchMode = pitchMode_.load(std::memory_order_relaxed);
+        snapshot.freePitchReady = freePitchReady_.load(std::memory_order_relaxed);
         for (size_t i = 0; i < steps_.size(); ++i)
+        {
             snapshot.steps[i] = steps_[i].load(std::memory_order_relaxed);
+            snapshot.freePitch[i] = freePitch_[i].load(std::memory_order_relaxed);
+        }
 
         const uint32_t after = revision_.load(std::memory_order_acquire);
         if (before != after || (after & 1u) != 0u)
@@ -174,8 +194,14 @@ class SequenceState {
         arpPattern_.store(static_cast<uint8_t>(juce::jlimit(0, 15,
                                   static_cast<int>(snapshot.arpPattern))),
                           std::memory_order_relaxed);
+        pitchMode_.store(snapshot.pitchMode == 1 ? 1 : 0, std::memory_order_relaxed);
+        freePitchReady_.store(snapshot.freePitchReady != 0 ? 1 : 0, std::memory_order_relaxed);
         for (size_t i = 0; i < steps_.size(); ++i)
+        {
             steps_[i].store(snapshot.steps[i], std::memory_order_relaxed);
+            freePitch_[i].store(FreeCvPitch::clampUnits(snapshot.freePitch[i]),
+                                std::memory_order_relaxed);
+        }
         endWrite();
         if (notify)
             listeners_.call([](Listener& listener) { listener.sequenceStateChanged(); });
@@ -217,6 +243,35 @@ class SequenceState {
         updateAtomic(steps_[static_cast<size_t>(index)], SequenceSnapshot::pack(dataA, dataB));
     }
 
+    void setFreePitch(int index, int32_t units)
+    {
+        if (! juce::isPositiveAndBelow(index, SequenceSnapshot::kNumSteps))
+            return;
+        auto pattern = snapshot();
+        pattern.freePitch[static_cast<size_t>(index)] = FreeCvPitch::clampUnits(units);
+        pattern.freePitchReady = 1;
+        store(pattern);
+    }
+
+    // First entry into free CV copies the current integer notes. Later
+    // toggles keep both the packed notes and the edited CV values.
+    void setPitchMode(uint8_t mode)
+    {
+        auto pattern = snapshot();
+        const uint8_t next = mode == 1 ? 1 : 0;
+        if (next == 1 && pattern.freePitchReady == 0)
+        {
+            for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
+            {
+                const int note = SequenceSnapshot::dataA(pattern.steps[static_cast<size_t>(i)]) & 0x7f;
+                pattern.freePitch[static_cast<size_t>(i)] = FreeCvPitch::fromMidiNote(note);
+            }
+            pattern.freePitchReady = 1;
+        }
+        pattern.pitchMode = next;
+        store(pattern);
+    }
+
     void addListener(Listener* listener) { listeners_.add(listener); }
     void removeListener(Listener* listener) { listeners_.remove(listener); }
 
@@ -228,12 +283,15 @@ class SequenceState {
         tree.setProperty("rotation", current.rotation, nullptr);
         tree.setProperty("grooveTemplate", current.grooveTemplate, nullptr);
         tree.setProperty("arpPattern", current.arpPattern, nullptr);
+        tree.setProperty("pitchMode", current.pitchMode, nullptr);
+        tree.setProperty("freePitchReady", current.freePitchReady, nullptr);
         for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
         {
             juce::ValueTree step("STEP");
             step.setProperty("index", i, nullptr);
             step.setProperty("dataA", SequenceSnapshot::dataA(current.steps[static_cast<size_t>(i)]), nullptr);
             step.setProperty("dataB", SequenceSnapshot::dataB(current.steps[static_cast<size_t>(i)]), nullptr);
+            step.setProperty("cv", current.freePitch[static_cast<size_t>(i)], nullptr);
             tree.addChild(step, -1, nullptr);
         }
         return tree;
@@ -253,6 +311,10 @@ class SequenceState {
             static_cast<int>(tree.getProperty("grooveTemplate", 0))));
         restored.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 15,
             static_cast<int>(tree.getProperty("arpPattern", 1))));
+        restored.pitchMode = static_cast<uint8_t>(
+            static_cast<int>(tree.getProperty("pitchMode", 0)) == 1 ? 1 : 0);
+        restored.freePitchReady = static_cast<uint8_t>(
+            static_cast<int>(tree.getProperty("freePitchReady", 0)) != 0 ? 1 : 0);
 
         for (int childIndex = 0; childIndex < tree.getNumChildren(); ++childIndex)
         {
@@ -267,6 +329,20 @@ class SequenceState {
             const auto dataB = static_cast<uint8_t>(juce::jlimit(0, 255,
                 static_cast<int>(child.getProperty("dataB", 0))));
             restored.steps[static_cast<size_t>(index)] = SequenceSnapshot::pack(dataA, dataB);
+            if (child.hasProperty("cv"))
+            {
+                const auto cv = static_cast<int>(child.getProperty("cv", 0));
+                restored.freePitch[static_cast<size_t>(index)] = FreeCvPitch::clampUnits(cv);
+            }
+        }
+        if (restored.pitchMode == 1 && restored.freePitchReady == 0)
+        {
+            for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
+            {
+                const int note = SequenceSnapshot::dataA(restored.steps[static_cast<size_t>(i)]) & 0x7f;
+                restored.freePitch[static_cast<size_t>(i)] = FreeCvPitch::fromMidiNote(note);
+            }
+            restored.freePitchReady = 1;
         }
 
         store(restored, true);
@@ -302,7 +378,10 @@ class SequenceState {
     std::atomic<uint8_t> rotation_ { 0 };
     std::atomic<uint8_t> grooveTemplate_ { 0 };
     std::atomic<uint8_t> arpPattern_ { 1 };
+    std::atomic<uint8_t> pitchMode_ { 0 };
+    std::atomic<uint8_t> freePitchReady_ { 0 };
     std::array<std::atomic<uint16_t>, SequenceSnapshot::kNumSteps> steps_ {};
+    std::array<std::atomic<int32_t>, SequenceSnapshot::kNumSteps> freePitch_ {};
     juce::ListenerList<Listener> listeners_;
 };
 

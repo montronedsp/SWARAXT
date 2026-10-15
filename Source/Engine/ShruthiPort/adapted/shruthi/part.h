@@ -98,6 +98,8 @@ class Part {
   void SetSequenceStep(uint8_t index, uint8_t data_a, uint8_t data_b);
   void SetPatternRotation(uint8_t rotation);
   void SetPatternLength(uint8_t length);
+  // Sequence-mode free CV only. Keyboard and arp notes keep Tune().
+  void setSequencerFreeCv(bool active, const int32_t* units) noexcept;
 
   // Patch manipulation stuff.
   void SetParameter(uint8_t index, uint8_t offset, uint8_t value,
@@ -236,9 +238,11 @@ class Part {
   void StopSequencerArpeggiatorNotes();
   void ReleaseLatchedNotes();
   void InternalNoteOn(uint8_t note, uint8_t velocity);
+  void InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitch);
   void InternalNoteOff(uint8_t note);
   void ClockArpeggiator();
   void ClockSequencer();
+  void clockSequencerFreeCv(uint8_t step_index);
   void NextStep();
 
   uint16_t Tune(uint8_t note);
@@ -284,6 +288,8 @@ class Part {
   int8_t swing_amount_ = 0;
   uint8_t internal_clock_blank_ticks_ = 0;
   int8_t seq_transposition_ = 0;
+  bool free_cv_active_ = false;
+  int32_t free_cv_units_[16] {};
   uint8_t gate_percent_ = 50;
 
   shruthi::Clock clock_;
