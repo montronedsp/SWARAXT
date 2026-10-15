@@ -121,6 +121,7 @@ void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 void SwaraXtAudioProcessor::releaseResources()
 {
     engine_.clearSequencePlayback();
+    engine_.clearSequencerMidiOutput();
     isPrepared_ = false;
 }
 
@@ -152,7 +153,9 @@ void SwaraXtAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     if (numSamples <= 0)
         return;
 
-    engine_.process(midi, buffer, 0, numSamples, captureHostTransport());
+    juce::MidiBuffer incoming;
+    incoming.swapWith(midi);
+    engine_.process(incoming, buffer, 0, numSamples, captureHostTransport(), &midi);
 }
 
 swaraxt::HostTransportSnapshot SwaraXtAudioProcessor::captureHostTransport() noexcept

@@ -254,6 +254,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     params.push_back(std::make_unique<FixedCompatibilityChoice>(
         juce::ParameterID { IDs::inputConditioning, 1 }, "Input Conditioning",
         juce::StringArray { "HARDWARE", "HARDWARE" }, 1));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID { IDs::seqMidiOut, 1 }, "MIDI Out", false));
 
     return { params.begin(), params.end() };
 }

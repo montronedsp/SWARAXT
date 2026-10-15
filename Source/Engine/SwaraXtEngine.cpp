@@ -40,6 +40,7 @@ constexpr double kMaxDcDrainSeconds = 25.0;
 SwaraXtEngine::SwaraXtEngine()
 {
     patchBridge_.bind(part_);
+    installSequencerMidiTap();
 }
 
 void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
@@ -70,6 +71,8 @@ void SwaraXtEngine::reset()
     clearSequencePlayback();
     random_.Seed(0x21);
     part_.Init(audioRing_, random_, midiDispatcher_, storage_);
+    installSequencerMidiTap();
+    clearSequencerMidiOutput();
     // Envelope stage increments are written in UpdateDestinations(), which runs
     // inside ProcessBlock. One warm-up block establishes attack/decay rates so
     // the next NoteOn can trigger with non-zero increments (and a non-zero VCA).
@@ -217,6 +220,19 @@ void SwaraXtEngine::applyParameters()
         snapBoardOnApply_ = false;
     }
     boardTailSeconds_.store(board::BoardProcessor::tailSeconds(activeBoard_), std::memory_order_relaxed);
+    const bool enabled = parameterCache_ != nullptr
+        && ParameterCache::loadInt(parameterCache_->seqMidiOut) != 0;
+    const int mode = parameterCache_ != nullptr
+        ? ParameterCache::loadInt(parameterCache_->seqMode) : 0;
+    const auto route = routeFromStoredPitchMode(
+        sequenceState_ != nullptr ? sequenceState_->snapshot().pitchMode : 0);
+    const bool allowed = enabled
+        && mode == shruthi::SEQUENCER_MODE_SEQ
+        && sequencerRouteEmitsMidiNotes(route);
+    if (sequencerMidiAllowed_ && ! allowed)
+        releaseSequencerMidi_ = true;
+    midiOutEnabled_ = enabled;
+    sequencerMidiAllowed_ = allowed;
 }
 
 void SwaraXtEngine::resetBoardState() noexcept
@@ -905,7 +921,8 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
                            juce::AudioBuffer<float>& buffer,
                            int startSample,
                            int numSamples,
-                           const HostTransportSnapshot& transport)
+                           const HostTransportSnapshot& transport,
+                           juce::MidiBuffer* midiOut)
 {
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     using ProfileClock = std::chrono::steady_clock;
@@ -922,6 +939,12 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     if (numSamples <= 0)
         return;
 
+    midiOutput_ = midiOut;
+    if (releaseSequencerMidi_)
+    {
+        releaseHeldSequencerNotes(hostBlockOrigin_);
+        releaseSequencerMidi_ = false;
+    }
     collectMidiEvents(midi, startSample, numSamples);
     boardTempo_ = board::BoardControl::tempoCode(sequencerHostSync_ && transport.hasHostTransport
         ? transport.bpm : static_cast<double>(requestedBoard_.tempo));
@@ -950,6 +973,7 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         return internalQueue_.queueTargetSize();
     };
 
+    renderHostCursor_ = 0;
     while (! dormant_ && ! drainingToDormant_
            && internalQueue_.size() < queueTarget())
     {
@@ -966,6 +990,7 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     for (int i = 0; i < numSamples; ++i)
     {
         const int absoluteSample = startSample + i;
+        renderHostCursor_ = i;
         if (sequencerHostSync_ && transport.isPlaying)
         {
             const double samplePpq = blockStartPpq_ + blockPpqPerSample_ * static_cast<double>(i);
@@ -1041,6 +1066,11 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         if (right != nullptr)
             right[i] = sample;
     }
+    if (midiOut != nullptr)
+        flushSequencerMidi(*midiOut, numSamples);
+    else
+        hostBlockOrigin_ += static_cast<uint64_t>(numSamples);
+    midiOutput_ = nullptr;
     const auto playbackStep = part_.playback_step();
     sequencePlayback_.store(playbackStep < 16 ? static_cast<unsigned>(playbackStep) + 1u : 0u,
                             std::memory_order_relaxed);
@@ -1055,6 +1085,118 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         : 0;
     cpuProfile_.hostSamplesProduced += static_cast<uint64_t>(numSamples);
 #endif
+}
+
+void SwaraXtEngine::installSequencerMidiTap() noexcept
+{
+    midiDispatcher_.setSequencerNoteTap({
+        &SwaraXtEngine::sequencerNoteOnTap,
+        &SwaraXtEngine::sequencerNoteOffTap,
+        this
+    });
+}
+
+void SwaraXtEngine::sequencerNoteOnTap(void* context, uint8_t note, uint8_t velocity) noexcept
+{
+    static_cast<SwaraXtEngine*>(context)->onSequencerNote(true, note, velocity);
+}
+
+void SwaraXtEngine::sequencerNoteOffTap(void* context, uint8_t note) noexcept
+{
+    static_cast<SwaraXtEngine*>(context)->onSequencerNote(false, note, 0);
+}
+
+void SwaraXtEngine::onSequencerNote(bool noteOn, uint8_t note, uint8_t velocity) noexcept
+{
+    if (! midiOutEnabled_ || ! sequencerMidiAllowed_ || midiOutput_ == nullptr || note >= 128)
+        return;
+    scheduleSequencerMidi(noteOn, note, velocity);
+}
+
+int SwaraXtEngine::sequencerMidiLeadSamples() const noexcept
+{
+    const int ahead = juce::jmax(0, internalQueue_.size() - internalQueue_.minimumReadableSize());
+    const double native = static_cast<double>(ahead + kAudioBlockSize);
+    return static_cast<int>(std::llround(native * hostSampleRate_ / kInternalSampleRate));
+}
+
+int SwaraXtEngine::outputMidiChannel() const noexcept
+{
+    return midiChannel_ >= 1 && midiChannel_ <= 16 ? midiChannel_ : 1;
+}
+
+void SwaraXtEngine::scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity) noexcept
+{
+    if (scheduledMidiCount_ >= kMaxScheduledMidi)
+        return;
+    const uint64_t sample = hostBlockOrigin_
+        + static_cast<uint64_t>(juce::jmax(0, renderHostCursor_))
+        + static_cast<uint64_t>(sequencerMidiLeadSamples());
+    if (noteOn)
+    {
+        if (heldMidi_[note] != 0)
+        {
+            scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0 };
+            heldMidi_[note] = 0;
+            if (scheduledMidiCount_ >= kMaxScheduledMidi)
+                return;
+        }
+        const uint8_t midiVelocity = velocity == 0 ? 1 : (velocity > 127 ? 127 : velocity);
+        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, midiVelocity, 1 };
+        heldMidi_[note] = midiVelocity;
+    }
+    else if (heldMidi_[note] != 0)
+    {
+        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0 };
+        heldMidi_[note] = 0;
+    }
+}
+
+void SwaraXtEngine::releaseHeldSequencerNotes(uint64_t sample) noexcept
+{
+    for (uint8_t note = 0; note < 128; ++note)
+    {
+        if (heldMidi_[note] == 0 || scheduledMidiCount_ >= kMaxScheduledMidi)
+            continue;
+        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0 };
+        heldMidi_[note] = 0;
+    }
+}
+
+void SwaraXtEngine::flushSequencerMidi(juce::MidiBuffer& output, int numSamples) noexcept
+{
+    const uint64_t blockEnd = hostBlockOrigin_ + static_cast<uint64_t>(juce::jmax(0, numSamples));
+    int kept = 0;
+    for (int index = 0; index < scheduledMidiCount_; ++index)
+    {
+        const auto event = scheduledMidi_[static_cast<size_t>(index)];
+        if (event.sample < blockEnd)
+        {
+            const int offset = event.sample <= hostBlockOrigin_
+                ? 0
+                : static_cast<int>(event.sample - hostBlockOrigin_);
+            if (event.noteOn != 0)
+                output.addEvent(juce::MidiMessage::noteOn(outputMidiChannel(), event.note,
+                                                          static_cast<juce::uint8>(event.velocity)),
+                                offset);
+            else
+                output.addEvent(juce::MidiMessage::noteOff(outputMidiChannel(), event.note), offset);
+        }
+        else
+        {
+            scheduledMidi_[static_cast<size_t>(kept++)] = event;
+        }
+    }
+    scheduledMidiCount_ = kept;
+    hostBlockOrigin_ = blockEnd;
+}
+
+void SwaraXtEngine::clearSequencerMidiOutput() noexcept
+{
+    heldMidi_.fill(0);
+    scheduledMidiCount_ = 0;
+    releaseSequencerMidi_ = false;
+    midiOutput_ = nullptr;
 }
 
 }  // namespace swaraxt

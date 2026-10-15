@@ -462,6 +462,8 @@ class SeqPanel : public juce::Component,
     juce::Label arpHeading_, sequenceHeading_;
     juce::TextButton lockButton_ { "LOCK" };
     juce::TextButton linearButton_ { "LINEAR" };
+    juce::TextButton midiOutButton_ { "MIDI OUT" };
+    std::unique_ptr<juce::ButtonParameterAttachment> midiOutAttachment_;
     juce::TextButton randomNotes_ { "RANDOM NOTES" }, randomVelocity_ { "RANDOM VELOCITY" }, randomSequence_ { "RANDOM SEQ" };
     juce::TextButton randomEvent_ { "RANDOM EVENT" }, randomValue_ { "RANDOM VALUE" };
     juce::ComboBox randomType_;

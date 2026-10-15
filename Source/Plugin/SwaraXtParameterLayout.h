@@ -48,6 +48,7 @@ static constexpr const char* seqTempo = "seq.tempo";
 static constexpr const char* seqSwing = "seq.swing";
 static constexpr const char* seqClockMode = "seq.clockMode";
 static constexpr const char* seqGate = "seq.gate";
+static constexpr const char* seqMidiOut = "seq.midiOut";
 static constexpr const char* arpDirection = "arp.direction";
 static constexpr const char* arpPattern = "arp.pattern";
 static constexpr const char* arpOctaves = "arp.octaves";

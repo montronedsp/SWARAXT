@@ -169,8 +169,24 @@ class MidiDispatcher : public midi::MidiDevice {
         return result;
     }
 
-    inline void OnInternalNoteOff(uint8_t) {}
-    inline void OnInternalNoteOn(uint8_t, uint8_t) {}
+    struct SequencerNoteTap {
+        void (*noteOn)(void* context, uint8_t note, uint8_t velocity) noexcept = nullptr;
+        void (*noteOff)(void* context, uint8_t note) noexcept = nullptr;
+        void* context = nullptr;
+    };
+
+    void setSequencerNoteTap(SequencerNoteTap tap) noexcept { sequencerTap_ = tap; }
+
+    inline void OnInternalNoteOff(uint8_t note)
+    {
+        if (sequencerTap_.noteOff != nullptr)
+            sequencerTap_.noteOff(sequencerTap_.context, note);
+    }
+    inline void OnInternalNoteOn(uint8_t note, uint8_t velocity)
+    {
+        if (sequencerTap_.noteOn != nullptr)
+            sequencerTap_.noteOn(sequencerTap_.context, note, velocity);
+    }
     inline void ForwardNoteOn(uint8_t, uint8_t, uint8_t) {}
     inline void ForwardNoteOff(uint8_t, uint8_t) {}
     inline void OnStart() {}
@@ -210,6 +226,7 @@ class MidiDispatcher : public midi::MidiDevice {
     uint8_t outputWrite_ = 0;
     uint8_t current_bank_ = 0;
     uint8_t running_status_ = 0;
+    SequencerNoteTap sequencerTap_ {};
 
     DISALLOW_COPY_AND_ASSIGN(MidiDispatcher);
 };

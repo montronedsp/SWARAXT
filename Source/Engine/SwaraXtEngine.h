@@ -20,6 +20,7 @@ class AudioBuffer;
 #include "Engine/HostTransport.h"
 #include "Engine/ParameterCache.h"
 #include "Engine/PatchBridge.h"
+#include "Engine/SequencerMidiRoute.h"
 #include "Engine/SequenceState.h"
 #include "Engine/SampleRate/HostResampler.h"
 #include "Engine/SampleRate/InternalSampleQueue.h"
@@ -134,7 +135,9 @@ class SwaraXtEngine {
                  juce::AudioBuffer<float>& buffer,
                  int startSample,
                  int numSamples,
-                 const HostTransportSnapshot& transport = HostTransportSnapshot {});
+                 const HostTransportSnapshot& transport = HostTransportSnapshot {},
+                 juce::MidiBuffer* midiOut = nullptr);
+    void clearSequencerMidiOutput() noexcept;
 
     SwaraXtFilter& filter() noexcept { return filter_; }
     const SwaraXtFilter& filter() const noexcept { return filter_; }
@@ -277,10 +280,36 @@ class SwaraXtEngine {
     void prepareHostClock(const HostTransportSnapshot& transport, int numSamples) noexcept;
     void resetHostState() noexcept;
     double hostTickPpq(uint64_t tick) const noexcept;
+    void installSequencerMidiTap() noexcept;
+    static void sequencerNoteOnTap(void* context, uint8_t note, uint8_t velocity) noexcept;
+    static void sequencerNoteOffTap(void* context, uint8_t note) noexcept;
+    void onSequencerNote(bool noteOn, uint8_t note, uint8_t velocity) noexcept;
+    void scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity) noexcept;
+    void flushSequencerMidi(juce::MidiBuffer& output, int numSamples) noexcept;
+    void releaseHeldSequencerNotes(uint64_t sample) noexcept;
+    int sequencerMidiLeadSamples() const noexcept;
+    int outputMidiChannel() const noexcept;
 
     shruthi::HostAudioRing audioRing_;
     avrlib::Random random_;
+    struct ScheduledMidi {
+        uint64_t sample = 0;
+        uint8_t note = 0;
+        uint8_t velocity = 0;
+        uint8_t noteOn = 0;
+    };
+    static constexpr int kMaxScheduledMidi = 128;
+
     shruthi::MidiDispatcher midiDispatcher_;
+    bool midiOutEnabled_ = false;
+    bool sequencerMidiAllowed_ = false;
+    bool releaseSequencerMidi_ = false;
+    int renderHostCursor_ = 0;
+    uint64_t hostBlockOrigin_ = 0;
+    std::array<uint8_t, 128> heldMidi_ {};
+    std::array<ScheduledMidi, kMaxScheduledMidi> scheduledMidi_ {};
+    int scheduledMidiCount_ = 0;
+    juce::MidiBuffer* midiOutput_ = nullptr;
     shruthi::Storage storage_;
     static_assert(std::atomic<unsigned>::is_always_lock_free);
     std::atomic<unsigned> sequencePlayback_ { 0 };

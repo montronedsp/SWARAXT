@@ -61,6 +61,7 @@ struct ParameterCache {
         seqSwing = bindOne(IDs::seqSwing);
         seqClockMode = bindOne(IDs::seqClockMode);
         seqGate = bindOne(IDs::seqGate);
+        seqMidiOut = bindOne(IDs::seqMidiOut);
         arpDirection = bindOne(IDs::arpDirection);
         arpPattern = bindOne(IDs::arpPattern);
         arpOctaves = bindOne(IDs::arpOctaves);
@@ -154,6 +155,7 @@ struct ParameterCache {
     std::atomic<float>* seqSwing = nullptr;
     std::atomic<float>* seqClockMode = nullptr;
     std::atomic<float>* seqGate = nullptr;
+    std::atomic<float>* seqMidiOut = nullptr;
     std::atomic<float>* arpDirection = nullptr;
     std::atomic<float>* arpPattern = nullptr;
     std::atomic<float>* arpOctaves = nullptr;

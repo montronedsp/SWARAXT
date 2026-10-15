@@ -1208,10 +1208,12 @@ SeqPanel::SeqPanel()
     }
     arpHeading_.setText("ARPEGGIATOR", juce::dontSendNotification);
     sequenceHeading_.setText("SEQUENCER", juce::dontSendNotification);
-    for (auto* button : { &linearButton_, &lockButton_, &randomNotes_, &randomVelocity_, &randomEvent_, &randomValue_, &randomSequence_ }) {
+    for (auto* button : { &midiOutButton_, &linearButton_, &lockButton_, &randomNotes_, &randomVelocity_, &randomEvent_, &randomValue_, &randomSequence_ }) {
         addAndMakeVisible(*button);
         button->getProperties().set("swaraxtSecondaryAction", true);
     }
+    midiOutButton_.setClickingTogglesState(true);
+    midiOutButton_.setTooltip("Send sequencer notes to the host MIDI output. Legacy mode only.");
     linearButton_.setClickingTogglesState(true);
     linearButton_.setTooltip("Sequence pitch only. Off keeps integer notes. On plays unquantized semitone CV and does not change Step, Arp, or the keyboard.");
     linearButton_.onClick = [this] {
@@ -1379,6 +1381,9 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
     sequenceState_ = &processor.sequenceState();
     timerCallback();
     lockButton_.setToggleState(processor.sequenceLocked(), juce::dontSendNotification);
+    if (auto* midiOut = apvts.getParameter(swaraxt::IDs::seqMidiOut))
+        midiOutAttachment_ = std::make_unique<juce::ButtonParameterAttachment>(
+            *midiOut, midiOutButton_, nullptr);
     visibilityChanged();
     sequenceState_->addListener(this);
     const char* knobIds[] = { swaraxt::IDs::seqTempo, swaraxt::IDs::seqSwing,
@@ -1594,6 +1599,8 @@ void SeqPanel::refreshSequenceControls()
             "Change continuous CV pitches only; preserve events, velocities, values and packed notes");
         randomSequence_.setTooltip(
             "New continuous CV, velocities, rests/ties and controller values; packed notes stay intact");
+        midiOutButton_.setTooltip(
+            "MIDI OUT is on, but LINEAR does not emit notes. External notes from the previous mode are released.");
     }
     else
     {
@@ -1610,6 +1617,8 @@ void SeqPanel::refreshSequenceControls()
             "Change pitches only; preserve events, velocities and controller values");
         randomSequence_.setTooltip(
             "New notes, velocities, rests/ties and controller values; preserve playback settings");
+        midiOutButton_.setTooltip(
+            "Send sequencer notes to the host MIDI output. Legacy mode only.");
     }
     velocity_.slider().setValue((dataB & 0x70) >> 4, juce::dontSendNotification);
     controller_.slider().setValue(dataB & 0x0f, juce::dontSendNotification);
@@ -1656,6 +1665,8 @@ void SeqPanel::reflow()
     lockButton_.setBounds(heading.removeFromRight(58));
     heading.removeFromRight(4);
     linearButton_.setBounds(heading.removeFromRight(68));
+    heading.removeFromRight(4);
+    midiOutButton_.setBounds(heading.removeFromRight(78));
     sequenceHeading_.setBounds(heading);
     area.removeFromTop(gap);
     for (int row = 0; row < 2; ++row) {
