@@ -502,8 +502,64 @@ void layoutAndLifetime()
 }
 }
 
+#if JUCE_LINUX
+#include <dlfcn.h>
+
+// Default Xvfb resets when its last client disconnects, so ICCCM atoms do not
+// survive a separate process. JUCE stores WM_PROTOCOLS with
+// XInternAtom(..., only_if_exists) and then passes that atom to
+// XChangeProperty. This console test is not a JUCEApplication, so JUCE does
+// not install its X error handler and the default handler aborts on BadAtom.
+// One connection is kept open so the server does not reset before JUCE opens
+// its own display.
+void keepResettingXvfbIcccmAtomsAlive()
+{
+    const char* displayName = std::getenv("DISPLAY");
+    if (displayName == nullptr || displayName[0] == '\0')
+        return;
+
+    void* library = dlopen("libX11.so.6", RTLD_LAZY | RTLD_GLOBAL);
+    if (library == nullptr)
+        return;
+
+    using OpenDisplay = void* (*)(const char*);
+    using InternAtom = unsigned long (*)(void*, const char*, int);
+    using FlushDisplay = int (*)(void*);
+    auto openDisplay = reinterpret_cast<OpenDisplay>(dlsym(library, "XOpenDisplay"));
+    auto internAtom = reinterpret_cast<InternAtom>(dlsym(library, "XInternAtom"));
+    auto flushDisplay = reinterpret_cast<FlushDisplay>(dlsym(library, "XFlush"));
+    if (openDisplay == nullptr || internAtom == nullptr || flushDisplay == nullptr)
+        return;
+
+    static void* heldDisplay = nullptr;
+    heldDisplay = openDisplay(displayName);
+    if (heldDisplay == nullptr)
+        return;
+
+    static const char* names[] = {
+        "WM_PROTOCOLS",
+        "WM_TAKE_FOCUS",
+        "WM_DELETE_WINDOW",
+        "_NET_WM_PING",
+        "WM_CHANGE_STATE",
+        "WM_STATE",
+        "_NET_WM_WINDOW_TYPE",
+        "_NET_WM_STATE",
+        "_NET_WM_STATE_HIDDEN",
+        "_NET_WM_STATE_MAXIMIZED_HORZ",
+        "_NET_WM_STATE_MAXIMIZED_VERT",
+    };
+    for (const char* name : names)
+        internAtom(heldDisplay, name, 0);
+    flushDisplay(heldDisplay);
+}
+#endif
+
 int main()
 {
+#if JUCE_LINUX
+    keepResettingXvfbIcccmAtomsAlive();
+#endif
     juce::ScopedJuceInitialiser_GUI juce;
     selectionMatrix();
     calibrationAndSession();
