@@ -302,7 +302,67 @@ std::unique_ptr<juce::Drawable> parseSvgBytes(const void* data, size_t size)
 {
     if (data == nullptr || size == 0)
         return nullptr;
-    return juce::Drawable::createFromImageData(data, size);
+    auto drawable = juce::Drawable::createFromImageData(data, size);
+    if (drawable == nullptr || drawable->getDrawableBounds().isEmpty())
+        return nullptr;
+    return drawable;
+}
+
+std::unique_ptr<juce::Drawable> drawableFromPng(const juce::File& file)
+{
+    const auto image = juce::ImageFileFormat::loadFrom(file);
+    if (! image.isValid() || image.getWidth() < 1 || image.getHeight() < 1)
+        return nullptr;
+    if (image.getWidth() > SkinUserSvg::maxImageEdge || image.getHeight() > SkinUserSvg::maxImageEdge)
+        return nullptr;
+    auto drawable = std::make_unique<juce::DrawableImage>();
+    drawable->setImage(image);
+    if (drawable->getDrawableBounds().isEmpty())
+        return nullptr;
+    return drawable;
+}
+
+bool copyReplacing(const juce::File& source, const juce::File& destination, juce::String& error)
+{
+    if (! destination.getParentDirectory().createDirectory()
+        && ! destination.getParentDirectory().isDirectory())
+    {
+        error = "Could not create skin_assets folder.";
+        return false;
+    }
+    const auto incoming = destination.getSiblingFile(destination.getFileName() + ".incoming");
+    incoming.deleteFile();
+    if (! source.copyFileTo(incoming))
+    {
+        error = "Could not copy the file into preferences.";
+        return false;
+    }
+    if (destination.existsAsFile())
+    {
+        const auto backup = destination.getSiblingFile(destination.getFileName() + ".bak");
+        backup.deleteFile();
+        if (! destination.moveFileTo(backup))
+        {
+            incoming.deleteFile();
+            error = "Could not replace the installed file. Built-in art is unchanged.";
+            return false;
+        }
+        if (! incoming.moveFileTo(destination))
+        {
+            backup.moveFileTo(destination);
+            error = "Could not replace the installed file. Built-in art is unchanged.";
+            return false;
+        }
+        backup.deleteFile();
+        return true;
+    }
+    if (! incoming.moveFileTo(destination))
+    {
+        incoming.deleteFile();
+        error = "Could not install the file.";
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -322,6 +382,16 @@ juce::File SkinUserSvg::decorationFile()
     return directory().getChildFile("decoration.svg");
 }
 
+juce::File SkinUserSvg::backgroundSvgFile()
+{
+    return directory().getChildFile("background.svg");
+}
+
+juce::File SkinUserSvg::backgroundPngFile()
+{
+    return directory().getChildFile("background.png");
+}
+
 bool SkinUserSvg::hasManufacturerMark()
 {
     return manufacturerMarkFile().existsAsFile();
@@ -332,41 +402,86 @@ bool SkinUserSvg::hasDecoration()
     return decorationFile().existsAsFile();
 }
 
+bool SkinUserSvg::hasBackground()
+{
+    return backgroundSvgFile().existsAsFile() || backgroundPngFile().existsAsFile();
+}
+
 bool SkinUserSvg::install(const juce::File& source, const juce::File& destination, juce::String& error)
 {
     if (! source.existsAsFile())
     {
-        error = "File not found.";
+        error = "File not found. Built-in art is unchanged.";
         return false;
     }
-    if (source.getFileExtension().compareIgnoreCase(".svg") != 0)
+    if (! source.getFileExtension().equalsIgnoreCase(".svg"))
     {
-        error = "Choose an .svg file.";
+        error = "Choose an .svg file. Built-in art is unchanged.";
         return false;
     }
     const auto bytes = source.getSize();
-    if (bytes <= 0 || bytes > maxBytes)
+    if (bytes <= 0 || bytes > maxSvgBytes)
     {
-        error = "SVG must be between 1 byte and 256 KiB.";
+        error = "SVG must be between 1 byte and 256 KiB. Built-in art is unchanged.";
         return false;
     }
     const auto text = source.loadFileAsString();
-    if (! text.containsIgnoreCase("<svg"))
+    if (! text.containsIgnoreCase("<svg")
+        || parseSvgBytes(text.toRawUTF8(), static_cast<size_t>(text.getNumBytesAsUTF8())) == nullptr)
     {
-        error = "File does not look like an SVG.";
+        error = "SVG could not be parsed. Built-in art is unchanged.";
         return false;
     }
-    if (! destination.getParentDirectory().createDirectory() && ! destination.getParentDirectory().isDirectory())
+    return copyReplacing(source, destination, error);
+}
+
+bool SkinUserSvg::installBackground(const juce::File& source, juce::String& error)
+{
+    if (! source.existsAsFile())
     {
-        error = "Could not create skin_assets folder.";
+        error = "File not found. Built-in background is unchanged.";
         return false;
     }
-    destination.deleteFile();
-    if (! source.copyFileTo(destination))
+    const auto png = source.getFileExtension().equalsIgnoreCase(".png");
+    const auto svg = source.getFileExtension().equalsIgnoreCase(".svg");
+    if (! png && ! svg)
     {
-        error = "Could not copy SVG into preferences.";
+        error = "Choose a .png or .svg file. Built-in background is unchanged.";
         return false;
     }
+    const auto bytes = source.getSize();
+    if (png)
+    {
+        if (bytes <= 0 || bytes > maxPngBytes)
+        {
+            error = "PNG must be between 1 byte and 4 MiB. Built-in background is unchanged.";
+            return false;
+        }
+        if (drawableFromPng(source) == nullptr)
+        {
+            error = "PNG could not be decoded, or it is larger than 8192 px on a side. Built-in background is unchanged.";
+            return false;
+        }
+        if (! copyReplacing(source, backgroundPngFile(), error))
+            return false;
+        backgroundSvgFile().deleteFile();
+        return true;
+    }
+    if (bytes <= 0 || bytes > maxSvgBytes)
+    {
+        error = "SVG must be between 1 byte and 256 KiB. Built-in background is unchanged.";
+        return false;
+    }
+    const auto text = source.loadFileAsString();
+    if (! text.containsIgnoreCase("<svg")
+        || parseSvgBytes(text.toRawUTF8(), static_cast<size_t>(text.getNumBytesAsUTF8())) == nullptr)
+    {
+        error = "SVG could not be parsed. Built-in background is unchanged.";
+        return false;
+    }
+    if (! copyReplacing(source, backgroundSvgFile(), error))
+        return false;
+    backgroundPngFile().deleteFile();
     return true;
 }
 
@@ -375,10 +490,16 @@ void SkinUserSvg::clear(const juce::File& file)
     file.deleteFile();
 }
 
+void SkinUserSvg::clearBackground()
+{
+    backgroundSvgFile().deleteFile();
+    backgroundPngFile().deleteFile();
+}
+
 std::unique_ptr<juce::Drawable> SkinUserSvg::loadManufacturerMark(const SkinPalette& palette)
 {
     const auto file = manufacturerMarkFile();
-    if (! file.existsAsFile() || file.getSize() <= 0 || file.getSize() > maxBytes)
+    if (! file.existsAsFile() || file.getSize() <= 0 || file.getSize() > maxSvgBytes)
         return nullptr;
     const auto recoloured = recolourManufacturerSvg(file.loadFileAsString(), palette);
     return parseSvgBytes(recoloured.toRawUTF8(), static_cast<size_t>(recoloured.getNumBytesAsUTF8()));
@@ -387,13 +508,45 @@ std::unique_ptr<juce::Drawable> SkinUserSvg::loadManufacturerMark(const SkinPale
 std::unique_ptr<juce::Drawable> SkinUserSvg::loadDecoration(const SkinPalette& palette)
 {
     const auto file = decorationFile();
-    if (! file.existsAsFile() || file.getSize() <= 0 || file.getSize() > maxBytes)
+    if (! file.existsAsFile() || file.getSize() <= 0 || file.getSize() > maxSvgBytes)
         return nullptr;
     const auto text = file.loadFileAsString();
     auto drawable = parseSvgBytes(text.toRawUTF8(), static_cast<size_t>(text.getNumBytesAsUTF8()));
     if (drawable != nullptr)
         drawable->replaceColour(juce::Colours::white, palette.braidTint);
     return drawable;
+}
+
+std::unique_ptr<juce::Drawable> SkinUserSvg::loadBackground()
+{
+    const auto svgFile = backgroundSvgFile();
+    const auto pngFile = backgroundPngFile();
+    const bool svgOk = svgFile.existsAsFile() && svgFile.getSize() > 0 && svgFile.getSize() <= maxSvgBytes;
+    const bool pngOk = pngFile.existsAsFile() && pngFile.getSize() > 0 && pngFile.getSize() <= maxPngBytes;
+    const bool preferPng = pngOk && (! svgOk || pngFile.getLastModificationTime() >= svgFile.getLastModificationTime());
+
+    auto loadSvg = [&svgFile]() -> std::unique_ptr<juce::Drawable>
+    {
+        const auto text = svgFile.loadFileAsString();
+        return parseSvgBytes(text.toRawUTF8(), static_cast<size_t>(text.getNumBytesAsUTF8()));
+    };
+
+    if (preferPng)
+    {
+        if (auto png = drawableFromPng(pngFile))
+            return png;
+        if (svgOk)
+            return loadSvg();
+        return nullptr;
+    }
+    if (svgOk)
+    {
+        if (auto svg = loadSvg())
+            return svg;
+        if (pngOk)
+            return drawableFromPng(pngFile);
+    }
+    return nullptr;
 }
 
 SkinAssetCache::SkinAssetCache(const SwaraXtSkin& skin)
@@ -403,6 +556,7 @@ SkinAssetCache::SkinAssetCache(const SwaraXtSkin& skin)
 
 void SkinAssetCache::load(const SwaraXtSkin& skin)
 {
+    const auto palette = SkinColourOverride::resolved();
     for (size_t i = 0; i < assets_.size(); ++i)
     {
         int size = 0;
@@ -414,13 +568,13 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
             // Recolour presentation attributes before parsing to preserve the
             // artwork's independent outline, shadow and highlight opacities.
             const auto svg = juce::String::fromUTF8(data, size)
-                .replace("#ffffff", hexColour(skin.palette.primaryText))
+                .replace("#ffffff", hexColour(palette.primaryText))
                 .replace("#f5e9fb", i == indexOf(AssetRole::companyWordmark)
-                                        ? hexColour(skin.palette.primaryText) : "#f5e9fb")
+                                        ? hexColour(palette.primaryText) : "#f5e9fb")
                 .replace("#9b4f9e", i == indexOf(AssetRole::companyWordmark)
-                                        ? hexColour(skin.palette.primaryText) : "#9b4f9e")
-                .replace("#d0d0d0", hexColour(skin.palette.primaryText.interpolatedWith(skin.palette.editorBackground, 0.15f)))
-                .replace("#0a0608", hexColour(skin.palette.editorBackground.darker(0.5f)));
+                                        ? hexColour(palette.primaryText) : "#9b4f9e")
+                .replace("#d0d0d0", hexColour(palette.primaryText.interpolatedWith(palette.editorBackground, 0.15f)))
+                .replace("#0a0608", hexColour(palette.editorBackground.darker(0.5f)));
             assets_[i] = parseSvgBytes(svg.toRawUTF8(), static_cast<size_t>(svg.getNumBytesAsUTF8()));
         }
         else
@@ -429,7 +583,8 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
                 : nullptr;
     }
 
-    manufacturerOverride_ = SkinUserSvg::loadManufacturerMark(skin.palette);
+    manufacturerOverride_ = SkinUserSvg::loadManufacturerMark(palette);
+    backgroundOverride_ = SkinUserSvg::loadBackground();
 
     const auto recolour = [this](juce::Colour source, juce::Colour target)
     {
@@ -438,14 +593,14 @@ void SkinAssetCache::load(const SwaraXtSkin& skin)
                 assets_[i]->replaceColour(source, target);
     };
 
-    recolour(juce::Colour(0xffd9dadb), skin.palette.moduleHeaderBackground);
-    recolour(juce::Colour(0xff1a171b), skin.palette.moduleHeaderText);
+    recolour(juce::Colour(0xffd9dadb), palette.moduleHeaderBackground);
+    recolour(juce::Colour(0xff1a171b), palette.moduleHeaderText);
     if (skin.id != SkinId::midnightGold && skin.id != SkinId::neonCobalt)
     {
-        recolour(juce::Colour(0xffe7ca83), skin.palette.primaryText);
-        recolour(juce::Colour(0xff8e6b29), skin.palette.frame);
-        recolour(juce::Colour(0xffe42523), skin.palette.visualizerSecondary);
-        recolour(juce::Colour(0xffffffff), skin.palette.outline);
+        recolour(juce::Colour(0xffe7ca83), palette.primaryText);
+        recolour(juce::Colour(0xff8e6b29), palette.frame);
+        recolour(juce::Colour(0xffe42523), palette.visualizerSecondary);
+        recolour(juce::Colour(0xffffffff), palette.outline);
     }
 }
 
@@ -560,6 +715,221 @@ const char* GuiGeometry::stableId(GuiSize size)
         case GuiSize::medium: break;
     }
     return "medium";
+}
+
+namespace {
+
+struct ColourOverrideState {
+    bool active = false;
+    SkinPalette palette {};
+};
+
+ColourOverrideState& colourOverrideState()
+{
+    static ColourOverrideState state;
+    return state;
+}
+
+bool parseHexColour(juce::String text, juce::Colour& colour)
+{
+    text = text.trim();
+    if (text.startsWithChar('#'))
+        text = text.substring(1);
+    if (text.length() == 3)
+    {
+        juce::String expanded;
+        for (int i = 0; i < 3; ++i)
+        {
+            expanded += text[i];
+            expanded += text[i];
+        }
+        text = expanded;
+    }
+    if (text.length() != 6 && text.length() != 8)
+        return false;
+    for (int i = 0; i < text.length(); ++i)
+        if (juce::CharacterFunctions::getHexDigitValue(text[i]) < 0)
+            return false;
+    const auto value = text.getHexValue64();
+    if (text.length() == 6)
+        colour = juce::Colour(static_cast<juce::uint8>((value >> 16) & 0xff),
+                              static_cast<juce::uint8>((value >> 8) & 0xff),
+                              static_cast<juce::uint8>(value & 0xff));
+    else
+        colour = juce::Colour(static_cast<juce::uint32>(value));
+    return true;
+}
+
+}  // namespace
+
+const SkinColourEntry* SkinColourCatalog::entries() noexcept
+{
+    static const SkinColourEntry table[count] = {
+        { "editor_background", "Editor background", &SkinPalette::editorBackground },
+        { "panel_background", "Panel background", &SkinPalette::panelBackground },
+        { "panel_secondary", "Panel secondary", &SkinPalette::panelSecondary },
+        { "screen_background", "Screen background", &SkinPalette::screenBackground },
+        { "primary_text", "Primary text", &SkinPalette::primaryText },
+        { "secondary_text", "Secondary text", &SkinPalette::secondaryText },
+        { "muted_text", "Muted text", &SkinPalette::mutedText },
+        { "module_header_background", "Module header fill", &SkinPalette::moduleHeaderBackground },
+        { "module_header_text", "Module header text", &SkinPalette::moduleHeaderText },
+        { "divider", "Divider", &SkinPalette::divider },
+        { "braid_tint", "Decoration tint", &SkinPalette::braidTint },
+        { "frame", "Frame", &SkinPalette::frame },
+        { "outline", "Outline", &SkinPalette::outline },
+        { "knob_body", "Knob body", &SkinPalette::knobBody },
+        { "knob_inner", "Knob inner", &SkinPalette::knobInner },
+        { "knob_rim", "Knob rim", &SkinPalette::knobRim },
+        { "knob_indicator", "Knob indicator", &SkinPalette::knobIndicator },
+        { "knob_active", "Knob active", &SkinPalette::knobActive },
+        { "combo_background", "Combo background", &SkinPalette::comboBackground },
+        { "combo_border", "Combo border", &SkinPalette::comboBorder },
+        { "combo_text", "Combo text", &SkinPalette::comboText },
+        { "combo_arrow", "Combo arrow", &SkinPalette::comboArrow },
+        { "display_background", "Display background", &SkinPalette::displayBackground },
+        { "display_text", "Display text", &SkinPalette::displayText },
+        { "display_border", "Display border", &SkinPalette::displayBorder },
+        { "visualizer_primary", "Visualizer primary", &SkinPalette::visualizerPrimary },
+        { "visualizer_secondary", "Visualizer secondary", &SkinPalette::visualizerSecondary },
+        { "visualizer_grid", "Visualizer grid", &SkinPalette::visualizerGrid },
+        { "matrix_guide", "Matrix guide", &SkinPalette::matrixGuide },
+        { "matrix_text", "Matrix text", &SkinPalette::matrixText },
+        { "matrix_amount_positive", "Matrix + amount", &SkinPalette::matrixAmountPositive },
+        { "matrix_amount_negative", "Matrix - amount", &SkinPalette::matrixAmountNegative },
+        { "focus", "Focus", &SkinPalette::focus },
+        { "hover", "Hover", &SkinPalette::hover },
+        { "disabled", "Disabled", &SkinPalette::disabled },
+    };
+    return table;
+}
+
+juce::String SkinColourCatalog::toText(const SkinPalette& palette)
+{
+    juce::String text;
+    text << "; SWARA XT interface colours\n";
+    text << "; name = #RRGGBB\n\n";
+    for (int i = 0; i < count; ++i)
+    {
+        const auto& entry = entries()[static_cast<size_t>(i)];
+        const auto colour = palette.*(entry.member);
+        text << entry.id << " = #" << colour.toDisplayString(false) << "\n";
+    }
+    return text;
+}
+
+int SkinColourCatalog::applyText(const juce::String& text, SkinPalette& palette)
+{
+    int applied = 0;
+    for (auto line : juce::StringArray::fromLines(text))
+    {
+        line = line.trim();
+        if (line.isEmpty() || line.startsWithChar(';') || line.startsWith("//"))
+            continue;
+        if (line.startsWithChar('#') && (line.length() == 1 || juce::CharacterFunctions::isWhitespace(line[1])))
+            continue;
+        const auto split = line.indexOfChar('=');
+        if (split <= 0)
+            continue;
+        juce::Colour colour;
+        if (! parseHexColour(line.substring(split + 1), colour))
+            continue;
+        const auto key = line.substring(0, split).trim().toLowerCase();
+        for (int i = 0; i < count; ++i)
+        {
+            const auto& entry = entries()[static_cast<size_t>(i)];
+            if (key == entry.id)
+            {
+                palette.*(entry.member) = colour;
+                ++applied;
+                break;
+            }
+        }
+    }
+    return applied;
+}
+
+bool SkinColourCatalog::saveText(const juce::File& destination, const SkinPalette& palette, juce::String& error)
+{
+    if (! destination.getParentDirectory().createDirectory()
+        && ! destination.getParentDirectory().isDirectory())
+    {
+        error = "Could not create the destination folder.";
+        return false;
+    }
+    if (! destination.replaceWithText(toText(palette)))
+    {
+        error = "Could not write the colour file.";
+        return false;
+    }
+    return true;
+}
+
+juce::File SkinColourOverride::file()
+{
+    return SkinUserSvg::directory().getChildFile("colours.txt");
+}
+
+bool SkinColourOverride::hasFile()
+{
+    return file().existsAsFile();
+}
+
+bool SkinColourOverride::active()
+{
+    return colourOverrideState().active;
+}
+
+const SkinPalette& SkinColourOverride::resolved()
+{
+    if (colourOverrideState().active)
+        return colourOverrideState().palette;
+    return SkinRegistry::active().palette;
+}
+
+void SkinColourOverride::refresh()
+{
+    auto& state = colourOverrideState();
+    state.active = false;
+    state.palette = SkinRegistry::active().palette;
+    const auto installed = file();
+    if (! installed.existsAsFile() || installed.getSize() <= 0 || installed.getSize() > maxBytes)
+        return;
+    const auto applied = SkinColourCatalog::applyText(installed.loadFileAsString(), state.palette);
+    state.active = applied > 0;
+}
+
+bool SkinColourOverride::install(const juce::File& source, juce::String& error)
+{
+    if (! source.existsAsFile())
+    {
+        error = "File not found. Built-in colours are unchanged.";
+        return false;
+    }
+    if (! source.getFileExtension().equalsIgnoreCase(".txt"))
+    {
+        error = "Choose a .txt file. Built-in colours are unchanged.";
+        return false;
+    }
+    const auto bytes = source.getSize();
+    if (bytes <= 0 || bytes > maxBytes)
+    {
+        error = "Colour file must be between 1 byte and 64 KiB. Built-in colours are unchanged.";
+        return false;
+    }
+    auto trial = SkinRegistry::active().palette;
+    if (SkinColourCatalog::applyText(source.loadFileAsString(), trial) <= 0)
+    {
+        error = "No valid colour lines. Use name = #RRGGBB. Built-in colours are unchanged.";
+        return false;
+    }
+    return copyReplacing(source, file(), error);
+}
+
+void SkinColourOverride::clear()
+{
+    file().deleteFile();
+    refresh();
 }
 
 std::unique_ptr<juce::PropertiesFile> UiPreferences::open()

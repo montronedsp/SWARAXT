@@ -111,21 +111,31 @@ struct ProductLockupGeometry {
     }
 };
 
-// User SVG overrides live under the preferences folder (not the plugin bundle).
+// User artwork lives under the preferences folder (not the plugin bundle).
 // Message-thread only: install/clear/load must not run on the audio thread.
+// A file that fails the size or parse rules is rejected on install. A file that
+// later fails to parse is ignored and the built-in art is used.
 class SkinUserSvg {
  public:
-    static constexpr int maxBytes = 256 * 1024;
+    static constexpr int maxSvgBytes = 256 * 1024;
+    static constexpr int maxPngBytes = 4 * 1024 * 1024;
+    static constexpr int maxImageEdge = 8192;
 
     static juce::File directory();
     static juce::File manufacturerMarkFile();
     static juce::File decorationFile();
+    static juce::File backgroundSvgFile();
+    static juce::File backgroundPngFile();
     static bool hasManufacturerMark();
     static bool hasDecoration();
+    static bool hasBackground();
     static bool install(const juce::File& source, const juce::File& destination, juce::String& error);
+    static bool installBackground(const juce::File& source, juce::String& error);
     static void clear(const juce::File& file);
+    static void clearBackground();
     static std::unique_ptr<juce::Drawable> loadManufacturerMark(const SkinPalette& palette);
     static std::unique_ptr<juce::Drawable> loadDecoration(const SkinPalette& palette);
+    static std::unique_ptr<juce::Drawable> loadBackground();
 };
 
 class SkinAssetCache {
@@ -134,10 +144,12 @@ class SkinAssetCache {
     void load(const SwaraXtSkin& skin);
     const juce::Drawable* get(AssetRole role) const noexcept;
     const juce::Drawable* getManufacturerOverride() const noexcept { return manufacturerOverride_.get(); }
+    const juce::Drawable* getBackgroundOverride() const noexcept { return backgroundOverride_.get(); }
 
  private:
     std::array<std::unique_ptr<juce::Drawable>, static_cast<size_t>(AssetRole::count)> assets_;
     std::unique_ptr<juce::Drawable> manufacturerOverride_;
+    std::unique_ptr<juce::Drawable> backgroundOverride_;
 };
 
 struct DecorationDefinition {
@@ -174,6 +186,37 @@ class DecorationAssetCache {
  private:
     std::unique_ptr<juce::Drawable> asset_;
     bool usingCustom_ = false;
+};
+
+struct SkinColourEntry {
+    const char* id;
+    const char* label;
+    juce::Colour SkinPalette::* member;
+};
+
+// Shared colour key table for the plugin override file and the standalone editor.
+class SkinColourCatalog {
+ public:
+    static constexpr int count = 35;
+    static const SkinColourEntry* entries() noexcept;
+    static juce::String toText(const SkinPalette& palette);
+    static int applyText(const juce::String& text, SkinPalette& palette);
+    static bool saveText(const juce::File& destination, const SkinPalette& palette, juce::String& error);
+};
+
+// Partial colour override. Keys that parse replace the active skin; missing or
+// invalid keys keep that skin's colour. A file with no valid keys is ignored.
+class SkinColourOverride {
+ public:
+    static constexpr int maxBytes = 64 * 1024;
+
+    static juce::File file();
+    static bool hasFile();
+    static bool active();
+    static const SkinPalette& resolved();
+    static void refresh();
+    static bool install(const juce::File& source, juce::String& error);
+    static void clear();
 };
 
 struct GuiGeometry {

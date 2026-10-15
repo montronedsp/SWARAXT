@@ -151,6 +151,7 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     decorationId_ = swaraxt::ui::UiPreferences::loadDecoration();
     manufacturerMark_ = swaraxt::ui::UiPreferences::loadManufacturerMark();
     swaraxt::ui::SkinRegistry::setActive(skinId_);
+    swaraxt::ui::SkinColourOverride::refresh();
     lookAndFeel_.applySkin();
     guiSize_ = swaraxt::ui::UiPreferences::loadGuiSize();
     filterQuality_ = processor_.filterQuality();
@@ -230,7 +231,11 @@ void SwaraXtAudioProcessorEditor::paintDesignSurface(juce::Graphics& g)
     const auto bounds = designSurface_.getLocalBounds().toFloat();
     g.fillAll(Palette::background());
     paintMaterialBackground(g, bounds, skinId_);
-    if (skinId_ != SkinId::midnightGold)
+    if (const auto* customBackground = assets_.getBackgroundOverride())
+    {
+        customBackground->drawWithin(g, bounds, juce::RectanglePlacement::stretchToFit, 1.0f);
+    }
+    else if (skinId_ != SkinId::midnightGold)
     {
         if (const auto* backdrop = assets_.get(AssetRole::backdrop))
             backdrop->drawWithin(g, bounds, juce::RectanglePlacement::stretchToFit, 1.0f);
@@ -289,18 +294,22 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     skinMenu.addItem(103, "Jungle", true, skinId_ == SkinId::jungle);
     skinMenu.addItem(104, "Rossocorsa", true, skinId_ == SkinId::rossocorsa);
 
-    const bool customDecoration = SkinUserSvg::hasDecoration();
+    const bool decorationFile = SkinUserSvg::hasDecoration();
+    const bool decorationActive = decorationAssets_.usingCustom();
     juce::PopupMenu decorationMenu;
     for (size_t i = 0; i < DecorationRegistry::all.size(); ++i)
     {
         const auto id = DecorationRegistry::all[i];
         decorationMenu.addItem(150 + static_cast<int>(i), DecorationRegistry::get(id).displayName,
-                               true, ! customDecoration && decorationId_ == id);
+                               true, ! decorationActive && decorationId_ == id);
     }
     decorationMenu.addSeparator();
-    decorationMenu.addItem(170, "Custom SVG", false, customDecoration);
+    decorationMenu.addItem(170, decorationFile && ! decorationActive
+                                    ? "Custom SVG invalid — using built-in"
+                                    : "Custom SVG",
+                           false, decorationActive);
     decorationMenu.addItem(171, "Load SVG...");
-    decorationMenu.addItem(172, "Clear custom SVG", customDecoration, false);
+    decorationMenu.addItem(172, "Clear custom SVG", decorationFile, false);
 
     juce::PopupMenu sizeMenu;
     sizeMenu.addItem(201, "Small", true, guiSize_ == GuiSize::small);
@@ -317,16 +326,29 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     for (int channel = 0; channel <= 16; ++channel)
         midiMenu.addItem(400 + channel, channel == 0 ? "Omni" : "Channel " + juce::String(channel),
                          true, channel == midiChannel);
-    const bool customMark = SkinUserSvg::hasManufacturerMark();
+    const bool markFile = SkinUserSvg::hasManufacturerMark();
+    const bool markActive = assets_.getManufacturerOverride() != nullptr;
     juce::PopupMenu markMenu;
     markMenu.addItem(500, ManufacturerMarkDefinition::displayName(ManufacturerMark::montroneDspWordmark), true,
-                     ! customMark && manufacturerMark_ == ManufacturerMark::montroneDspWordmark);
+                     ! markActive && manufacturerMark_ == ManufacturerMark::montroneDspWordmark);
     markMenu.addItem(501, ManufacturerMarkDefinition::displayName(ManufacturerMark::stone), true,
-                     ! customMark && manufacturerMark_ == ManufacturerMark::stone);
+                     ! markActive && manufacturerMark_ == ManufacturerMark::stone);
     markMenu.addSeparator();
-    markMenu.addItem(502, "Custom SVG", false, customMark);
+    markMenu.addItem(502, markFile && ! markActive ? "Custom SVG invalid — using built-in" : "Custom SVG",
+                     false, markActive);
     markMenu.addItem(503, "Load SVG...");
-    markMenu.addItem(504, "Clear custom SVG", customMark, false);
+    markMenu.addItem(504, "Clear custom SVG", markFile, false);
+
+    const bool backgroundFile = SkinUserSvg::hasBackground();
+    const bool backgroundActive = assets_.getBackgroundOverride() != nullptr;
+    juce::PopupMenu backgroundMenu;
+    backgroundMenu.addItem(180, "Built-in", true, ! backgroundActive);
+    backgroundMenu.addItem(181, backgroundFile && ! backgroundActive
+                                    ? "Custom file invalid — using built-in"
+                                    : "Custom PNG / SVG",
+                           false, backgroundActive);
+    backgroundMenu.addItem(182, "Load PNG or SVG...");
+    backgroundMenu.addItem(183, "Clear custom", backgroundFile, false);
 
     auto filterModelMenu = createExperimentalFilterMenu();
 
@@ -337,7 +359,20 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     menu.addSubMenu("Filter Model (Experimental)", filterModelMenu);
     menu.addSeparator();
     menu.addSubMenu("Manufacturer Mark", markMenu);
+    menu.addSubMenu("Background", backgroundMenu);
+    const bool colourFile = SkinColourOverride::hasFile();
+    const bool colourActive = SkinColourOverride::active();
+    juce::PopupMenu colourMenu;
+    colourMenu.addItem(190, "Built-in skin colours", true, ! colourActive);
+    colourMenu.addItem(191, colourFile && ! colourActive
+                                ? "Custom file invalid — using built-in"
+                                : "Custom colour file",
+                       false, colourActive);
+    colourMenu.addItem(192, "Load colour text...");
+    colourMenu.addItem(193, "Clear custom colours", colourFile, false);
+
     menu.addSubMenu("Skin", skinMenu);
+    menu.addSubMenu("Interface Colours", colourMenu);
     menu.addSubMenu("Decoration", decorationMenu);
     menu.addSubMenu("GUI Size", sizeMenu);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withDeletionCheck(*this),
@@ -415,11 +450,15 @@ std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
         if (result == 501) safeThis->applyManufacturerMark(ManufacturerMark::stone, true);
         if (result == 503) safeThis->promptLoadManufacturerMarkSvg();
         if (result == 504) safeThis->clearManufacturerMarkSvg();
+        if (result == 180 || result == 183) safeThis->clearBackground();
+        if (result == 182) safeThis->promptLoadBackground();
         if (result == 100) safeThis->applySkin(SkinId::midnightGold, true);
         if (result == 101) safeThis->applySkin(SkinId::neonCobalt, true);
         if (result == 102) safeThis->applySkin(SkinId::pastel, true);
         if (result == 103) safeThis->applySkin(SkinId::jungle, true);
         if (result == 104) safeThis->applySkin(SkinId::rossocorsa, true);
+        if (result == 190 || result == 193) safeThis->clearColourFile();
+        if (result == 192) safeThis->promptLoadColourFile();
         if (result >= 150 && result < 150 + static_cast<int>(DecorationRegistry::all.size()))
             safeThis->applyDecoration(DecorationRegistry::all[static_cast<size_t>(result - 150)], true);
         if (result == 171) safeThis->promptLoadDecorationSvg();
@@ -467,8 +506,9 @@ std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
 
 void SwaraXtAudioProcessorEditor::reloadSkinAssets()
 {
+    swaraxt::ui::SkinColourOverride::refresh();
     assets_.load(swaraxt::ui::SkinRegistry::get(skinId_));
-    decorationAssets_.load(decorationId_, swaraxt::ui::SkinRegistry::get(skinId_).palette);
+    decorationAssets_.load(decorationId_, swaraxt::ui::SkinColourOverride::resolved());
     mainPanel_.setSkinAssets(assets_);
     designSurface_.repaint();
     repaint();
@@ -477,17 +517,17 @@ void SwaraXtAudioProcessorEditor::reloadSkinAssets()
 void SwaraXtAudioProcessorEditor::showSvgLoadError(const juce::String& message)
 {
     juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                                           "SVG not loaded", message);
+                                           "File not loaded", message);
 }
 
 void SwaraXtAudioProcessorEditor::promptLoadManufacturerMarkSvg()
 {
     fileChooser_ = std::make_unique<juce::FileChooser>(
         "Load manufacturer mark SVG", juce::File(), "*.svg");
-    constexpr auto flags = juce::FileBrowserComponent::openMode
-                         | juce::FileBrowserComponent::canSelectFiles;
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
     juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
-    fileChooser_->launchAsync(flags, [safeThis](const juce::FileChooser& chooser) {
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
         if (safeThis == nullptr) return;
         const auto results = chooser.getResults();
         if (results.isEmpty()) return;
@@ -513,10 +553,10 @@ void SwaraXtAudioProcessorEditor::promptLoadDecorationSvg()
 {
     fileChooser_ = std::make_unique<juce::FileChooser>(
         "Load decoration SVG", juce::File(), "*.svg");
-    constexpr auto flags = juce::FileBrowserComponent::openMode
-                         | juce::FileBrowserComponent::canSelectFiles;
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
     juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
-    fileChooser_->launchAsync(flags, [safeThis](const juce::FileChooser& chooser) {
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
         if (safeThis == nullptr) return;
         const auto results = chooser.getResults();
         if (results.isEmpty()) return;
@@ -538,12 +578,67 @@ void SwaraXtAudioProcessorEditor::clearDecorationSvg()
     reloadSkinAssets();
 }
 
+void SwaraXtAudioProcessorEditor::promptLoadBackground()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load background PNG or SVG", juce::File(), "*.png;*.svg");
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinUserSvg::installBackground(results.getReference(0), error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->reloadSkinAssets();
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearBackground()
+{
+    swaraxt::ui::SkinUserSvg::clearBackground();
+    reloadSkinAssets();
+}
+
+void SwaraXtAudioProcessorEditor::promptLoadColourFile()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load interface colour text", juce::File(), "*.txt");
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinColourOverride::install(results.getReference(0), error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->applySkin(safeThis->skinId_, false);
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearColourFile()
+{
+    swaraxt::ui::SkinColourOverride::clear();
+    applySkin(skinId_, false);
+}
+
 void SwaraXtAudioProcessorEditor::applySkin(swaraxt::ui::SkinId skin, bool persist)
 {
     skinId_ = skin;
     swaraxt::ui::SkinRegistry::setActive(skin);
+    swaraxt::ui::SkinColourOverride::refresh();
     assets_.load(swaraxt::ui::SkinRegistry::get(skin));
-    decorationAssets_.load(decorationId_, swaraxt::ui::SkinRegistry::get(skin).palette);
+    decorationAssets_.load(decorationId_, swaraxt::ui::SkinColourOverride::resolved());
     lookAndFeel_.applySkin();
     prevPresetButton_.setColour(juce::TextButton::textColourOffId,
                                 swaraxt::ui::Palette::skin().displayText);
@@ -577,7 +672,7 @@ void SwaraXtAudioProcessorEditor::applyDecoration(swaraxt::ui::DecorationId deco
     if (swaraxt::ui::SkinUserSvg::hasDecoration())
         swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::decorationFile());
     decorationId_ = decoration;
-    decorationAssets_.load(decorationId_, swaraxt::ui::SkinRegistry::active().palette);
+    decorationAssets_.load(decorationId_, swaraxt::ui::SkinColourOverride::resolved());
     repaint();
     if (persist)
         swaraxt::ui::UiPreferences::save(skinId_, decorationId_, guiSize_);

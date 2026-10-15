@@ -175,6 +175,10 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void clearManufacturerMarkSvg();
     void promptLoadDecorationSvg();
     void clearDecorationSvg();
+    void promptLoadBackground();
+    void clearBackground();
+    void promptLoadColourFile();
+    void clearColourFile();
     void reloadSkinAssets();
     void showSvgLoadError(const juce::String& message);
 

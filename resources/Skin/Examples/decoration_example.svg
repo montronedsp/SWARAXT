@@ -2,14 +2,14 @@
 <!--
   SWARA XT column-decoration template.
 
-  Load via: right-click editor ’ Decoration ’ Load SVG&
+  Load via: right-click editor ï¿½ Decoration ï¿½ Load SVG&
   Stored as: <preferences>/skin_assets/decoration.svg  (max 256 KiB)
 
   Skin-aware colour:
     #ffffff  (or white) is recoloured to the active skin braidTint.
 
   Drawn twice as tall separators (~513 design units high). Prefer a tall,
-  narrow viewBox (about 26×500). Paths/strokes only  no filters or text.
+  narrow viewBox (about 26ï¿½500). Paths/strokes only  no filters or text.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="26" height="500" viewBox="0 0 26 500" version="1.1">
   <g fill="none" stroke="#ffffff" stroke-width="1.35" stroke-linecap="square" stroke-linejoin="miter">

@@ -2,7 +2,7 @@
 <!--
   SWARA XT manufacturer-mark template.
 
-  Load via: right-click editor ’ Manufacturer Mark ’ Load SVG&
+  Load via: right-click editor ï¿½ Manufacturer Mark ï¿½ Load SVG&
   Stored as: <preferences>/skin_assets/manufacturer_mark.svg  (max 256 KiB)
 
   Skin-aware colours (exact hex strings are rewritten to the active skin):
@@ -13,7 +13,7 @@
     #9b4f9e  optional accent (also mapped to primary)
 
   Keep paths/fills only  JUCE SVG does not apply filters, masks, or text.
-  Slot aspect is roughly 149×27 (design units). viewBox can be any size.
+  Slot aspect is roughly 149ï¿½27 (design units). viewBox can be any size.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 54" version="1.1">
   <g id="shadow" fill="#0a0608" opacity="0.78" transform="translate(2.5 2.5)">

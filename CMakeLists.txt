@@ -194,6 +194,46 @@ swaraxt_enable_warnings_as_errors(SwaraXT)
 swaraxt_configure_shruthi_target(SwaraXT)
 swaraxt_enable_avrlib_hd_voice(SwaraXT)
 
+option(SWARA_BUILD_SKIN_EDITOR "Build the standalone SWARA XT Skin Editor" ON)
+if(SWARA_BUILD_SKIN_EDITOR)
+    juce_add_gui_app(SwaraXtSkinEditor
+        COMPANY_NAME "MontroneDSP"
+        BUNDLE_ID com.MontroneDSP.SwaraXtSkinEditor
+        PRODUCT_NAME "SWARA XT Skin Editor"
+        NEEDS_WEB_BROWSER FALSE
+        NEEDS_CURL FALSE
+    )
+    juce_generate_juce_header(SwaraXtSkinEditor)
+    target_sources(SwaraXtSkinEditor
+        PRIVATE
+            Source/Tools/SkinEditor/SkinEditorMain.cpp
+            Source/Tools/SkinEditor/SkinEditorWindow.cpp
+            Source/Tools/SkinEditor/SkinEditorPreview.cpp
+            Source/Ui/SwaraXtSkin.cpp
+    )
+    target_include_directories(SwaraXtSkinEditor PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+    target_compile_definitions(SwaraXtSkinEditor
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:SwaraXtSkinEditor,JUCE_PRODUCT_NAME>"
+            JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}"
+            SWARAXT_VERSION_STRING="${PROJECT_VERSION}"
+    )
+    target_link_libraries(SwaraXtSkinEditor
+        PRIVATE
+            SwaraXTFonts
+            juce::juce_gui_extra
+            juce::juce_graphics
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags
+    )
+    swaraxt_enable_warnings(SwaraXtSkinEditor)
+    swaraxt_enable_warnings_as_errors(SwaraXtSkinEditor)
+endif()
+
 if(SWARA_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Tests)

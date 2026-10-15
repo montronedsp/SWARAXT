@@ -11,7 +11,7 @@ namespace swaraxt::ui {
 
 /** Compatibility facade over the active semantic skin palette. */
 struct Palette {
-    static const SkinPalette& skin() { return SkinRegistry::active().palette; }
+    static const SkinPalette& skin() { return SkinColourOverride::resolved(); }
     static juce::Colour background() { return skin().editorBackground; }
     static juce::Colour panelDeep() { return skin().screenBackground; }
     static juce::Colour panel() { return skin().panelBackground; }

@@ -1,0 +1,50 @@
+# SWARA XT interface colours.
+# Load via: right-click editor → Interface Colours → Load colour text…
+# Installed as: skin_assets/colours.txt
+#
+# One colour per line:  name = #RRGGBB
+# Also accepted: #RGB and #AARRGGBB.
+# A line you omit keeps the selected built-in skin colour.
+# A bad line is skipped. A file with no valid lines is rejected.
+# Comments: blank lines, lines starting with ; or //, or # followed by a space.
+
+primary_text = #542044
+secondary_text = #7c355f
+muted_text = #7a654f
+module_header_text = #160d15
+combo_text = #f7e8bd
+display_text = #f7e8bd
+matrix_text = #542044
+
+editor_background = #f7e8bd
+panel_background = #e7ca83
+panel_secondary = #c89432
+screen_background = #130d14
+module_header_background = #c58e2f
+divider = #b9852b
+braid_tint = #c58e2f
+frame = #b9852b
+outline = #542044
+
+knob_body = #181018
+knob_inner = #050508
+knob_rim = #b9852b
+knob_indicator = #f7e8bd
+knob_active = #d951a5
+
+combo_background = #160d15
+combo_border = #b9852b
+combo_arrow = #d951a5
+display_background = #100b11
+display_border = #c58e2f
+
+visualizer_primary = #d951a5
+visualizer_secondary = #e7ca83
+visualizer_grid = #5b3f54
+matrix_guide = #8a6b77
+matrix_amount_positive = #d951a5
+matrix_amount_negative = #8a3d75
+
+focus = #d951a5
+hover = #e7ca83
+disabled = #9c8b7d
