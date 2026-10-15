@@ -76,23 +76,67 @@ class SequenceState {
         static constexpr int extent = 48;
     };
 
+    // Uniform continuous CV in [root+lower, root+upper] semitones at 1/1024.
+    // Inclusive endpoints; zero-width ranges return the clamped root.
+    static int32_t randomFreeCvInRange(juce::Random& random,
+                                       int32_t rootUnits,
+                                       NoteRange range) noexcept
+    {
+        const int32_t loOffset =
+            static_cast<int32_t>(range.lower) * FreeCvPitch::kUnitsPerSemitone;
+        const int32_t hiOffset =
+            static_cast<int32_t>(range.upper) * FreeCvPitch::kUnitsPerSemitone;
+        int32_t lo = rootUnits + loOffset;
+        int32_t hi = rootUnits + hiOffset;
+        if (lo < FreeCvPitch::kMinUnits)
+            lo = FreeCvPitch::kMinUnits;
+        if (hi < FreeCvPitch::kMinUnits)
+            hi = FreeCvPitch::kMinUnits;
+        if (lo > FreeCvPitch::kMaxUnits)
+            lo = FreeCvPitch::kMaxUnits;
+        if (hi > FreeCvPitch::kMaxUnits)
+            hi = FreeCvPitch::kMaxUnits;
+        if (hi < lo)
+        {
+            const int32_t swap = lo;
+            lo = hi;
+            hi = swap;
+        }
+        if (hi == lo)
+            return lo;
+        // Span fits in int: max extent is 96 semitones * 1024 + 1.
+        const int span = static_cast<int>(hi - lo) + 1;
+        return lo + random.nextInt(span);
+    }
+
     void randomize(Randomize kind, juce::Random& random, NoteRange range,
                    RandomizationType type = RandomizationType::type1)
     {
         juce::ignoreUnused(type); // The production domain contains Type 1 only.
         auto pattern = snapshot();
-        constexpr std::array<int, 5> scale { 0, 2, 4, 7, 9 };
         range.lower = juce::jlimit(-NoteRange::extent, 0, range.lower);
         range.upper = juce::jlimit(0, NoteRange::extent, range.upper);
+        const bool linear = pattern.pitchMode == 1;
+        // Freeze the root before any step write so mid-pass updates cannot drift.
+        const int rootMidi = SequenceSnapshot::dataA(pattern.steps[0]) & 0x7f;
+        const int32_t rootCv = (linear && pattern.freePitchReady != 0)
+            ? pattern.freePitch[0]
+            : FreeCvPitch::fromMidiNote(rootMidi);
+
+        // Legacy Type 1 keeps the original pentatonic offset table and RNG draws.
+        constexpr std::array<int, 5> scale { 0, 2, 4, 7, 9 };
         std::array<int, 2 * NoteRange::extent + 1> offsets {};
         int count = 0;
-        for (int offset = range.lower; offset <= range.upper; ++offset)
+        if (! linear)
         {
-            const int degree = (offset % 12 + 12) % 12;
-            if (std::find(scale.begin(), scale.end(), degree) != scale.end())
-                offsets[static_cast<size_t>(count++)] = offset;
+            for (int offset = range.lower; offset <= range.upper; ++offset)
+            {
+                const int degree = (offset % 12 + 12) % 12;
+                if (std::find(scale.begin(), scale.end(), degree) != scale.end())
+                    offsets[static_cast<size_t>(count++)] = offset;
+            }
         }
-        const int root = SequenceSnapshot::dataA(pattern.steps[0]) & 0x7f;
+
         bool previousGate = false;
         for (int logical = 0; logical < SequenceSnapshot::kNumSteps; ++logical)
         {
@@ -102,17 +146,18 @@ class SequenceState {
             auto b = SequenceSnapshot::dataB(packed);
             if (kind == Randomize::notes || kind == Randomize::sequence)
             {
-                // Native tuned pitch zero is the muted-scale sentinel, not a
-                // playable random note. Existing/manual pattern bytes stay intact.
-                const int pitch = juce::jlimit(1, 127,
-                    root + offsets[static_cast<size_t>(random.nextInt(count))]);
-                if (pattern.pitchMode == 1)
+                if (linear)
                 {
-                    pattern.freePitch[index] = FreeCvPitch::fromMidiNote(pitch);
+                    // Continuous CV only. Packed integer notes stay intact.
+                    pattern.freePitch[index] = randomFreeCvInRange(random, rootCv, range);
                     pattern.freePitchReady = 1;
                 }
                 else
                 {
+                    // Native tuned pitch zero is the muted-scale sentinel, not a
+                    // playable random note. Existing/manual pattern bytes stay intact.
+                    const int pitch = juce::jlimit(1, 127,
+                        rootMidi + offsets[static_cast<size_t>(random.nextInt(count))]);
                     a = static_cast<uint8_t>((a & 0x80) | pitch);
                 }
             }

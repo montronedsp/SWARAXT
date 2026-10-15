@@ -1586,6 +1586,14 @@ void SeqPanel::refreshSequenceControls()
                                     / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone),
                                 juce::dontSendNotification);
         note_.slider().setTooltip("Free CV pitch in semitones. 60.00 is C4. Not snapped to a scale.");
+        randomType_.setTooltip(
+            "Type 1: unrestricted continuous CV pitches, velocities, rests/ties and controller values");
+        noteRange_.setTooltip(
+            "CV offsets from step 1: lower -48..0, upper 0..+48 continuous semitones; LINEAR");
+        randomNotes_.setTooltip(
+            "Change continuous CV pitches only; preserve events, velocities, values and packed notes");
+        randomSequence_.setTooltip(
+            "New continuous CV, velocities, rests/ties and controller values; packed notes stay intact");
     }
     else
     {
@@ -1594,6 +1602,14 @@ void SeqPanel::refreshSequenceControls()
         note_.slider().textFromValueFunction = nullptr;
         note_.slider().setValue(dataA & 0x7f, juce::dontSendNotification);
         note_.slider().setTooltip("Integer sequence note");
+        randomType_.setTooltip(
+            "Type 1: pentatonic notes, velocities, rests/ties and controller values");
+        noteRange_.setTooltip(
+            "Note offsets from step 1: lower -48..0, upper 0..+48 semitones; pentatonic Type 1");
+        randomNotes_.setTooltip(
+            "Change pitches only; preserve events, velocities and controller values");
+        randomSequence_.setTooltip(
+            "New notes, velocities, rests/ties and controller values; preserve playback settings");
     }
     velocity_.slider().setValue((dataB & 0x70) >> 4, juce::dontSendNotification);
     controller_.slider().setValue(dataB & 0x0f, juce::dontSendNotification);

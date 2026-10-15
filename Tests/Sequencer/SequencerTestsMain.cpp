@@ -429,6 +429,196 @@ void testFreeCvDoesNotRewriteLegacyNotes()
     expect(loaded.snapshot().freePitch != heldCv, "linear note random updates CV");
 }
 
+bool isPentatonicPitchClass(int midiNote) noexcept
+{
+    constexpr int scale[5] = { 0, 2, 4, 7, 9 };
+    const int degree = ((midiNote % 12) + 12) % 12;
+    for (int value : scale)
+        if (value == degree)
+            return true;
+    return false;
+}
+
+void testLegacyRandomizationSeedParity()
+{
+    // Fixed seed + default factory steps must remain bit-exact in LEGACY mode.
+    swaraxt::SequenceState first;
+    swaraxt::SequenceState second;
+    juce::Random a(0xC0FFEEu);
+    juce::Random b(0xC0FFEEu);
+    const swaraxt::SequenceState::NoteRange range { -12, 12 };
+    first.randomize(swaraxt::SequenceState::Randomize::notes, a, range);
+    second.randomize(swaraxt::SequenceState::Randomize::notes, b, range);
+    expect(first.snapshot().steps == second.snapshot().steps,
+           "identical legacy seeds reproduce packed notes");
+
+    const int root = swaraxt::SequenceSnapshot::dataA(
+        swaraxt::SequenceState::defaultSnapshot().steps[0]) & 0x7f;
+    for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
+    {
+        const int note = swaraxt::SequenceSnapshot::dataA(
+            first.snapshot().steps[static_cast<size_t>(i)]) & 0x7f;
+        expect(isPentatonicPitchClass(note - root),
+               "legacy random offsets stay on Type 1 pentatonic degrees");
+    }
+
+    swaraxt::SequenceState seqA;
+    swaraxt::SequenceState seqB;
+    juce::Random c(0xC0FFEEu);
+    juce::Random d(0xC0FFEEu);
+    seqA.randomize(swaraxt::SequenceState::Randomize::sequence, c, range);
+    seqB.randomize(swaraxt::SequenceState::Randomize::sequence, d, range);
+    expect(seqA.snapshot().steps == seqB.snapshot().steps,
+           "identical legacy seeds reproduce RANDOM SEQ");
+}
+
+void testFreeCvContinuousRandomization()
+{
+    constexpr int32_t kRoot =
+        60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 358; // 60.35
+    swaraxt::SequenceState state;
+    auto base = state.snapshot();
+    for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
+    {
+        base.steps[static_cast<size_t>(i)] = swaraxt::SequenceSnapshot::pack(0x80 | 60, 0x70);
+        base.freePitch[static_cast<size_t>(i)] = kRoot;
+    }
+    base.pitchMode = 1;
+    base.freePitchReady = 1;
+    state.store(base);
+    const auto packedBefore = state.snapshot().steps;
+
+    swaraxt::SequenceState::NoteRange range { -12, 12 };
+    juce::Random seedA(0xA5A5A5u);
+    juce::Random seedB(0xA5A5A5u);
+    state.randomize(swaraxt::SequenceState::Randomize::notes, seedA, range);
+    auto once = state.snapshot();
+    expect(once.steps == packedBefore, "LINEAR RANDOM NOTES preserves packed notes");
+    state.store(base);
+    state.randomize(swaraxt::SequenceState::Randomize::notes, seedB, range);
+    expect(state.snapshot().freePitch == once.freePitch,
+           "identical LINEAR seeds reproduce continuous CV");
+
+    const int32_t lo = kRoot + range.lower * swaraxt::FreeCvPitch::kUnitsPerSemitone;
+    const int32_t hi = kRoot + range.upper * swaraxt::FreeCvPitch::kUnitsPerSemitone;
+    int fractional = 0;
+    int nonPentatonic = 0;
+    for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
+    {
+        const int32_t cv = once.freePitch[static_cast<size_t>(i)];
+        expect(cv >= lo && cv <= hi, "LINEAR random CV stays inside the selected range");
+        expect(cv >= swaraxt::FreeCvPitch::kMinUnits && cv <= swaraxt::FreeCvPitch::kMaxUnits,
+               "LINEAR random CV stays inside the supported pitch domain");
+        if ((cv % swaraxt::FreeCvPitch::kUnitsPerSemitone) != 0)
+            ++fractional;
+        const int midiFloor = cv / swaraxt::FreeCvPitch::kUnitsPerSemitone;
+        if (! isPentatonicPitchClass(midiFloor))
+            ++nonPentatonic;
+    }
+    expect(fractional > 0, "LINEAR random produces fractional semitone CV values");
+    expect(nonPentatonic > 0, "LINEAR random is not restricted to pentatonic pitch classes");
+
+    // Zero-width range freezes every step on the clamped root.
+    state.store(base);
+    juce::Random zeroSeed(7);
+    state.randomize(swaraxt::SequenceState::Randomize::notes, zeroSeed,
+                    swaraxt::SequenceState::NoteRange { 0, 0 });
+    for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
+        expect(state.snapshot().freePitch[static_cast<size_t>(i)] == kRoot,
+               "zero-width LINEAR range keeps the frozen root");
+
+    // Statistical sample: many draws must not collapse onto integers or a 5-note set.
+    int sampleFractional = 0;
+    int sampleInteger = 0;
+    int samplePentatonicClass = 0;
+    int sampleNonPentatonicClass = 0;
+    constexpr int kPasses = 64;
+    for (int pass = 0; pass < kPasses; ++pass)
+    {
+        state.store(base);
+        juce::Random passRandom(0x600D0000u + static_cast<juce::uint32>(pass));
+        state.randomize(swaraxt::SequenceState::Randomize::notes, passRandom, range);
+        for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
+        {
+            const int32_t cv = state.snapshot().freePitch[static_cast<size_t>(i)];
+            if ((cv % swaraxt::FreeCvPitch::kUnitsPerSemitone) == 0)
+                ++sampleInteger;
+            else
+                ++sampleFractional;
+            const int midiFloor = cv / swaraxt::FreeCvPitch::kUnitsPerSemitone;
+            if (isPentatonicPitchClass(midiFloor))
+                ++samplePentatonicClass;
+            else
+                ++sampleNonPentatonicClass;
+        }
+    }
+    const int total = kPasses * swaraxt::SequenceSnapshot::kNumSteps;
+    expect(sampleFractional > total / 2, "most LINEAR samples are fractional, not integer semitones");
+    expect(sampleInteger < total / 10, "LINEAR samples are not concentrated on integer semitones");
+    expect(sampleNonPentatonicClass > total / 10,
+           "LINEAR samples are not concentrated on the Type 1 pentatonic set");
+    expect(samplePentatonicClass > 0 && sampleNonPentatonicClass > 0,
+           "LINEAR samples span both pentatonic and non-pentatonic pitch classes");
+    std::printf("LINEAR random sample: total=%d fractional=%d integer=%d pent=%d nonpent=%d\n",
+                total, sampleFractional, sampleInteger, samplePentatonicClass,
+                sampleNonPentatonicClass);
+
+    // RANDOM SEQ: CV changes, events/velocity/value may change, packed notes stay.
+    state.store(base);
+    const auto beforeSeq = state.snapshot();
+    juce::Random seqRandom(0x51ECu);
+    state.randomize(swaraxt::SequenceState::Randomize::sequence, seqRandom, range);
+    auto afterSeq = state.snapshot();
+    for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
+    {
+        expect((swaraxt::SequenceSnapshot::dataA(afterSeq.steps[static_cast<size_t>(i)]) & 0x7f)
+                   == (swaraxt::SequenceSnapshot::dataA(beforeSeq.steps[static_cast<size_t>(i)]) & 0x7f),
+               "LINEAR RANDOM SEQ preserves packed note nibbles");
+    }
+    expect(afterSeq.freePitch != beforeSeq.freePitch, "LINEAR RANDOM SEQ updates CV");
+
+    // Velocity-only must not touch CV.
+    state.store(afterSeq);
+    const auto heldCv = state.snapshot().freePitch;
+    juce::Random velRandom(99);
+    state.randomize(swaraxt::SequenceState::Randomize::velocity, velRandom, range);
+    expect(state.snapshot().freePitch == heldCv, "LINEAR RANDOM VELOCITY leaves CV unchanged");
+
+    // LINEAR off keeps packed notes and leaves CV values intact for later re-entry.
+    state.store(afterSeq);
+    state.setPitchMode(0);
+    expect(state.snapshot().pitchMode == 0, "LINEAR off clears pitchMode");
+    expect(state.snapshot().steps == afterSeq.steps,
+           "switching LINEAR off keeps the packed note pattern");
+    expect(state.snapshot().freePitch == afterSeq.freePitch,
+           "switching LINEAR off keeps the generated CV values");
+
+    // Save/restore preserves generated CV.
+    state.setPitchMode(1);
+    juce::Random saveRandom(0x5AFEu);
+    state.store(base);
+    state.randomize(swaraxt::SequenceState::Randomize::notes, saveRandom, range);
+    const auto savedCv = state.snapshot().freePitch;
+    const auto savedTree = state.toValueTree();
+    swaraxt::SequenceState restored;
+    expect(restored.restoreFromValueTree(savedTree), "LINEAR CV tree restores");
+    expect(restored.snapshot().pitchMode == 1, "restored pitchMode stays LINEAR");
+    expect(restored.snapshot().freePitch == savedCv, "restored freePitch matches generated CV");
+
+    // Session restore with LOCK set preserves generated LINEAR CV.
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 64);
+    processor.sequenceState().store(state.snapshot());
+    processor.setSequenceLocked(true);
+    juce::MemoryBlock block;
+    processor.getStateInformation(block);
+    SwaraXtAudioProcessor other;
+    other.setStateInformation(block.getData(), static_cast<int>(block.getSize()));
+    expect(other.sequenceLocked(), "restored session keeps LOCK");
+    expect(other.sequenceState().snapshot().freePitch == savedCv,
+           "sequence LOCK / session restore preserves generated LINEAR CV");
+}
+
 void testFreeCvReachesVoicePitch()
 {
     SwaraXtAudioProcessor processor;
@@ -460,13 +650,607 @@ void testFreeCvReachesVoicePitch()
     expect(heard, "sequence free CV reaches the oscillator pitch word");
 }
 
+bool writePng(const juce::Image& image, const juce::File& file)
+{
+    if (! file.getParentDirectory().createDirectory())
+        return false;
+    juce::FileOutputStream stream(file);
+    return stream.openedOk() && juce::PNGImageFormat().writeImageToStream(image, stream);
+}
+
+bool controlsWithinParent(const juce::Component& parent)
+{
+    for (int i = 0; i < parent.getNumChildComponents(); ++i)
+    {
+        const auto* child = parent.getChildComponent(i);
+        if (child == nullptr || ! child->isVisible())
+            continue;
+        if (child->getBounds().isEmpty())
+            return false;
+        if (! parent.getLocalBounds().contains(child->getBounds()))
+            return false;
+    }
+    return true;
+}
+
+void setNormalized(SwaraXtAudioProcessor& processor, const char* id, float normalized)
+{
+    if (auto* parameter = processor.getApvts().getParameter(id))
+        parameter->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, normalized));
+}
+
+void prepareSimpleSawPatch(SwaraXtAudioProcessor& processor)
+{
+    setInt(processor, swaraxt::IDs::osc1Shape, 1); // SAW
+    setInt(processor, swaraxt::IDs::osc2Shape, 0); // NONE
+    setInt(processor, swaraxt::IDs::mixBalance, 0);
+    setInt(processor, swaraxt::IDs::mixSub, 0);
+    setInt(processor, swaraxt::IDs::mixNoise, 0);
+    setInt(processor, swaraxt::IDs::env1Attack, 0);
+    setInt(processor, swaraxt::IDs::env1Decay, 0);
+    setInt(processor, swaraxt::IDs::env1Sustain, 127);
+    setInt(processor, swaraxt::IDs::env1Release, 0);
+    setInt(processor, swaraxt::IDs::env2Attack, 0);
+    setInt(processor, swaraxt::IDs::env2Decay, 0);
+    setInt(processor, swaraxt::IDs::env2Sustain, 127);
+    setInt(processor, swaraxt::IDs::env2Release, 0);
+    setNormalized(processor, swaraxt::IDs::filterCutoff, 1.0f);
+    setNormalized(processor, swaraxt::IDs::filterResonance, 0.0f);
+    setInt(processor, swaraxt::IDs::filterEnvDepth, 0);
+    setInt(processor, swaraxt::IDs::filterLfoDepth, 0);
+    setInt(processor, swaraxt::IDs::dspFxProgram, 0);
+    setInt(processor, swaraxt::IDs::perfGlide, 0);
+    setInt(processor, swaraxt::IDs::perfLegato, 0);
+    setNormalized(processor, swaraxt::IDs::master, 0.75f);
+}
+
+std::vector<float> renderSustainedFreeCvAudio(SwaraXtAudioProcessor& processor,
+                                              int32_t units,
+                                              bool linearMode,
+                                              double sampleRate,
+                                              int blockSize,
+                                              int totalSamples,
+                                              int warmupSamples)
+{
+    processor.prepareToPlay(sampleRate, blockSize);
+    prepareSimpleSawPatch(processor);
+    setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+    setInt(processor, swaraxt::IDs::seqClockMode, 0);
+    setInt(processor, swaraxt::IDs::seqTempo, 40);
+    setInt(processor, swaraxt::IDs::seqGate, 100);
+    setInt(processor, swaraxt::IDs::perfGlide, 0);
+    setInt(processor, swaraxt::IDs::perfLegato, 0);
+
+    processor.sequenceState().setPitchMode(linearMode ? 1 : 0);
+    for (int step = 0; step < swaraxt::SequenceSnapshot::kNumSteps; ++step)
+    {
+        processor.sequenceState().setStep(step, static_cast<uint8_t>(0x80 | 60), 0x70);
+        processor.sequenceState().setFreePitch(step, units);
+    }
+    auto snap = processor.sequenceState().snapshot();
+    snap.length = 1;
+    snap.rotation = 0;
+    processor.sequenceState().store(snap);
+    processor.sequenceState().setPitchMode(linearMode ? 1 : 0);
+    for (int step = 0; step < swaraxt::SequenceSnapshot::kNumSteps; ++step)
+    {
+        processor.sequenceState().setStep(step, static_cast<uint8_t>(0x80 | 60), 0x70);
+        processor.sequenceState().setFreePitch(step, units);
+    }
+
+    processor.engineForTests().applyParameters();
+    auto& part = processor.engineForTests().shruthiPart();
+    part.Start(false);
+    const auto target = linearMode ? swaraxt::FreeCvPitch::toVoicePitch(units)
+                                   : static_cast<uint16_t>(60 * 128);
+    bool armed = false;
+    for (int tick = 0; tick < 64 && ! armed; ++tick)
+    {
+        part.Clock(false);
+        if (part.voice().pitch_value() == target)
+            armed = true;
+    }
+    expect(armed, "sequencer armed the requested pitch word before audio capture");
+
+    // Hold the first step without further Clock so the gate stays open.
+    std::vector<float> mono;
+    mono.reserve(static_cast<size_t>(totalSamples));
+    float peak = 0.0f;
+    int generated = 0;
+    while (generated < totalSamples)
+    {
+        const int n = std::min(blockSize, totalSamples - generated);
+        juce::AudioBuffer<float> buffer(2, n);
+        juce::MidiBuffer midi;
+        processor.processBlock(buffer, midi);
+        for (int i = 0; i < n; ++i)
+        {
+            const float sample = 0.5f * (buffer.getSample(0, i) + buffer.getSample(1, i));
+            mono.push_back(sample);
+            peak = std::max(peak, std::abs(sample));
+        }
+        generated += n;
+    }
+    expect(part.voice().pitch_value() == target,
+           "held step keeps a stable pitch word while rendering");
+    expect(peak > 1.0e-3f, "sustained render produces audible energy");
+    part.Stop(false);
+    if (warmupSamples > 0 && warmupSamples < static_cast<int>(mono.size()))
+        mono.erase(mono.begin(), mono.begin() + warmupSamples);
+    return mono;
+}
+
+double estimateFundamentalHz(const std::vector<float>& mono, double sampleRate)
+{
+    if (mono.size() < 2048)
+        return 0.0;
+    const int n = static_cast<int>(mono.size());
+    double mean = 0.0;
+    for (float s : mono)
+        mean += s;
+    mean /= static_cast<double>(n);
+
+    const int minLag = static_cast<int>(sampleRate / 900.0);
+    const int maxLag = static_cast<int>(sampleRate / 80.0);
+    double bestCorr = -1.0e300;
+    int bestLag = 0;
+    for (int lag = minLag; lag <= maxLag; ++lag)
+    {
+        double corr = 0.0;
+        double energy0 = 0.0;
+        double energy1 = 0.0;
+        const int count = n - lag;
+        for (int i = 0; i < count; ++i)
+        {
+            const double a = mono[static_cast<size_t>(i)] - mean;
+            const double b = mono[static_cast<size_t>(i + lag)] - mean;
+            corr += a * b;
+            energy0 += a * a;
+            energy1 += b * b;
+        }
+        const double denom = std::sqrt(energy0 * energy1);
+        if (denom <= 1.0e-20)
+            continue;
+        corr /= denom;
+        if (corr > bestCorr)
+        {
+            bestCorr = corr;
+            bestLag = lag;
+        }
+    }
+    if (bestLag <= 0 || bestCorr < 0.2)
+        return 0.0;
+    return sampleRate / static_cast<double>(bestLag);
+}
+
+void writeWavMono(const juce::File& file, const std::vector<float>& mono, double sampleRate)
+{
+    file.getParentDirectory().createDirectory();
+    juce::WavAudioFormat format;
+    auto stream = std::unique_ptr<juce::OutputStream>(file.createOutputStream());
+    expect(stream != nullptr, "WAV output stream");
+    if (stream == nullptr)
+        return;
+    const auto options = juce::AudioFormatWriterOptions()
+                             .withSampleRate(sampleRate)
+                             .withNumChannels(1)
+                             .withBitsPerSample(16);
+    auto writer = format.createWriterFor(stream, options);
+    expect(writer != nullptr, "WAV writer");
+    if (writer == nullptr)
+        return;
+    juce::AudioBuffer<float> buffer(1, static_cast<int>(mono.size()));
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+        buffer.setSample(0, i, mono[static_cast<size_t>(i)]);
+    writer->writeFromAudioSampleBuffer(buffer, 0, buffer.getNumSamples());
+}
+
+void testLinearGuiVerification()
+{
+    const juce::File outDir(
+        "D:/MontroneDSP_Studio/research/notes/SWARAXT/linear-final-verify/screenshots");
+    expect(outDir.createDirectory().wasOk() || outDir.isDirectory(),
+           "LINEAR screenshot directory outside Git");
+
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 64);
+    setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+    processor.sequenceState().setPitchMode(0);
+    for (int step = 0; step < swaraxt::SequenceSnapshot::kNumSteps; ++step)
+    {
+        processor.sequenceState().setStep(step, static_cast<uint8_t>(0x80 | 60), 0x70);
+        processor.sequenceState().setFreePitch(
+            step, 60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 512);
+    }
+
+    SwaraXtAudioProcessorEditor editor(processor);
+    editor.setModuleViewsForTests(false, true);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+
+    auto& seq = editor.mainPanelForTests().sequencerForTests();
+    const auto sizes = { swaraxt::ui::GuiSize::small,
+                         swaraxt::ui::GuiSize::medium,
+                         swaraxt::ui::GuiSize::large };
+    const char* sizeNames[] = { "small", "medium", "large" };
+    int sizeIndex = 0;
+    for (auto size : sizes)
+    {
+        editor.setGuiSizeForTests(size);
+        editor.resized();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+        seq.reflow();
+        seq.linearButtonForTests().setToggleState(false, juce::sendNotificationSync);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+        expect(processor.sequenceState().snapshot().pitchMode == 0, "LINEAR button clears pitchMode");
+        expect(seq.noteLabelForTests() == "NOTE", "NOTE label while LINEAR is off");
+        expect(seq.linearButtonForTests().getToggleState() == false, "LINEAR OFF visual state");
+
+        const auto heading = seq.sequenceHeadingForTests().getBounds();
+        const auto linear = seq.linearButtonForTests().getBounds();
+        const auto lock = seq.lockButtonForTests().getBounds();
+        expect(heading.getRight() <= linear.getX() + 2,
+               "LINEAR sits to the right of SEQUENCER heading");
+        expect(linear.getRight() <= lock.getX() + 2,
+               "LINEAR sits to the left of LOCK");
+        expect(std::abs(linear.getCentreY() - lock.getCentreY()) <= 2,
+               "LINEAR and LOCK share the heading row");
+        expect(controlsWithinParent(seq), "SeqPanel children stay inside bounds");
+        for (int i = 0; i < swaraxt::SequenceSnapshot::kNumSteps; ++i)
+        {
+            expect(seq.stepButtonForTests(i).isVisible(), "all 16 step buttons visible");
+            expect(! seq.stepButtonForTests(i).getBounds().isEmpty(), "step button usable");
+        }
+
+        const auto offImage = editor.createComponentSnapshot(editor.getLocalBounds());
+        expect(writePng(offImage, outDir.getChildFile(
+                   juce::String("linear-off-") + sizeNames[sizeIndex] + ".png")),
+               "LINEAR OFF screenshot written");
+
+        seq.linearButtonForTests().setToggleState(true, juce::sendNotificationSync);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+        expect(processor.sequenceState().snapshot().pitchMode == 1, "LINEAR button sets pitchMode");
+        expect(seq.noteLabelForTests() == "CV", "NOTE changes to CV when LINEAR is active");
+        expect(seq.linearButtonForTests().getToggleState() == true, "LINEAR ON visual state");
+        const auto cvText = seq.noteSliderForTests().getTextFromValue(
+            seq.noteSliderForTests().getValue());
+        expect(cvText.contains("."), "fractional CV text shows a decimal");
+        expect(controlsWithinParent(seq), "SeqPanel children stay inside bounds with LINEAR on");
+
+        const auto onImage = editor.createComponentSnapshot(editor.getLocalBounds());
+        expect(writePng(onImage, outDir.getChildFile(
+                   juce::String("linear-on-") + sizeNames[sizeIndex] + ".png")),
+               "LINEAR ON screenshot written");
+
+        const int32_t heldNote = processor.sequenceState().snapshot().steps[0];
+        const int32_t heldCv = processor.sequenceState().snapshot().freePitch[0];
+        seq.linearButtonForTests().setToggleState(false, juce::sendNotificationSync);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+        expect(processor.sequenceState().snapshot().steps[0] == heldNote,
+               "mode switch preserves legacy packed notes");
+        expect(processor.sequenceState().snapshot().freePitch[0] == heldCv,
+               "mode switch preserves CV values");
+        seq.linearButtonForTests().setToggleState(true, juce::sendNotificationSync);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+        expect(processor.sequenceState().snapshot().freePitch[0] == heldCv,
+               "re-enabling LINEAR restores the same CV");
+        ++sizeIndex;
+    }
+
+    // HiDPI: recreate at medium with 1.5 desktop scale and capture again.
+    {
+        const float previous = juce::Desktop::getInstance().getGlobalScaleFactor();
+        juce::Desktop::getInstance().setGlobalScaleFactor(1.5f);
+        SwaraXtAudioProcessorEditor hidpi(processor);
+        hidpi.setModuleViewsForTests(false, true);
+        hidpi.setGuiSizeForTests(swaraxt::ui::GuiSize::medium);
+        hidpi.resized();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(40);
+        auto& hidpiSeq = hidpi.mainPanelForTests().sequencerForTests();
+        hidpiSeq.linearButtonForTests().setToggleState(true, juce::sendNotificationSync);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+        expect(hidpiSeq.noteLabelForTests() == "CV", "HiDPI LINEAR ON shows CV");
+        expect(controlsWithinParent(hidpiSeq), "HiDPI SeqPanel children inside bounds");
+        const auto image = hidpi.createComponentSnapshot(hidpi.getLocalBounds());
+        expect(writePng(image, outDir.getChildFile("linear-on-medium-hidpi-1p5.png")),
+               "HiDPI LINEAR screenshot written");
+        juce::Desktop::getInstance().setGlobalScaleFactor(previous);
+    }
+
+    juce::MemoryBlock state;
+    processor.getStateInformation(state);
+    SwaraXtAudioProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    expect(restored.sequenceState().snapshot().pitchMode == 1,
+           "saved LINEAR state restores pitchMode");
+    expect(restored.sequenceState().snapshot().freePitch[0]
+               == 60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 512,
+           "saved LINEAR state restores CV");
+    SwaraXtAudioProcessorEditor restoredEditor(restored);
+    restoredEditor.setModuleViewsForTests(false, true);
+    restoredEditor.setGuiSizeForTests(swaraxt::ui::GuiSize::medium);
+    restoredEditor.resized();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(40);
+    auto& restoredSeq = restoredEditor.mainPanelForTests().sequencerForTests();
+    expect(restoredSeq.linearButtonForTests().getToggleState() == true,
+           "reopened editor shows LINEAR ON");
+    expect(restoredSeq.noteLabelForTests() == "CV", "reopened editor shows CV label");
+    const auto restoreImage =
+        restoredEditor.createComponentSnapshot(restoredEditor.getLocalBounds());
+    expect(writePng(restoreImage, outDir.getChildFile("linear-on-medium-restored.png")),
+           "restored LINEAR screenshot written");
+    std::printf("LINEAR GUI screenshots written under %s\n",
+                outDir.getFullPathName().toRawUTF8());
+}
+
+void testFreeCvMeasuredPitchAudio()
+{
+    const juce::File audioDir(
+        "D:/MontroneDSP_Studio/research/notes/SWARAXT/linear-final-verify/audio");
+    expect(audioDir.createDirectory().wasOk() || audioDir.isDirectory(),
+           "LINEAR audio evidence directory outside Git");
+
+    constexpr double sampleRate = 48000.0;
+    constexpr int blockSize = 64;
+    constexpr int totalSamples = 48000; // 1 s
+    constexpr int warmup = 12000;
+
+    struct Case {
+        const char* name;
+        int32_t units;
+    };
+    const Case cases[] = {
+        { "60.00", 60 * swaraxt::FreeCvPitch::kUnitsPerSemitone },
+        { "60.50", 60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 512 },
+        { "61.00", 61 * swaraxt::FreeCvPitch::kUnitsPerSemitone },
+    };
+    double frequencies[3] = {};
+    for (int i = 0; i < 3; ++i)
+    {
+        SwaraXtAudioProcessor processor;
+        const auto voicePitch = swaraxt::FreeCvPitch::toVoicePitch(cases[i].units);
+        auto mono = renderSustainedFreeCvAudio(
+            processor, cases[i].units, true, sampleRate, blockSize, totalSamples, warmup);
+        frequencies[i] = estimateFundamentalHz(mono, sampleRate);
+        writeWavMono(audioDir.getChildFile(juce::String("free-cv-") + cases[i].name + ".wav"),
+                     mono, sampleRate);
+        std::printf("FREE CV %s fundamental ~= %.6f Hz (voice word %u)\n",
+                    cases[i].name,
+                    frequencies[i],
+                    static_cast<unsigned>(voicePitch));
+        expect(frequencies[i] > 100.0 && frequencies[i] < 600.0,
+               "measured fundamental is in a plausible pitched range");
+    }
+
+    const double ratioHalf = frequencies[1] / frequencies[0];
+    const double ratioWhole = frequencies[2] / frequencies[0];
+    const double expectedHalf = std::pow(2.0, 0.5 / 12.0);
+    const double expectedWhole = std::pow(2.0, 1.0 / 12.0);
+    const double errHalf = std::abs(ratioHalf - expectedHalf) / expectedHalf;
+    const double errWhole = std::abs(ratioWhole - expectedWhole) / expectedWhole;
+    std::printf("Ratio 60.50/60.00 = %.8f (expected %.8f, rel err %.6f)\n",
+                ratioHalf, expectedHalf, errHalf);
+    std::printf("Ratio 61.00/60.00 = %.8f (expected %.8f, rel err %.6f)\n",
+                ratioWhole, expectedWhole, errWhole);
+    // Pitch-word path is exact for 0.5 and 1.0 semitone; allow oscillator/
+    // autocorrelation resolution (~0.5%%) without retuning.
+    expect(errHalf < 0.005, "60.50/60.00 frequency ratio within pitch-word tolerance");
+    expect(errWhole < 0.005, "61.00/60.00 frequency ratio within pitch-word tolerance");
+
+    // Fractional step change: adjacent gated steps 60.00 then 60.50.
+    {
+        SwaraXtAudioProcessor processor;
+        processor.prepareToPlay(sampleRate, blockSize);
+        prepareSimpleSawPatch(processor);
+        setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+        setInt(processor, swaraxt::IDs::seqClockMode, 0);
+        setInt(processor, swaraxt::IDs::seqTempo, 240);
+        setInt(processor, swaraxt::IDs::seqGate, 100);
+        processor.sequenceState().setPitchMode(1);
+        auto snap = processor.sequenceState().snapshot();
+        snap.length = 2;
+        snap.rotation = 0;
+        processor.sequenceState().store(snap);
+        processor.sequenceState().setPitchMode(1);
+        processor.sequenceState().setStep(0, 0x80 | 60, 0x70);
+        processor.sequenceState().setStep(1, 0x80 | 60, 0x70);
+        processor.sequenceState().setFreePitch(0, cases[0].units);
+        processor.sequenceState().setFreePitch(1, cases[1].units);
+        processor.engineForTests().applyParameters();
+        auto& part = processor.engineForTests().shruthiPart();
+        part.Start(false);
+        const auto word0 = swaraxt::FreeCvPitch::toVoicePitch(cases[0].units);
+        const auto word1 = swaraxt::FreeCvPitch::toVoicePitch(cases[1].units);
+        bool saw0 = false;
+        bool saw1 = false;
+        for (int tick = 0; tick < 256; ++tick)
+        {
+            part.Clock(false);
+            juce::AudioBuffer<float> buffer(2, blockSize);
+            juce::MidiBuffer midi;
+            processor.processBlock(buffer, midi);
+            const auto pitch = part.voice().pitch_value();
+            if (pitch == word0)
+                saw0 = true;
+            if (pitch == word1)
+                saw1 = true;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int s = 0; s < blockSize; ++s)
+                    expect(std::isfinite(buffer.getSample(ch, s)),
+                           "fractional step change stays finite");
+        }
+        expect(saw0 && saw1, "fractional pitch change between consecutive steps");
+        part.Stop(false);
+    }
+
+    // Portamento transition between free-CV steps.
+    {
+        SwaraXtAudioProcessor processor;
+        processor.prepareToPlay(sampleRate, blockSize);
+        prepareSimpleSawPatch(processor);
+        setInt(processor, swaraxt::IDs::perfGlide, 40);
+        setInt(processor, swaraxt::IDs::perfLegato, 1);
+        setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+        setInt(processor, swaraxt::IDs::seqClockMode, 0);
+        setInt(processor, swaraxt::IDs::seqTempo, 180);
+        setInt(processor, swaraxt::IDs::seqGate, 100);
+        auto snap = processor.sequenceState().snapshot();
+        snap.length = 2;
+        processor.sequenceState().store(snap);
+        processor.sequenceState().setPitchMode(1);
+        processor.sequenceState().setStep(0, 0x80 | 60, 0x70);
+        processor.sequenceState().setStep(1, 0x80 | 61, 0xf0); // tie/legato + vel
+        processor.sequenceState().setFreePitch(0, cases[0].units);
+        processor.sequenceState().setFreePitch(1, cases[2].units);
+        processor.engineForTests().applyParameters();
+        auto& part = processor.engineForTests().shruthiPart();
+        part.Start(false);
+        const auto word0 = swaraxt::FreeCvPitch::toVoicePitch(cases[0].units);
+        const auto word1 = swaraxt::FreeCvPitch::toVoicePitch(cases[2].units);
+        bool sawStart = false;
+        bool sawBetween = false;
+        bool sawEnd = false;
+        for (int tick = 0; tick < 400; ++tick)
+        {
+            part.Clock(false);
+            juce::AudioBuffer<float> buffer(2, blockSize);
+            juce::MidiBuffer midi;
+            processor.processBlock(buffer, midi);
+            const auto pitch = part.voice().pitch_value();
+            if (pitch == word0)
+                sawStart = true;
+            if (pitch > word0 && pitch < word1)
+                sawBetween = true;
+            if (pitch == word1)
+                sawEnd = true;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int s = 0; s < blockSize; ++s)
+                    expect(std::isfinite(buffer.getSample(ch, s)),
+                           "portamento free-CV stays finite");
+        }
+        expect(sawStart, "portamento starts at first free-CV pitch");
+        expect(sawBetween || sawEnd, "portamento moves toward the second free-CV pitch");
+        expect(sawEnd || sawBetween, "portamento does not stick silently");
+        part.Stop(false);
+        std::printf("Portamento free-CV: start=%d between=%d end=%d\n",
+                    sawStart ? 1 : 0, sawBetween ? 1 : 0, sawEnd ? 1 : 0);
+    }
+
+    // Rest followed by a note.
+    {
+        SwaraXtAudioProcessor processor;
+        processor.prepareToPlay(sampleRate, blockSize);
+        prepareSimpleSawPatch(processor);
+        setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+        setInt(processor, swaraxt::IDs::seqClockMode, 0);
+        setInt(processor, swaraxt::IDs::seqTempo, 240);
+        setInt(processor, swaraxt::IDs::seqGate, 100);
+        auto snap = processor.sequenceState().snapshot();
+        snap.length = 2;
+        processor.sequenceState().store(snap);
+        processor.sequenceState().setPitchMode(1);
+        processor.sequenceState().setStep(0, 60, 0x00); // rest
+        processor.sequenceState().setStep(1, 0x80 | 60, 0x70);
+        processor.sequenceState().setFreePitch(0, cases[0].units);
+        processor.sequenceState().setFreePitch(1, cases[0].units);
+        processor.engineForTests().applyParameters();
+        auto& part = processor.engineForTests().shruthiPart();
+        part.Start(false);
+        bool heardAfterRest = false;
+        float peakDuringRestWindow = 0.0f;
+        float peakAfterNote = 0.0f;
+        for (int tick = 0; tick < 128; ++tick)
+        {
+            part.Clock(false);
+            juce::AudioBuffer<float> buffer(2, blockSize);
+            juce::MidiBuffer midi;
+            processor.processBlock(buffer, midi);
+            float peak = 0.0f;
+            for (int s = 0; s < blockSize; ++s)
+                peak = std::max(peak, std::abs(buffer.getSample(0, s)));
+            if (tick < 8)
+                peakDuringRestWindow = std::max(peakDuringRestWindow, peak);
+            if (part.voice().pitch_value()
+                    == swaraxt::FreeCvPitch::toVoicePitch(cases[0].units)
+                && peak > 1.0e-4f)
+            {
+                heardAfterRest = true;
+                peakAfterNote = std::max(peakAfterNote, peak);
+            }
+        }
+        expect(heardAfterRest, "rest followed by free-CV note produces audio");
+        expect(peakAfterNote > peakDuringRestWindow,
+               "note after rest is louder than the rest window");
+        part.Stop(false);
+    }
+
+    // LINEAR OFF restores exact legacy integer pitch word through the sequencer.
+    {
+        SwaraXtAudioProcessor processor;
+        processor.prepareToPlay(sampleRate, blockSize);
+        prepareSimpleSawPatch(processor);
+        setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+        setInt(processor, swaraxt::IDs::seqClockMode, 0);
+        setInt(processor, swaraxt::IDs::seqTempo, 240);
+        setInt(processor, swaraxt::IDs::seqGate, 100);
+        processor.sequenceState().setPitchMode(0);
+        for (int step = 0; step < swaraxt::SequenceSnapshot::kNumSteps; ++step)
+        {
+            processor.sequenceState().setStep(step, 0x80 | 60, 0x70);
+            processor.sequenceState().setFreePitch(
+                step, 60 * swaraxt::FreeCvPitch::kUnitsPerSemitone + 512);
+        }
+        auto snap = processor.sequenceState().snapshot();
+        snap.length = 1;
+        snap.rotation = 0;
+        processor.sequenceState().store(snap);
+        processor.sequenceState().setPitchMode(0);
+        for (int step = 0; step < swaraxt::SequenceSnapshot::kNumSteps; ++step)
+            processor.sequenceState().setStep(step, 0x80 | 60, 0x70);
+        processor.engineForTests().applyParameters();
+        auto& part = processor.engineForTests().shruthiPart();
+        part.Start(false);
+        bool heardLegacy = false;
+        for (int tick = 0; tick < 128 && ! heardLegacy; ++tick)
+        {
+            part.Clock(false);
+            juce::AudioBuffer<float> buffer(2, blockSize);
+            juce::MidiBuffer midi;
+            processor.processBlock(buffer, midi);
+            if (part.voice().pitch_value() == 60 * 128)
+                heardLegacy = true;
+        }
+        expect(heardLegacy, "LINEAR OFF restores exact legacy sequencer pitch word");
+        part.Stop(false);
+
+        SwaraXtAudioProcessor legacyAudio;
+        auto mono = renderSustainedFreeCvAudio(
+            legacyAudio,
+            60 * swaraxt::FreeCvPitch::kUnitsPerSemitone,
+            false,
+            sampleRate,
+            blockSize,
+            totalSamples,
+            warmup);
+        const double legacyHz = estimateFundamentalHz(mono, sampleRate);
+        writeWavMono(audioDir.getChildFile("legacy-off-60.wav"), mono, sampleRate);
+        const double legacyErr = std::abs(legacyHz - frequencies[0]) / frequencies[0];
+        std::printf("Legacy OFF 60 Hz ~= %.6f (FREE 60.00 ~= %.6f, rel err %.6f)\n",
+                    legacyHz, frequencies[0], legacyErr);
+        expect(legacyErr < 0.005, "LINEAR OFF matches FREE integer 60.00 fundamental");
+    }
+}
+
 }  // namespace
 
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juce;
     testFreeCvDoesNotRewriteLegacyNotes();
+    testLegacyRandomizationSeedParity();
+    testFreeCvContinuousRandomization();
     testFreeCvReachesVoicePitch();
+    testLinearGuiVerification();
+    testFreeCvMeasuredPitchAudio();
     testStateAndEngineBridge();
     testFullStepSemanticsAndLfo();
     testStateRoundtripAndPresetSwitching();

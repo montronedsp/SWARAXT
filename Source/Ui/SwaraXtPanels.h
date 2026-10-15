@@ -188,6 +188,7 @@ class MainPanel : public juce::Component {
     void refreshExperimentalSvf();
     void setDualSvfView(bool visible);
     DualSvfPanel& dualSvfPanelForTests() noexcept { return *dualSvfView_; }
+    SeqPanel& sequencerForTests() noexcept { return *sequencerView_; }
     juce::ComboBox& filterModelForTests() noexcept { return filterModel_; }
     juce::TextButton& dualSvfViewButtonForTests() noexcept { return dualSvfViewButton_; }
     bool showingSequencer() const noexcept { return showingSequencer_; }
@@ -412,6 +413,16 @@ class SeqPanel : public juce::Component,
     juce::ComboBox& arpComboForTests(int index) noexcept
     {
         return selectors_[static_cast<size_t>(juce::jlimit(0, 5, index))]->combo();
+    }
+    juce::TextButton& linearButtonForTests() noexcept { return linearButton_; }
+    juce::TextButton& lockButtonForTests() noexcept { return lockButton_; }
+    juce::Label& sequenceHeadingForTests() noexcept { return sequenceHeading_; }
+    juce::String noteLabelForTests() const { return note_.labelText(); }
+    juce::Slider& noteSliderForTests() noexcept { return note_.slider(); }
+    juce::TextButton& stepButtonForTests(int index) noexcept
+    {
+        return stepButtons_[static_cast<size_t>(
+            juce::jlimit(0, swaraxt::SequenceSnapshot::kNumSteps - 1, index))];
     }
     juce::Rectangle<int> startBoundsForTests() const noexcept { return rotation_.getBounds(); }
     juce::Rectangle<int> lengthBoundsForTests() const noexcept { return length_.getBounds(); }
