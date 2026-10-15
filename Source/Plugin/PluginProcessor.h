@@ -30,6 +30,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
+    // Expose base processBlock overloads; float override remains the active path.
+    using juce::AudioProcessor::processBlock;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
