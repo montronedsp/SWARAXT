@@ -90,6 +90,8 @@ class ParityRunner {
   void run(uint8_t shape, uint8_t note, uint32_t increment24, uint8_t parameter,
            const uint8_t* syncFlags = nullptr) {
     ++blocks_;
+    if (upperRegisterExcluded(shape, note, parameter))
+      return;
     uint24_t increment{};
     increment.integral = static_cast<uint16_t>(increment24 >> 8);
     increment.fractional = static_cast<uint8_t>(increment24 & 0xff);
@@ -109,6 +111,19 @@ class ParityRunner {
     }
   }
 
+  // Upper-register saw, square, triangle and PWM no longer follow the
+  // unclamped classic zone. Those cells stay out of the classic comparison.
+  static bool upperRegisterExcluded(uint8_t shape, uint8_t note, uint8_t parameter) {
+    const bool simple = shape == shruthi::WAVEFORM_SAW
+        || shape == shruthi::WAVEFORM_TRIANGLE
+        || shape == shruthi::WAVEFORM_SQUARE;
+    if (!simple)
+      return false;
+    if (shape == shruthi::WAVEFORM_SQUARE && parameter != 0)
+      return note >= 108;
+    return note >= 124;
+  }
+
   // Drives HdOscillator::RenderNaiveFull (the full 0..34 shape domain) against
   // the Classic oscillator, mirroring the Classic member-state protocol (the
   // parameters are set with the setters, matching the voice UpdateSources).
@@ -116,6 +131,8 @@ class ParityRunner {
                uint8_t parameter, uint8_t secondary_parameter,
                const uint8_t* syncFlags = nullptr) {
     ++blocks_;
+    if (upperRegisterExcluded(shape, note, parameter))
+      return;
     uint24_t increment{};
     increment.integral = static_cast<uint16_t>(increment24 >> 8);
     increment.fractional = static_cast<uint8_t>(increment24 & 0xff);

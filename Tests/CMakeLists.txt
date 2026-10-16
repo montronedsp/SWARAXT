@@ -83,6 +83,18 @@ swaraxt_enable_warnings(AvrlibHdOscillatorParityTests)
 target_link_libraries(AvrlibHdOscillatorParityTests PRIVATE AvrlibHdClassicOscObj AvrlibHdResourceData)
 add_test(NAME AvrlibHdOscillatorParityTests COMMAND AvrlibHdOscillatorParityTests)
 
+add_executable(AvrlibHdUpperRegisterOscillatorTests
+    avrlib_hd/UpperRegisterOscillatorTestsMain.cpp
+)
+target_include_directories(AvrlibHdUpperRegisterOscillatorTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdUpperRegisterOscillatorTests)
+swaraxt_enable_warnings(AvrlibHdUpperRegisterOscillatorTests)
+swaraxt_enable_warnings_as_errors(AvrlibHdUpperRegisterOscillatorTests)
+target_link_libraries(AvrlibHdUpperRegisterOscillatorTests PRIVATE AvrlibHdResourceData)
+add_test(NAME AvrlibHdUpperRegisterOscillatorTests COMMAND AvrlibHdUpperRegisterOscillatorTests)
+
 add_executable(AvrlibHdOscillatorTests
     avrlib_hd/OscillatorUnitTestsMain.cpp
 )

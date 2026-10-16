@@ -329,8 +329,8 @@ inline void HdOscillator::RenderSimple(
   uint8_t gain_2 = static_cast<uint8_t>(balance_index & 0xf0);
   uint8_t gain_1 = static_cast<uint8_t>(~gain_2);
   uint8_t wave_index = static_cast<uint8_t>(balance_index & 0xf);
-  // Match public Classic 1.2.1: only the second zone index is clipped. The
-  // first index stays raw, including the triangle high-note walk.
+  // Keep waveform selection within the supported table zones.
+  wave_index = AddClip(wave_index, 0, static_cast<uint8_t>(kNumZonesSimple));
   const uint8_t* wave_1 = table[base_zone + wave_index];
   wave_index = AddClip(wave_index, 1, static_cast<uint8_t>(kNumZonesSimple));
   const uint8_t* wave_2 = table[base_zone + wave_index];
@@ -371,6 +371,8 @@ inline void HdOscillator::RenderBandlimitedPwm(
   uint8_t gain_2 = static_cast<uint8_t>(balance_index & 0xf0);
   uint8_t gain_1 = static_cast<uint8_t>(~gain_2);
   uint8_t wave_index = static_cast<uint8_t>(balance_index & 0xf);
+  // Use the final band-limited zone for upper-register notes.
+  wave_index = AddClip(wave_index, 0, static_cast<uint8_t>(kNumZonesPwm));
   const uint8_t* wave_1 = table[kFamilySawPwm + wave_index];
   wave_index = AddClip(wave_index, 1, static_cast<uint8_t>(kNumZonesPwm));
   const uint8_t* wave_2 = table[kFamilySawPwm + wave_index];
