@@ -104,8 +104,16 @@ void testPolicy()
     expect(swaraxt::routeFromStoredPitchMode(0) == swaraxt::SequencerPitchRoute::legacy, "mode 0 is legacy");
     expect(swaraxt::routeFromStoredPitchMode(1) == swaraxt::SequencerPitchRoute::linear, "mode 1 is linear");
     expect(swaraxt::routeFromStoredPitchMode(2) == swaraxt::SequencerPitchRoute::scale, "mode 2 is scale");
+    expect(swaraxt::routeFromStoredPitchMode(3) == swaraxt::SequencerPitchRoute::quantizedCv,
+           "mode 3 is quantized CV");
+    expect(swaraxt::sequencerRouteEmitsMidiNotes(swaraxt::routeFromStoredPitchMode(3)),
+           "stored QUANTIZED CV mode emits MIDI");
     expect(! swaraxt::sequencerRouteEmitsMidiNotes(swaraxt::routeFromStoredPitchMode(2)),
            "stored SCALE mode does not emit MIDI");
+    expect(swaraxt::routeFromStoredPitchMode(4) == swaraxt::SequencerPitchRoute::invalid,
+           "unknown mode is not legacy");
+    expect(! swaraxt::sequencerRouteEmitsMidiNotes(swaraxt::routeFromStoredPitchMode(9)),
+           "corrupted mode does not emit MIDI");
 }
 
 void testMidiOutOffKeepsInputAudioAndEmitsNothing()
