@@ -13,6 +13,8 @@ arch="$(uname -m)"
 package_name="SwaraXT-Linux-${arch}-v${version}.tar.gz"
 package_path="${artifacts_dir}/${package_name}"
 artefacts="${build_dir}/SwaraXT_artefacts/Release"
+skin_editor="${build_dir}/SwaraXtSkinEditor_artefacts/Release/SWARA XT Skin Editor"
+skin_examples="${source_dir}/resources/Skin/Examples"
 
 if [[ -z "${version}" ]]; then
     echo "Unable to read project version from CMakeLists.txt" >&2
@@ -20,16 +22,28 @@ if [[ -z "${version}" ]]; then
 fi
 source "${script_dir}/validate-package.sh"
 [[ "$version" == "1.2.3" ]] || { echo "This release requires PROJECT_VERSION 1.2.3" >&2; exit 1; }
+[[ -x "${skin_editor}" || -f "${skin_editor}" ]] || {
+    echo "Release Skin Editor not found at ${skin_editor} (build SwaraXtSkinEditor)" >&2
+    exit 1
+}
+[[ -d "${skin_examples}" ]] || {
+    echo "Skin Examples folder missing at ${skin_examples}" >&2
+    exit 1
+}
 
 rm -rf "${stage_dir}"
 mkdir -p \
     "${stage_dir}/VST3" \
     "${stage_dir}/Standalone" \
+    "${stage_dir}/Skin Editor" \
     "${artifacts_dir}"
 
 cp -a "${artefacts}/VST3/Swara XT.vst3" "${stage_dir}/VST3/Swara XT.vst3"
 cp -a "${artefacts}/Standalone/Swara XT" "${stage_dir}/Standalone/Swara XT"
 chmod +x "${stage_dir}/Standalone/Swara XT"
+cp -a "${skin_editor}" "${stage_dir}/Skin Editor/SWARA XT Skin Editor"
+chmod +x "${stage_dir}/Skin Editor/SWARA XT Skin Editor"
+cp -a "${skin_examples}" "${stage_dir}/Skin Examples"
 
 vst3_so="$(find "${stage_dir}/VST3/Swara XT.vst3" -type f -name 'Swara XT.so' | head -n 1)"
 if [[ -z "${vst3_so}" ]]; then

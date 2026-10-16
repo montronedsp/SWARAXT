@@ -4,7 +4,10 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 source_dir="$(cd "${script_dir}/../.." && pwd)"
 version="$(sed -nE 's/^project\(SwaraXT VERSION ([0-9.]+).*/\1/p' "${source_dir}/CMakeLists.txt")"
-build_dir="${SWARAXT_BUILD_DIR:-${source_dir}/build/linux-release}/SwaraXT_artefacts/Release"
+cmake_build_dir="${SWARAXT_BUILD_DIR:-${source_dir}/build/linux-release}"
+build_dir="${cmake_build_dir}/SwaraXT_artefacts/Release"
+skin_editor="${cmake_build_dir}/SwaraXtSkinEditor_artefacts/Release/SWARA XT Skin Editor"
+skin_examples="${source_dir}/resources/Skin/Examples"
 artifacts_dir="${SWARAXT_OUTPUT_DIR:-${source_dir}/artifacts}"
 package_dir="${artifacts_dir}/linux-package"
 stage_dir="${package_dir}/Swara XT"
@@ -13,13 +16,24 @@ package_name="SwaraXT-Linux-${arch}-v${version}.tar.gz"
 package_path="${artifacts_dir}/${package_name}"
 source "${script_dir}/validate-package.sh"
 [[ "$version" == "1.2.3" ]] || { echo "This release requires PROJECT_VERSION 1.2.3" >&2; exit 1; }
+[[ -x "${skin_editor}" || -f "${skin_editor}" ]] || {
+    echo "Release Skin Editor not found at ${skin_editor} (build SwaraXtSkinEditor)" >&2
+    exit 1
+}
+[[ -d "${skin_examples}" ]] || {
+    echo "Skin Examples folder missing at ${skin_examples}" >&2
+    exit 1
+}
 
 rm -rf "${stage_dir}"
-mkdir -p "${stage_dir}/VST3" "${stage_dir}/Standalone" "${artifacts_dir}"
+mkdir -p "${stage_dir}/VST3" "${stage_dir}/Standalone" "${stage_dir}/Skin Editor" "${artifacts_dir}"
 
 cp -a "${build_dir}/VST3/Swara XT.vst3" "${stage_dir}/VST3/Swara XT.vst3"
 cp -a "${build_dir}/Standalone/Swara XT" "${stage_dir}/Standalone/Swara XT"
 chmod +x "${stage_dir}/Standalone/Swara XT"
+cp -a "${skin_editor}" "${stage_dir}/Skin Editor/SWARA XT Skin Editor"
+chmod +x "${stage_dir}/Skin Editor/SWARA XT Skin Editor"
+cp -a "${skin_examples}" "${stage_dir}/Skin Examples"
 
 vst3_so="$(find "${stage_dir}/VST3/Swara XT.vst3" -type f -name 'Swara XT.so' | head -n 1)"
 if [[ -z "${vst3_so}" ]]; then

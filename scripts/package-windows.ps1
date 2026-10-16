@@ -31,6 +31,8 @@ function Assert-PackageDocumentation([string]$Directory) {
 }
 
 $artefacts = Join-Path $BuildDirectory ("SwaraXT_artefacts/" + $Config)
+$skinEditorExe = Join-Path $BuildDirectory ("SwaraXtSkinEditor_artefacts/" + $Config + "/SWARA XT Skin Editor.exe")
+$skinExamples = Join-Path $repoRoot "resources/Skin/Examples"
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot "artifacts"
 }
@@ -47,6 +49,23 @@ if (-not (Test-Path (Join-Path $artefacts "VST3/Swara XT.vst3"))) {
 if (-not (Test-Path (Join-Path $artefacts "Standalone/Swara XT.exe"))) {
     throw "Release Standalone not found under $artefacts"
 }
+if (-not (Test-Path -LiteralPath $skinEditorExe)) {
+    throw "Release Skin Editor not found at $skinEditorExe (build SwaraXtSkinEditor)"
+}
+if (-not (Test-Path -LiteralPath $skinExamples)) {
+    throw "Skin Examples folder missing at $skinExamples"
+}
+foreach ($required in @(
+        "manufacturer_mark_example.svg",
+        "decoration_example.svg",
+        "background_example.svg",
+        "background_example.png",
+        "colours_example.txt",
+        "README.md")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $skinExamples $required))) {
+        throw "Missing Skin Example: $required"
+    }
+}
 
 if (Test-Path -LiteralPath $stageRoot) {
     $resolvedStage = [IO.Path]::GetFullPath($stageRoot)
@@ -58,11 +77,14 @@ if (Test-Path -LiteralPath $stageRoot) {
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $stageRoot "VST3") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $stageRoot "Standalone") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $stageRoot "Skin Editor") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $stageRoot "Documentation") | Out-Null
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 
 Copy-Item -Recurse -Force (Join-Path $artefacts "VST3/Swara XT.vst3") (Join-Path $stageRoot "VST3/Swara XT.vst3")
 Copy-Item -Force (Join-Path $artefacts "Standalone/Swara XT.exe") (Join-Path $stageRoot "Standalone/Swara XT.exe")
+Copy-Item -Force -LiteralPath $skinEditorExe (Join-Path $stageRoot "Skin Editor/SWARA XT Skin Editor.exe")
+Copy-Item -Recurse -Force -LiteralPath $skinExamples (Join-Path $stageRoot "Skin Examples")
 Copy-Item -Force (Join-Path $repoRoot "packaging/windows/README.txt") (Join-Path $stageRoot "README.txt")
 Copy-Item -Force (Join-Path $repoRoot "LICENSE") (Join-Path $stageRoot "LICENSE.txt")
 Copy-Item -Force (Join-Path $repoRoot "COPYRIGHT") (Join-Path $stageRoot "COPYRIGHT.txt")
@@ -71,6 +93,12 @@ Copy-Item -Force (Join-Path $repoRoot "resources/Skin/ATTRIBUTION.md") (Join-Pat
 Copy-Item -Force (Join-Path $repoRoot "resources/Skin/CC-BY-SA-3.0.txt") (Join-Path $stageRoot "Documentation/CC-BY-SA-3.0.txt")
 Copy-Item -Force (Join-Path $repoRoot "resources/Fonts/OFL-1.1.txt") (Join-Path $stageRoot "Documentation/FONT_OFL-1.1.txt")
 Assert-PackageDocumentation $stageRoot
+if (-not (Test-Path -LiteralPath (Join-Path $stageRoot "Skin Editor/SWARA XT Skin Editor.exe"))) {
+    throw "Staged Skin Editor missing"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $stageRoot "Skin Examples/manufacturer_mark_example.svg"))) {
+    throw "Staged Skin Examples incomplete"
+}
 
 if (Test-Path $packagePath) { Remove-Item -Force $packagePath }
 Compress-Archive -Path $stageRoot -DestinationPath $packagePath -Force

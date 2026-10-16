@@ -18,4 +18,4 @@ cmake -S "${source_dir}" -B "${build_dir}" \
     -DSWARAXT_JUCE_DIR="${juce_dir}"
 
 cmake --build "${build_dir}" --target \
-    SwaraXT_VST3 SwaraXT_Standalone --parallel "$(nproc)"
+    SwaraXT_VST3 SwaraXT_Standalone SwaraXtSkinEditor --parallel "$(nproc)"
