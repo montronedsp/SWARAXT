@@ -674,7 +674,7 @@ void SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset)
     for (const auto* id : { swaraxt::IDs::filterModel, swaraxt::IDs::dspFxProgram,
                            swaraxt::IDs::dspFxParam1, swaraxt::IDs::dspFxParam2,
                            swaraxt::IDs::dspBoardRouting, swaraxt::IDs::postMixer,
-                           swaraxt::IDs::inputConditioning })
+                           swaraxt::IDs::inputConditioning, swaraxt::IDs::midiInputTuning })
     {
         if (!tree.getChildWithProperty("id", id).isValid())
         {

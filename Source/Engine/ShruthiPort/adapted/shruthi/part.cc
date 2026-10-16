@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "Engine/FreeCvPitch.h"
+#include "Engine/MidiInputTuning.h"
 #include "Tuning/PublishedTuning.h"
 #include "Tuning/ScalePitch.h"
 
@@ -263,7 +264,10 @@ void Part::NoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
   }
 
   if (sequencer_settings_.mode() == SEQUENCER_MODE_STEP || !running()) {
-    InternalNoteOn(note, velocity);
+    if (midi_input_mode_ == 0)
+      InternalNoteOn(note, velocity);
+    else
+      InternalNoteOnFromInput(note, velocity);
   }
 
   if (reclock_arpeggiator) {
@@ -637,14 +641,20 @@ void Part::ClockArpeggiator() {
       note -= 12;
     }
     generated_notes_.NoteOn(note, velocity);
-    InternalNoteOn(note, velocity);
+    if (midi_input_mode_ == 0)
+      InternalNoteOn(note, velocity);
+    else
+      InternalNoteOnFromInput(note, velocity);
 
     // Big hack to allow the arpeggiator to work polyphonically in DUO mode.
     if (arp_previous_note_ &&
         patch_.osc[0].option == OP_DUO
         && arp_previous_note_ != note) {
       generated_notes_.NoteOn(arp_previous_note_, velocity);
-      InternalNoteOn(arp_previous_note_, velocity);
+      if (midi_input_mode_ == 0)
+        InternalNoteOn(arp_previous_note_, velocity);
+      else
+        InternalNoteOnFromInput(arp_previous_note_, velocity);
     }
 
     arp_previous_note_ = note;
@@ -958,6 +968,7 @@ void Part::AllNotesOff() {
   poly_allocator_.Clear();
   mono_allocator_.Clear();
   pressed_keys_.Clear();
+  memset(input_pitch_valid_, 0, sizeof(input_pitch_valid_));
   voice_.NoteOff();
   release_latched_keys_on_next_note_on_ = false;
   ignore_note_off_messages_ = false;
@@ -997,6 +1008,73 @@ uint16_t Part::Tune(uint8_t note) {
     }
   } else {
     return U8U8Mul(note, 128);
+  }
+}
+
+void Part::setMidiInputTuning(uint8_t mode, const void* tuning) noexcept {
+  midi_input_mode_ = mode > 2 ? 0 : mode;
+  midi_input_tuning_ = tuning;
+}
+
+void Part::clearInputPitch(uint8_t note) noexcept {
+  if (note < 128)
+    input_pitch_valid_[note] = 0;
+}
+
+uint16_t Part::pitchForHeldReturn(uint8_t note) {
+  if (note < 128 && input_pitch_valid_[note])
+    return input_pitch_[note];
+  return Tune(note);
+}
+
+void Part::InternalNoteOnFromInput(uint8_t note, uint8_t velocity) {
+  const auto* tuning = static_cast<const swaraxt::tuning::PublishedTuning*>(midi_input_tuning_);
+  const auto resolved = swaraxt::resolveMidiInputPitch(
+      static_cast<swaraxt::MidiInputTuningMode>(midi_input_mode_), tuning, note);
+  // Unmapped TUNED keys and empty quantizer results do not enter the allocator.
+  if (!resolved.valid || note >= 128)
+    return;
+
+  midi_dispatcher_->OnInternalNoteOn(note, velocity);
+  const bool alreadyHeld = input_pitch_valid_[note] != 0;
+  const uint16_t previousWord = input_pitch_[note];
+
+  if (system_settings_.midi_out_mode >= MIDI_OUT_1_0) {
+    input_pitch_[note] = resolved.word;
+    input_pitch_valid_[note] = 1;
+    poly_allocator_.set_size(system_settings_.midi_out_mode - MIDI_OUT_1_0 + 1);
+    if (poly_allocator_.NoteOn(note) == 0) {
+      voice_.NoteOn(resolved.word, velocity, 0, true);
+      voice_.set_bass_note(0);
+    } else {
+      midi_dispatcher_->ForwardNoteOn(midi_dispatcher_->channel(), note, velocity);
+    }
+  } else {
+    const NoteEntry& before = mono_allocator_.most_recent_note();
+    mono_allocator_.NoteOn(note, velocity);
+    const NoteEntry& after = mono_allocator_.most_recent_note();
+    if (before.note != after.note) {
+      input_pitch_[note] = resolved.word;
+      input_pitch_valid_[note] = 1;
+      bool legato = mono_allocator_.size() > 1;
+      const uint16_t sounding = input_pitch_valid_[after.note]
+          ? input_pitch_[after.note] : resolved.word;
+      voice_.NoteOn(
+          sounding,
+          after.velocity,
+          !system_settings_.legato || legato ? system_settings_.portamento : 0,
+          !system_settings_.legato || !legato);
+      uint8_t bass_note = mono_allocator_.least_recent_note().note;
+      const uint16_t bass = bass_note != after.note && bass_note < 128 && input_pitch_valid_[bass_note]
+          ? input_pitch_[bass_note] : 0;
+      voice_.set_bass_note(bass);
+    } else if (alreadyHeld) {
+      input_pitch_[note] = previousWord;
+      input_pitch_valid_[note] = 1;
+    } else {
+      input_pitch_[note] = resolved.word;
+      input_pitch_valid_[note] = 1;
+    }
   }
 }
 
@@ -1198,19 +1276,22 @@ void Part::InternalNoteOff(uint8_t note) {
     // Polyphonic mode.
     poly_allocator_.set_size(system_settings_.midi_out_mode - MIDI_OUT_1_0 + 1);
     if (poly_allocator_.NoteOff(note) == 0) {
+      clearInputPitch(note);
       voice_.NoteOff();
     } else {
+      clearInputPitch(note);
       midi_dispatcher_->ForwardNoteOff(midi_dispatcher_->channel(), note);
     }
   } else {
     const NoteEntry& before = mono_allocator_.most_recent_note();
     mono_allocator_.NoteOff(note);
+    clearInputPitch(note);
     const NoteEntry& after = mono_allocator_.most_recent_note();
     if (mono_allocator_.size() == 0) {
       voice_.NoteOff();
     } else if (before.note != after.note && patch_.osc[0].option != OP_DUO) {
       voice_.NoteOn(
-          Tune(after.note),
+          pitchForHeldReturn(after.note),
           after.velocity,
           system_settings_.portamento,
           !system_settings_.legato);

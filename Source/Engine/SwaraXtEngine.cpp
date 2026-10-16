@@ -209,6 +209,7 @@ void SwaraXtEngine::applyParameters()
     patch->filter_resonance = static_cast<uint8_t>(juce::jlimit(0, 63,
         static_cast<int>(std::lround(filterResonance_ * 63.0f))));
     midiChannel_ = juce::jlimit(0, 16, ParameterCache::loadInt(parameterCache_->midiChannel));
+    midiInputMode_ = juce::jlimit(0, 2, ParameterCache::loadInt(parameterCache_->midiInputTuning));
     lfoSync_[0] = ParameterCache::loadInt(parameterCache_->lfo1Sync) != 0;
     lfoSync_[1] = ParameterCache::loadInt(parameterCache_->lfo2Sync) != 0;
     lfoDivision_[0] = juce::jlimit(0, 7, ParameterCache::loadInt(parameterCache_->lfo1Division));
@@ -1353,6 +1354,7 @@ void SwaraXtEngine::latchPublishedTuning() noexcept
     const auto* tuning = tuningSlots_[static_cast<size_t>(slot)].get();
     part_.setSequencerScale(scaleRouteActive_, nullptr, tuning);
     part_.setSequencerQuantizedCv(quantizedRouteActive_, nullptr, tuning);
+    part_.setMidiInputTuning(static_cast<uint8_t>(midiInputMode_), tuning);
 }
 
 int SwaraXtEngine::freeTuningSlot(int published, int latched, int retired) const noexcept

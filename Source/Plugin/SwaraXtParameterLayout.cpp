@@ -256,6 +256,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
         juce::StringArray { "HARDWARE", "HARDWARE" }, 1));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID { IDs::seqMidiOut, 1 }, "MIDI Out", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { IDs::midiInputTuning, 1 }, "Input Tune",
+        juce::StringArray { "OFF", "TUNED", "QUANTIZED" }, 0));
 
     return { params.begin(), params.end() };
 }

@@ -190,6 +190,8 @@ class MainPanel : public juce::Component {
     DualSvfPanel& dualSvfPanelForTests() noexcept { return *dualSvfView_; }
     SeqPanel& sequencerForTests() noexcept { return *sequencerView_; }
     juce::ComboBox& filterModelForTests() noexcept { return filterModel_; }
+    juce::ComboBox& legatoComboForTests() noexcept { return selectors_[static_cast<size_t>(kLegato)]->combo(); }
+    juce::ComboBox& inputTuneBoxForTests() noexcept { return selectors_[static_cast<size_t>(kInputTune)]->combo(); }
     juce::TextButton& dualSvfViewButtonForTests() noexcept { return dualSvfViewButton_; }
     bool showingSequencer() const noexcept { return showingSequencer_; }
     std::function<void()> workspaceChanged;
@@ -311,7 +313,8 @@ class MainPanel : public juce::Component {
         kLfo2Retrig,
         kLfo2Sync,
         kLfo2Division,
-        kLegato
+        kLegato,
+        kInputTune
     };
 
     SwaraXtModulePanel sourceModule_ { "" };

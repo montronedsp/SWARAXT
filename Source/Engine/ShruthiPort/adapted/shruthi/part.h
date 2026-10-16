@@ -98,10 +98,12 @@ class Part {
   void SetSequenceStep(uint8_t index, uint8_t data_a, uint8_t data_b);
   void SetPatternRotation(uint8_t rotation);
   void SetPatternLength(uint8_t length);
-  // Sequence-mode free CV only. Keyboard and arp notes keep Tune().
+  // Sequence-step pitches stay on their own path. Keyboard and arp notes use
+  // Tune() unless MIDI input tuning is TUNED or QUANTIZED.
   void setSequencerFreeCv(bool active, const int32_t* units) noexcept;
   void setSequencerScale(bool active, const int16_t* degrees, const void* tuning) noexcept;
   void setSequencerQuantizedCv(bool active, const int32_t* units, const void* tuning) noexcept;
+  void setMidiInputTuning(uint8_t mode, const void* tuning) noexcept;
 
   // Patch manipulation stuff.
   void SetParameter(uint8_t index, uint8_t offset, uint8_t value,
@@ -240,6 +242,7 @@ class Part {
   void StopSequencerArpeggiatorNotes();
   void ReleaseLatchedNotes();
   void InternalNoteOn(uint8_t note, uint8_t velocity);
+  void InternalNoteOnFromInput(uint8_t note, uint8_t velocity);
   void InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitch,
                                uint8_t externalNote = 0xff);
   void InternalNoteOff(uint8_t note);
@@ -249,6 +252,8 @@ class Part {
   void NextStep();
 
   uint16_t Tune(uint8_t note);
+  uint16_t pitchForHeldReturn(uint8_t note);
+  void clearInputPitch(uint8_t note) noexcept;
   uint8_t step_duration() const;
   uint8_t* parameter_byte(uint8_t offset);
   const uint8_t* parameter_byte(uint8_t offset) const;
@@ -294,6 +299,10 @@ class Part {
   bool free_cv_active_ = false;
   int32_t free_cv_units_[16] {};
   bool scale_active_ = false;
+  uint8_t midi_input_mode_ = 0;
+  const void* midi_input_tuning_ = nullptr;
+  uint16_t input_pitch_[128] {};
+  uint8_t input_pitch_valid_[128] {};
   int16_t scale_degrees_[16] {};
   const void* scale_tuning_ = nullptr;
   bool quantized_cv_active_ = false;

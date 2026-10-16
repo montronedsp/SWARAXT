@@ -625,6 +625,11 @@ MainPanel::MainPanel()
     addSelector("TIMING", timingModeNames());
     addSelector("DIVISION", beatDivisionNames());
     addSelector("VOICE", legatoNames());
+    addSelector("INPUT TUNE", juce::StringArray { "OFF", "TUNED", "QUANTIZED" });
+    selectors_.back()->combo().setTooltip(
+        "OFF: original MIDI keyboard tuning. "
+        "TUNED: incoming MIDI notes follow the active SWT1 keyboard mapping. "
+        "QUANTIZED: incoming MIDI notes snap to the nearest pitch of the active tuning.");
 
     sourceModule_.body().addAndMakeVisible(osc1_);
     sourceModule_.body().addAndMakeVisible(osc2_);
@@ -681,6 +686,7 @@ MainPanel::MainPanel()
     perfModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(kGlide)]);
     perfModule_.body().addAndMakeVisible(*knobs_[static_cast<size_t>(kMaster)]);
     perfModule_.body().addAndMakeVisible(*selectors_[static_cast<size_t>(kLegato)]);
+    perfModule_.body().addAndMakeVisible(*selectors_[static_cast<size_t>(kInputTune)]);
 
     seqViewButton_.onClick = [this] { setLocalViews(false, ! showingSequencer_); };
     lookAndFeelChanged();
@@ -748,7 +754,8 @@ void MainPanel::attach(SwaraXtAudioProcessor& processor)
         swaraxt::IDs::lfo1Sync, swaraxt::IDs::lfo1Division,
         swaraxt::IDs::lfo2Wave, swaraxt::IDs::lfo2Retrig,
         swaraxt::IDs::lfo2Sync, swaraxt::IDs::lfo2Division,
-        swaraxt::IDs::perfLegato
+        swaraxt::IDs::perfLegato,
+        swaraxt::IDs::midiInputTuning
     };
 
     selectorAttachments_.clear();
@@ -1048,8 +1055,9 @@ void MainPanel::reflow()
     knobs_[kMaster]->setVisible(!showingBoard_);
     knobs_[kGlide]->setVisible(!showingBoard_);
     selectors_[kLegato]->setVisible(!showingBoard_);
+    selectors_[kInputTune]->setVisible(!showingBoard_);
     layoutRow(perf, { knobs_[kMaster].get(), knobs_[kGlide].get(),
-                      selectors_[kLegato].get() }, 4);
+                      selectors_[kLegato].get(), selectors_[kInputTune].get() }, 4);
 }
 
 ModPanel::ModPanel()
@@ -1236,7 +1244,7 @@ SeqPanel::SeqPanel()
                                      midiDegree);
     };
     addAndMakeVisible(tuningBox_);
-    tuningBox_.setTooltip("Built-in tuning table. SCALE and QUANTIZED CV use this table.");
+    tuningBox_.setTooltip("Built-in tuning table shared by SCALE, QUANTIZED CV and INPUT TUNE.");
     importTuning_.setTooltip("Import a validated SWT1 tuning table. Scala files are converted offline.");
     importTuning_.onClick = [this] {
         if (processor_ == nullptr)

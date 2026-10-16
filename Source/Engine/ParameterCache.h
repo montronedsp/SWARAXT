@@ -56,6 +56,7 @@ struct ParameterCache {
         perfGlide = bindOne(IDs::perfGlide);
         perfLegato = bindOne(IDs::perfLegato);
         midiChannel = bindOne(IDs::midiChannel);
+        midiInputTuning = bindOne(IDs::midiInputTuning);
         seqMode = bindOne(IDs::seqMode);
         seqTempo = bindOne(IDs::seqTempo);
         seqSwing = bindOne(IDs::seqSwing);
@@ -150,6 +151,7 @@ struct ParameterCache {
     std::atomic<float>* perfGlide = nullptr;
     std::atomic<float>* perfLegato = nullptr;
     std::atomic<float>* midiChannel = nullptr;
+    std::atomic<float>* midiInputTuning = nullptr;
     std::atomic<float>* seqMode = nullptr;
     std::atomic<float>* seqTempo = nullptr;
     std::atomic<float>* seqSwing = nullptr;

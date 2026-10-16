@@ -59,6 +59,7 @@ static constexpr const char* filterKeyTracking = "filter_key_tracking";
 static constexpr const char* filterEnvDepth = "filter.shruthi_env";
 static constexpr const char* filterLfoDepth = "filter.shruthi_lfo";
 static constexpr const char* midiChannel = "midi.channel";
+static constexpr const char* midiInputTuning = "midi.inputTuning";
 static constexpr const char* filterModel = "filter.model";
 static constexpr const char* dspFxProgram = "dsp.fx";
 static constexpr const char* dspFxParam1 = "dsp.param1";

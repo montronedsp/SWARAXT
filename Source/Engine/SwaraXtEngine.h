@@ -417,6 +417,7 @@ class SwaraXtEngine {
     float filterResonance_ = 0.2f;
     float filterKeyTrack_ = 0.5f;
     int midiChannel_ = 1;
+    int midiInputMode_ = 0;
     bool prepared_ = false;
     bool dormant_ = true;
     bool drainingToDormant_ = false;
