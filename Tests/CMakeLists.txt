@@ -525,6 +525,35 @@ target_include_directories(SwaraXTDspFxIntegratedExactParityTests PRIVATE "${CMA
 swaraxt_add_plugin_console_test(SwaraXTConditioningTests Conditioning/ConditioningTestsMain.cpp)
 target_compile_definitions(SwaraXTConditioningTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
 
+# Production sonic characterization. The default CTest target is the quick
+# profile. The extended profile is registered disabled so a normal CTest run
+# does not render the full matrix; invoke the executable with --extended.
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE SWARAXT_SONIC_QUALITY_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+if(NOT SWARAXT_SONIC_QUALITY_COMMIT)
+    set(SWARAXT_SONIC_QUALITY_COMMIT "unknown")
+endif()
+swaraxt_add_plugin_console_test(SwaraXTSonicQualityTests
+    SonicQuality/SonicQualityTestsMain.cpp
+    SonicQuality/SonicQualityMetrics.cpp
+    SonicQuality/SonicQualityRenderer.cpp
+    SonicQuality/SonicQualityReport.cpp)
+target_include_directories(SwaraXTSonicQualityTests PRIVATE "${CMAKE_SOURCE_DIR}/Tests")
+target_compile_definitions(SwaraXTSonicQualityTests PRIVATE
+    SWARAXT_SONIC_QUALITY_COMMIT="${SWARAXT_SONIC_QUALITY_COMMIT}")
+set_tests_properties(SwaraXTSonicQualityTests PROPERTIES
+    TIMEOUT 240
+    LABELS "sonic-quality;quick")
+add_test(NAME SwaraXTSonicQualityExtended COMMAND SwaraXTSonicQualityTests --extended)
+set_tests_properties(SwaraXTSonicQualityExtended PROPERTIES
+    DISABLED TRUE
+    TIMEOUT 1800
+    LABELS "sonic-quality;extended")
+
 # SRC quality study harnesses (research only; not registered with add_test).
 function(swaraxt_add_src_quality_target target taps)
     juce_add_console_app(${target} PRODUCT_NAME "${target}")
