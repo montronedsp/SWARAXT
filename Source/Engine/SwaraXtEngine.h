@@ -18,6 +18,7 @@ class AudioBuffer;
 
 #include "Engine/Filter/ShruthiSvf2p.h"
 #include "Engine/Filter/SwaraXtFilter.h"
+#include "Engine/DspBoard/BoardPostDacFilter.h"
 #include "Engine/DspBoard/BoardProcessor.h"
 #include "Engine/HostTransport.h"
 #include "Engine/ParameterCache.h"
@@ -369,6 +370,8 @@ class SwaraXtEngine {
     ExperimentalSvfSelection appliedExperimentalSvfSelection_;
     bool experimentalSvfEnabled_ = false;
     board::BoardProcessor boardProcessor_;
+    // Native-rate v03 post-DAC coloration. Runs only while a DSP effect is active.
+    board::BoardPostDacFilter postDacFilter_;
     board::BoardControl requestedBoard_, activeBoard_;
     static_assert(std::atomic<double>::is_always_lock_free, "Host tail publication must be realtime lock-free");
     std::atomic<double> boardTailSeconds_ { 0.0 };

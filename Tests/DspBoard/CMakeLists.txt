@@ -38,6 +38,16 @@ target_link_libraries(SwaraXTDspFxNativeExactParityTests PRIVATE SwaraBoardAlgor
 swaraxt_enable_warnings(SwaraXTDspFxNativeExactParityTests)
 add_test(NAME SwaraXTDspFxNativeExactParityTests COMMAND SwaraXTDspFxNativeExactParityTests)
 
+add_executable(SwaraXTBoardPostDacFilterTests BoardPostDacFilterTests.cpp)
+target_include_directories(SwaraXTBoardPostDacFilterTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings(SwaraXTBoardPostDacFilterTests)
+add_test(NAME SwaraXTBoardPostDacFilterTests COMMAND SwaraXTBoardPostDacFilterTests)
+
+add_executable(SwaraXTPostDacFilterTests PostDacFilterTests.cpp)
+target_include_directories(SwaraXTPostDacFilterTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings(SwaraXTPostDacFilterTests)
+add_test(NAME SwaraXTPostDacFilterTests COMMAND SwaraXTPostDacFilterTests)
+
 add_executable(SwaraXTFxEnumDispatchTests FxEnumDispatchTests.cpp)
 target_link_libraries(SwaraXTFxEnumDispatchTests PRIVATE SwaraBoardAlgorithm)
 swaraxt_enable_warnings(SwaraXTFxEnumDispatchTests)

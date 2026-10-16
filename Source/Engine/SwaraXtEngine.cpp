@@ -235,6 +235,7 @@ void SwaraXtEngine::applyParameters()
     {
         activeBoard_ = requestedBoard_;
         boardProcessor_.reset(activeBoard_.effect);
+        postDacFilter_.reset();
         boardFadePhase_ = BoardFadePhase::stable;
         boardGain_ = 1.0f;
         boardFadeRemaining_ = 0;
@@ -259,6 +260,7 @@ void SwaraXtEngine::applyParameters()
 void SwaraXtEngine::resetBoardState() noexcept
 {
     boardProcessor_.reset();
+    postDacFilter_.reset();
     activeBoard_ = {};
     boardGain_ = 1.0f;
     boardGainIncrement_ = 0.0f;
@@ -276,6 +278,7 @@ void SwaraXtEngine::updateBoardAtBlockBoundary() noexcept
     {
         activeBoard_ = requestedBoard_;
         boardProcessor_.reset(activeBoard_.effect);
+        postDacFilter_.reset();
         boardFadePhase_ = BoardFadePhase::fadeIn;
         boardFadeRemaining_ = ramp;
         boardGainIncrement_ = 1.0f / static_cast<float>(ramp);
@@ -761,6 +764,7 @@ void SwaraXtEngine::renderInternalBlock()
         && boardFadePhase_ == BoardFadePhase::stable;
     if (effectsBypassed)
     {
+        postDacFilter_.reset();
         for (int i = 0; i < read; ++i)
         {
             float mixer = temp[i] * nextPostMixerGain();
@@ -804,6 +808,12 @@ void SwaraXtEngine::renderInternalBlock()
 #endif
         }
         boardProcessor_.processClassicFx(processed, activeBoard_);
+        // v03 post-DAC baseband model. FX Off never reaches this branch while stable,
+        // and processClassicFx itself stays the 12-bit firmware path.
+        if (activeBoard_.effect != board::Effect::off)
+            postDacFilter_.process(processed, static_cast<std::size_t>(read));
+        else
+            postDacFilter_.reset();
         for (int i = 0; i < read; ++i)
         {
             const auto index = static_cast<std::size_t>(i);
