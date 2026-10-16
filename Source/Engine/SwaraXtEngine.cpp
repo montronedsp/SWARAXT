@@ -10,8 +10,10 @@
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
 #include <chrono>
 #endif
+#include <chrono>
 #include <cmath>
 #include <limits>
+#include <thread>
 
 namespace swaraxt {
 
@@ -40,7 +42,10 @@ constexpr double kMaxDcDrainSeconds = 25.0;
 
 SwaraXtEngine::SwaraXtEngine()
 {
+    for (auto& slot : tuningSlots_)
+        slot = std::make_unique<tuning::PublishedTuning>();
     patchBridge_.bind(part_);
+    identityExternal_.fill(255);
     installSequencerMidiTap();
     loadBuiltinTuning(0);
 }
@@ -161,11 +166,12 @@ void SwaraXtEngine::applyParameters()
             part_.setSequencerFreeCv(sequence.pitchMode == 1,
                                      sequence.freePitch.data());
             scaleRouteActive_ = sequence.pitchMode == 2;
-            // Pair degree updates with the latest published table. process()
-            // latches that index for the remainder of the host block.
-            const int tuningSlot = publishedTuning_.load(std::memory_order_acquire);
-            part_.setSequencerScale(scaleRouteActive_, sequence.scaleDegree.data(),
-                                    &tuningSlots_[static_cast<size_t>(juce::jlimit(0, kTuningSlots - 1, tuningSlot))]);
+            quantizedRouteActive_ = sequence.pitchMode == 3;
+            const auto* tuning = publishedTuningSlot();
+            part_.setSequencerScale(scaleRouteActive_, sequence.scaleDegree.data(), tuning);
+            part_.setSequencerQuantizedCv(quantizedRouteActive_,
+                                          quantizedRouteActive_ ? sequence.freePitch.data() : nullptr,
+                                          tuning);
             appliedSequenceRevision_ = revision;
         }
         part_.mutable_sequencer_settings()->arp_pattern = sequenceState_->arpPattern();
@@ -947,6 +953,15 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     if (numSamples <= 0)
         return;
 
+    struct TuningReadScope {
+        std::atomic<bool>& flag;
+        explicit TuningReadScope(std::atomic<bool>& flagIn) noexcept : flag(flagIn)
+        {
+            flag.store(true, std::memory_order_release);
+        }
+        ~TuningReadScope() { flag.store(false, std::memory_order_release); }
+    } tuningRead(tuningAudioActive_);
+
     latchPublishedTuning();
     midiOutput_ = midiOut;
     if (releaseSequencerMidi_)
@@ -1105,9 +1120,9 @@ void SwaraXtEngine::installSequencerMidiTap() noexcept
     });
 }
 
-void SwaraXtEngine::sequencerNoteOnTap(void* context, uint8_t note, uint8_t velocity) noexcept
+void SwaraXtEngine::sequencerNoteOnTap(void* context, uint8_t note, uint8_t velocity, uint8_t external) noexcept
 {
-    static_cast<SwaraXtEngine*>(context)->onSequencerNote(true, note, velocity);
+    static_cast<SwaraXtEngine*>(context)->onSequencerNoteOn(note, velocity, external);
 }
 
 void SwaraXtEngine::sequencerNoteOffTap(void* context, uint8_t note) noexcept
@@ -1117,9 +1132,45 @@ void SwaraXtEngine::sequencerNoteOffTap(void* context, uint8_t note) noexcept
 
 void SwaraXtEngine::onSequencerNote(bool noteOn, uint8_t note, uint8_t velocity) noexcept
 {
-    if (! midiOutEnabled_ || ! sequencerMidiAllowed_ || midiOutput_ == nullptr || note >= 128)
+    if (noteOn)
+        onSequencerNoteOn(note, velocity, note);
+    else
+        onSequencerNoteOff(note);
+}
+
+void SwaraXtEngine::onSequencerNoteOn(uint8_t identity, uint8_t velocity, uint8_t external) noexcept
+{
+    if (! midiOutEnabled_ || ! sequencerMidiAllowed_ || midiOutput_ == nullptr
+        || identity >= 128 || external >= 128)
         return;
-    scheduleSequencerMidi(noteOn, note, velocity);
+    if (identityExternal_[identity] != 255)
+        onSequencerNoteOff(identity);
+    identityExternal_[identity] = external;
+    const bool retrigger = externalOwners_[external] > 0 || heldMidi_[external] != 0;
+    if (externalOwners_[external] < 255)
+        ++externalOwners_[external];
+    if (retrigger)
+        scheduleSequencerMidi(false, external, 0);
+    const uint8_t midiVelocity = velocity == 0 ? 1 : (velocity > 127 ? 127 : velocity);
+    if (scheduleSequencerMidi(true, external, midiVelocity))
+        heldMidi_[external] = midiVelocity;
+}
+
+void SwaraXtEngine::onSequencerNoteOff(uint8_t identity) noexcept
+{
+    if (identity >= 128)
+        return;
+    const uint8_t external = identityExternal_[identity];
+    identityExternal_[identity] = 255;
+    if (external >= 128)
+        return;
+    if (externalOwners_[external] > 0)
+        --externalOwners_[external];
+    if (externalOwners_[external] == 0 && heldMidi_[external] != 0)
+    {
+        if (scheduleSequencerMidi(false, external, 0))
+            heldMidi_[external] = 0;
+    }
 }
 
 int SwaraXtEngine::sequencerMidiLeadSamples() const noexcept
@@ -1134,31 +1185,22 @@ int SwaraXtEngine::outputMidiChannel() const noexcept
     return midiChannel_ >= 1 && midiChannel_ <= 16 ? midiChannel_ : 1;
 }
 
-void SwaraXtEngine::scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity) noexcept
+bool SwaraXtEngine::scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity) noexcept
 {
-    if (scheduledMidiCount_ >= kMaxScheduledMidi)
-        return;
+    if (scheduledMidiCount_ >= kMaxScheduledMidi || note >= 128)
+        return false;
     const uint64_t sample = hostBlockOrigin_
         + static_cast<uint64_t>(juce::jmax(0, renderHostCursor_))
         + static_cast<uint64_t>(sequencerMidiLeadSamples());
+    const uint8_t channel = static_cast<uint8_t>(outputMidiChannel());
     if (noteOn)
     {
-        if (heldMidi_[note] != 0)
-        {
-            scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0 };
-            heldMidi_[note] = 0;
-            if (scheduledMidiCount_ >= kMaxScheduledMidi)
-                return;
-        }
         const uint8_t midiVelocity = velocity == 0 ? 1 : (velocity > 127 ? 127 : velocity);
-        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, midiVelocity, 1 };
-        heldMidi_[note] = midiVelocity;
+        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, midiVelocity, 1, channel };
+        return true;
     }
-    else if (heldMidi_[note] != 0)
-    {
-        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0 };
-        heldMidi_[note] = 0;
-    }
+    scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0, channel };
+    return true;
 }
 
 void SwaraXtEngine::releaseHeldSequencerNotes(uint64_t sample) noexcept
@@ -1167,8 +1209,16 @@ void SwaraXtEngine::releaseHeldSequencerNotes(uint64_t sample) noexcept
     {
         if (heldMidi_[note] == 0 || scheduledMidiCount_ >= kMaxScheduledMidi)
             continue;
-        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0 };
+        const uint8_t channel = static_cast<uint8_t>(outputMidiChannel());
+        scheduledMidi_[static_cast<size_t>(scheduledMidiCount_++)] = { sample, note, 0, 0, channel };
         heldMidi_[note] = 0;
+        externalOwners_[note] = 0;
+    }
+    for (uint8_t identity = 0; identity < 128; ++identity)
+    {
+        const uint8_t external = identityExternal_[identity];
+        if (external < 128 && heldMidi_[external] == 0)
+            identityExternal_[identity] = 255;
     }
 }
 
@@ -1184,12 +1234,13 @@ void SwaraXtEngine::flushSequencerMidi(juce::MidiBuffer& output, int numSamples)
             const int offset = event.sample <= hostBlockOrigin_
                 ? 0
                 : static_cast<int>(event.sample - hostBlockOrigin_);
+            const int channel = event.channel >= 1 && event.channel <= 16 ? event.channel : outputMidiChannel();
             if (event.noteOn != 0)
-                output.addEvent(juce::MidiMessage::noteOn(outputMidiChannel(), event.note,
+                output.addEvent(juce::MidiMessage::noteOn(channel, event.note,
                                                           static_cast<juce::uint8>(event.velocity)),
                                 offset);
             else
-                output.addEvent(juce::MidiMessage::noteOff(outputMidiChannel(), event.note), offset);
+                output.addEvent(juce::MidiMessage::noteOff(channel, event.note), offset);
         }
         else
         {
@@ -1200,75 +1251,43 @@ void SwaraXtEngine::flushSequencerMidi(juce::MidiBuffer& output, int numSamples)
     hostBlockOrigin_ = blockEnd;
 }
 
-void SwaraXtEngine::beginTuningSlotWrite(int slot) noexcept
+const tuning::PublishedTuning* SwaraXtEngine::publishedTuningSlot() const noexcept
 {
-    if (slot < 0 || slot >= kTuningSlots)
-        return;
-    // Odd sequence value advertises an in-progress mutation of this slot.
-    tuningSlotSequence_[static_cast<size_t>(slot)].fetch_add(1u, std::memory_order_release);
-}
-
-void SwaraXtEngine::endTuningSlotWrite(int slot) noexcept
-{
-    if (slot < 0 || slot >= kTuningSlots)
-        return;
-    tuningSlotSequence_[static_cast<size_t>(slot)].fetch_add(1u, std::memory_order_release);
-}
-
-bool SwaraXtEngine::waitTuningSlotStable(int slot) const noexcept
-{
-    if (slot < 0 || slot >= kTuningSlots)
-        return false;
-    for (int attempt = 0; attempt < 64; ++attempt)
-    {
-        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
-        if ((before & 1u) != 0u)
-            continue;
-        std::atomic_thread_fence(std::memory_order_acquire);
-        if (! tuningSlots_[static_cast<size_t>(slot)].valid)
-            return false;
-        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
-        if (before == after && (after & 1u) == 0u)
-            return true;
-    }
-    return tuningSlots_[static_cast<size_t>(slot)].valid;
+    const int slot = publishedTuning_.load(std::memory_order_acquire);
+    if (slot < 0 || slot >= kTuningSlots || tuningSlots_[static_cast<size_t>(slot)] == nullptr
+        || ! tuningSlots_[static_cast<size_t>(slot)]->valid)
+        return tuningSlots_[0].get();
+    return tuningSlots_[static_cast<size_t>(slot)].get();
 }
 
 void SwaraXtEngine::latchPublishedTuning() noexcept
 {
-    // Claim the published index before the writer can recycle it. The claim is
-    // stored to tuningSlotThisBlock_ with release so freeTuningSlot()'s acquire
-    // observes ownership. If publication advances during the claim, re-sample.
-    int slot = 0;
-    for (int attempt = 0; attempt < 4; ++attempt)
+    // Claim the published index before reading it. A second sample covers a
+    // publication that landed between the load and the claim. The writer never
+    // mutates published, latched or retired slots.
+    int slot = publishedTuning_.load(std::memory_order_acquire);
+    if (slot < 0 || slot >= kTuningSlots || tuningSlots_[static_cast<size_t>(slot)] == nullptr
+        || ! tuningSlots_[static_cast<size_t>(slot)]->valid)
+        slot = 0;
+    tuningSlotThisBlock_.store(slot, std::memory_order_release);
+    const int latest = publishedTuning_.load(std::memory_order_acquire);
+    if (latest != slot && latest >= 0 && latest < kTuningSlots
+        && tuningSlots_[static_cast<size_t>(latest)] != nullptr
+        && tuningSlots_[static_cast<size_t>(latest)]->valid)
     {
-        slot = publishedTuning_.load(std::memory_order_acquire);
-        if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
-            slot = 0;
-        tuningSlotThisBlock_.store(slot, std::memory_order_release);
-        const int latest = publishedTuning_.load(std::memory_order_acquire);
-        if (latest == slot)
-            break;
-        if (latest >= 0 && latest < kTuningSlots && tuningSlots_[static_cast<size_t>(latest)].valid)
-        {
-            tuningSlotThisBlock_.store(latest, std::memory_order_release);
-            slot = latest;
-            break;
-        }
+        tuningSlotThisBlock_.store(latest, std::memory_order_release);
+        slot = latest;
     }
-    (void) waitTuningSlotStable(slot);
-    part_.setSequencerScale(scaleRouteActive_, nullptr,
-                            &tuningSlots_[static_cast<size_t>(slot)]);
+    const auto* tuning = tuningSlots_[static_cast<size_t>(slot)].get();
+    part_.setSequencerScale(scaleRouteActive_, nullptr, tuning);
+    part_.setSequencerQuantizedCv(quantizedRouteActive_, nullptr, tuning);
 }
 
-int SwaraXtEngine::freeTuningSlot() const noexcept
+int SwaraXtEngine::freeTuningSlot(int published, int latched, int retired) const noexcept
 {
-    const int published = publishedTuning_.load(std::memory_order_acquire);
-    const int latched = tuningSlotThisBlock_.load(std::memory_order_acquire);
     for (int slot = 0; slot < kTuningSlots; ++slot)
-        if (slot != published && slot != latched)
+        if (slot != published && slot != latched && slot != retired)
             return slot;
-    // Three slots with at most two excluded always leave one free index.
     return -1;
 }
 
@@ -1289,36 +1308,50 @@ bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
     if (tuningWriteBusy_.exchange(true, std::memory_order_acq_rel))
         return false;
 
-    const bool bootstrapping = ! tuningSlots_[0].valid;
-    const int published = publishedTuning_.load(std::memory_order_acquire);
-    const int latched = tuningSlotThisBlock_.load(std::memory_order_acquire);
-    int slot = -1;
-    if (bootstrapping)
+    if (tuningSlots_[0] == nullptr || ! tuningSlots_[0]->valid)
     {
-        slot = 0;
-    }
-    else if (published != latched && published >= 0 && published < kTuningSlots)
-    {
-        // Audio still holds an older latched slot. Replace the pending published
-        // table in place so the about-to-be-claimed index cannot be recycled.
-        slot = published;
-    }
-    else
-    {
-        // Reader has caught up (latched == published). Use the spare third slot.
-        slot = freeTuningSlot();
+        *tuningSlots_[0] = decoded;
+        publishedTuning_.store(0, std::memory_order_release);
+        retiredTuning_.store(0, std::memory_order_release);
+        tuningSlotThisBlock_.store(0, std::memory_order_release);
+        tuningBytes_.assign(data, data + size);
+        builtinTuningIndex_ = -1;
+        tuningWriteBusy_.store(false, std::memory_order_release);
+        return true;
     }
 
-    if (slot < 0 || slot >= kTuningSlots
-        || (! bootstrapping && slot == latched))
+    int slot = -1;
+    int published = 0;
+    for (int attempt = 0; attempt < 8 && slot < 0; ++attempt)
+    {
+        if (! tuningAudioActive_.load(std::memory_order_acquire))
+        {
+            // No audio callback is reading. Collapse retired/latched onto the
+            // published index so an idle engine can publish again.
+            const int current = publishedTuning_.load(std::memory_order_acquire);
+            tuningSlotThisBlock_.store(current, std::memory_order_release);
+            retiredTuning_.store(current, std::memory_order_release);
+        }
+        published = publishedTuning_.load(std::memory_order_acquire);
+        const int latched = tuningSlotThisBlock_.load(std::memory_order_acquire);
+        const int retired = retiredTuning_.load(std::memory_order_acquire);
+        slot = freeTuningSlot(published, latched, retired);
+        if (slot < 0 && attempt + 1 < 8)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    if (slot < 0 || slot >= kTuningSlots || slot == published
+        || slot == tuningSlotThisBlock_.load(std::memory_order_acquire)
+        || slot == retiredTuning_.load(std::memory_order_acquire))
     {
         tuningWriteBusy_.store(false, std::memory_order_release);
         return false;
     }
 
-    beginTuningSlotWrite(slot);
-    tuningSlots_[static_cast<size_t>(slot)] = decoded;
-    endTuningSlotWrite(slot);
+    // The slot is excluded from published, latched and retired, so this write
+    // happens-before the release store that publishes it.
+    *tuningSlots_[static_cast<size_t>(slot)] = decoded;
+    retiredTuning_.store(published, std::memory_order_release);
     publishedTuning_.store(slot, std::memory_order_release);
     tuningBytes_.assign(data, data + size);
     builtinTuningIndex_ = -1;
@@ -1361,94 +1394,63 @@ const char* SwaraXtEngine::builtinTuningName(int index) const noexcept
 
 juce::String SwaraXtEngine::activeTuningName() const
 {
-    for (int attempt = 0; attempt < 8; ++attempt)
-    {
-        const int slot = publishedTuning_.load(std::memory_order_acquire);
-        if (slot < 0 || slot >= kTuningSlots || ! tuningSlots_[static_cast<size_t>(slot)].valid)
-            return "12-EDO";
-        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
-        if ((before & 1u) != 0u)
-            continue;
-        const juce::String name(tuningSlots_[static_cast<size_t>(slot)].name);
-        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
-        if (before == after && (after & 1u) == 0u)
-            return name.isNotEmpty() ? name : juce::String("12-EDO");
-    }
-    return "12-EDO";
+    const auto* tuning = publishedTuningSlot();
+    if (tuning == nullptr || ! tuning->valid || tuning->name[0] == '\0')
+        return "12-EDO";
+    return juce::String(tuning->name);
 }
 
 void SwaraXtEngine::copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept
 {
     if (midiDegree == nullptr || count <= 0)
         return;
-    for (int attempt = 0; attempt < 8; ++attempt)
-    {
-        const int slot = publishedTuning_.load(std::memory_order_acquire);
-        const int safe = juce::jlimit(0, kTuningSlots - 1, slot);
-        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
-        if ((before & 1u) != 0u)
-            continue;
-        const auto& tuning = tuningSlots_[static_cast<size_t>(safe)];
-        const int limit = juce::jmin(count, tuning::kMidiNotes);
-        for (int note = 0; note < limit; ++note)
-            midiDegree[note] = tuning.valid ? tuning.midiDegree[note] : static_cast<int16_t>(note - 60);
-        for (int note = limit; note < count; ++note)
-            midiDegree[note] = -1;
-        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
-        if (before == after && (after & 1u) == 0u)
-            return;
-    }
-    for (int note = 0; note < count; ++note)
-        midiDegree[note] = note < tuning::kMidiNotes ? static_cast<int16_t>(note - 60) : static_cast<int16_t>(-1);
+    const auto* tuning = publishedTuningSlot();
+    const int limit = juce::jmin(count, tuning::kMidiNotes);
+    for (int note = 0; note < limit; ++note)
+        midiDegree[note] = tuning != nullptr && tuning->valid
+            ? tuning->midiDegree[note] : static_cast<int16_t>(note - 60);
+    for (int note = limit; note < count; ++note)
+        midiDegree[note] = -1;
 }
 
 double SwaraXtEngine::hzForActiveDegree(int degree) const noexcept
 {
-    for (int attempt = 0; attempt < 8; ++attempt)
-    {
-        const int slot = publishedTuning_.load(std::memory_order_acquire);
-        if (slot < 0 || slot >= kTuningSlots)
-            return 0.0;
-        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
-        if ((before & 1u) != 0u)
-            continue;
-        const double hz = tuningSlots_[static_cast<size_t>(slot)].hzForDegree(degree);
-        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(slot)].load(std::memory_order_acquire);
-        if (before == after && (after & 1u) == 0u)
-            return hz;
-    }
-    return 0.0;
+    const auto* tuning = publishedTuningSlot();
+    return tuning != nullptr ? tuning->hzForDegree(degree) : 0.0;
+}
+
+tuning::PublishedTuning::QuantizedPitch SwaraXtEngine::quantizeActiveHz(double sourceHz) const noexcept
+{
+    const auto* tuning = publishedTuningSlot();
+    if (tuning == nullptr)
+        return {};
+    return tuning->quantizeHz(sourceHz);
 }
 
 SequenceState::ScaleRandomView SwaraXtEngine::scaleRandomView() const noexcept
 {
     SequenceState::ScaleRandomView view;
-    for (int attempt = 0; attempt < 8; ++attempt)
+    const auto* tuning = publishedTuningSlot();
+    if (tuning == nullptr || ! tuning->valid)
     {
-        const int slot = publishedTuning_.load(std::memory_order_acquire);
-        const int safe = juce::jlimit(0, kTuningSlots - 1, slot);
-        const uint32_t before = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
-        if ((before & 1u) != 0u)
-            continue;
-        const auto& tuning = tuningSlots_[static_cast<size_t>(safe)];
-        view.formalPeriod = tuning.formalPeriod;
-        view.periodCents = tuning.periodCents;
-        view.degreeCents = tuning.degreeCents;
-        view.degreeCount = tuning.degreeCount;
-        const uint32_t after = tuningSlotSequence_[static_cast<size_t>(safe)].load(std::memory_order_acquire);
-        if (before == after && (after & 1u) == 0u)
-            return view;
+        view.formalPeriod = 12;
+        view.periodCents = 1200.0;
+        view.degreeCents = nullptr;
+        view.degreeCount = 0;
+        return view;
     }
-    view.formalPeriod = 12;
-    view.periodCents = 1200.0;
-    view.degreeCents = nullptr;
-    view.degreeCount = 0;
+    view.formalPeriod = tuning->formalPeriod;
+    view.periodCents = tuning->periodCents;
+    view.degreeCents = tuning->degreeCents;
+    view.degreeCount = tuning->degreeCount;
     return view;
 }
 
 void SwaraXtEngine::clearSequencerMidiOutput() noexcept
 {
     heldMidi_.fill(0);
+    identityExternal_.fill(255);
+    externalOwners_.fill(0);
     scheduledMidiCount_ = 0;
     releaseSequencerMidi_ = false;
     midiOutput_ = nullptr;

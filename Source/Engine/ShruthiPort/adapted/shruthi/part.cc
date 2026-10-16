@@ -680,8 +680,10 @@ void Part::ClockSequencer() {
       MOD_SRC_SEQ_2,
       sequencer_settings_.steps[(n & 0x7) + 8].controller() << 4);
 
-  if (sequencer_settings_.mode() == SEQUENCER_MODE_SEQ) {
-    if (free_cv_active_) {
+    if (sequencer_settings_.mode() == SEQUENCER_MODE_SEQ) {
+    if (quantized_cv_active_) {
+      clockSequencerQuantizedCv(n);
+    } else if (free_cv_active_) {
       clockSequencerFreeCv(n);
     } else if (scale_active_) {
       clockSequencerScale(n);
@@ -1028,8 +1030,10 @@ void Part::InternalNoteOn(uint8_t note, uint8_t velocity) {
   }
 }
 
-void Part::InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitch) {
-  midi_dispatcher_->OnInternalNoteOn(note, velocity);
+void Part::InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitch,
+                                  uint8_t externalNote) {
+  midi_dispatcher_->OnInternalNoteOn(note, velocity,
+                                     externalNote == 0xff ? note : externalNote);
   if (pitch == 0)
     pitch = 128;
 
@@ -1092,6 +1096,50 @@ void Part::clockSequencerScale(uint8_t step_index) {
     StopSequencerArpeggiatorNotes();
   } else {
     InternalNoteOnWithPitch(identity, step.velocity(), pitch);
+  }
+  generated_notes_.NoteOn(identity, step.velocity());
+  arp_seq_gate_length_counter_ =
+      static_cast<uint16_t>((step_duration() * gate_percent_ + 99) / 100);
+}
+
+void Part::setSequencerQuantizedCv(bool active, const int32_t* units, const void* tuning) noexcept {
+  quantized_cv_active_ = active;
+  quantized_tuning_ = tuning;
+  if (units == nullptr)
+    return;
+  for (int i = 0; i < 16; ++i)
+    free_cv_units_[i] = units[i];
+}
+
+void Part::clockSequencerQuantizedCv(uint8_t step_index) {
+  SequenceStep& step = sequencer_settings_.steps[step_index];
+  if (!step.gate())
+    return;
+  int8_t transposition = pressed_keys_.size() ?
+      pressed_keys_.most_recent_note().note - 60 : seq_transposition_;
+  seq_transposition_ = transposition;
+  int8_t note = step.note() + transposition;
+  while (note < 0) note += 12;
+  const uint8_t identity = static_cast<uint8_t>(note);
+  const int32_t units = swaraxt::FreeCvPitch::clampUnits(
+      free_cv_units_[step_index & 15]
+      + static_cast<int32_t>(transposition) * swaraxt::FreeCvPitch::kUnitsPerSemitone);
+  const auto* tuning = static_cast<const swaraxt::tuning::PublishedTuning*>(quantized_tuning_);
+  if (tuning == nullptr)
+    return;
+  const auto chosen = tuning->quantizeHz(swaraxt::FreeCvPitch::hzFromUnits(units));
+  if (!chosen.valid)
+    return;
+  const uint16_t pitch = swaraxt::ScalePitch::toVoicePitchFromHz(chosen.hz);
+  const uint8_t external = swaraxt::ScalePitch::nearestMidiNote(chosen.hz);
+  if (!step.legato()) {
+    StopSequencerArpeggiatorNotes();
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch, external);
+  } else if (generated_notes_.most_recent_note().note != identity) {
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch, external);
+    StopSequencerArpeggiatorNotes();
+  } else {
+    InternalNoteOnWithPitch(identity, step.velocity(), pitch, external);
   }
   generated_notes_.NoteOn(identity, step.velocity());
   arp_seq_gate_length_counter_ =

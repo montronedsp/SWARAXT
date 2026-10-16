@@ -417,6 +417,7 @@ class SeqPanel : public juce::Component,
     juce::ComboBox& pitchModeBoxForTests() noexcept { return pitchModeBox_; }
     juce::ComboBox& tuningBoxForTests() noexcept { return tuningBox_; }
     juce::TextButton& lockButtonForTests() noexcept { return lockButton_; }
+    juce::TextButton& midiOutButtonForTests() noexcept { return midiOutButton_; }
     juce::Label& sequenceHeadingForTests() noexcept { return sequenceHeading_; }
     juce::String noteLabelForTests() const { return note_.labelText(); }
     juce::Slider& noteSliderForTests() noexcept { return note_.slider(); }

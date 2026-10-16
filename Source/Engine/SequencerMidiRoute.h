@@ -7,15 +7,14 @@
 
 namespace swaraxt {
 
-// Single routing policy for sequencer MIDI note output.
-// SCALE and QUANTIZED CV are named now so later phases do not grow ad-hoc checks.
-// Phase A can select only legacy and linear. Quantized CV is allowed by policy
-// but has no producer until Phase C.
+// Sequencer MIDI note policy.
+// LEGACY and QUANTIZED CV emit. LINEAR, SCALE and any unknown stored mode stay silent.
 enum class SequencerPitchRoute : uint8_t {
     legacy = 0,
     linear = 1,
     scale = 2,
-    quantizedCv = 3
+    quantizedCv = 3,
+    invalid = 255
 };
 
 constexpr bool sequencerRouteEmitsMidiNotes(SequencerPitchRoute route) noexcept
@@ -26,11 +25,14 @@ constexpr bool sequencerRouteEmitsMidiNotes(SequencerPitchRoute route) noexcept
 
 constexpr SequencerPitchRoute routeFromStoredPitchMode(uint8_t pitchMode) noexcept
 {
-    if (pitchMode == 1)
-        return SequencerPitchRoute::linear;
-    if (pitchMode == 2)
-        return SequencerPitchRoute::scale;
-    return SequencerPitchRoute::legacy;
+    switch (pitchMode)
+    {
+        case 0: return SequencerPitchRoute::legacy;
+        case 1: return SequencerPitchRoute::linear;
+        case 2: return SequencerPitchRoute::scale;
+        case 3: return SequencerPitchRoute::quantizedCv;
+        default: return SequencerPitchRoute::invalid;
+    }
 }
 
 }  // namespace swaraxt

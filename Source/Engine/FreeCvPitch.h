@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 
 namespace swaraxt {
@@ -44,6 +45,19 @@ struct FreeCvPitch {
         if (units > kMaxUnits)
             units = kMaxUnits;
         return static_cast<uint16_t>((units + (kVoiceQuantum / 2)) / kVoiceQuantum);
+    }
+
+    // Absolute frequency of a free-CV coordinate. MIDI 69 is 440 Hz.
+    // The value is a continuous 12-TET input, not a rounded MIDI note.
+    static double hzFromUnits(int32_t units) noexcept
+    {
+        if (units < 0)
+            units = 0;
+        if (units > kMaxUnits)
+            units = kMaxUnits;
+        const double semitones = static_cast<double>(units) / static_cast<double>(kUnitsPerSemitone);
+        const double hz = 440.0 * std::pow(2.0, (semitones - 69.0) / 12.0);
+        return std::isfinite(hz) && hz > 0.0 ? hz : 0.0;
     }
 };
 

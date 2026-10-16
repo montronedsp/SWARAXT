@@ -28,7 +28,7 @@ struct SequenceSnapshot {
         0x7cb0, 0xdcb0, 0x5cbc, 0xdcbc,
         0x74b0, 0x5430, 0x74bc, 0x543c
     };
-    // 0 = legacy integer notes. 1 = free CV. 2 = scale degrees.
+    // 0 = legacy notes. 1 = free CV. 2 = scale degrees. 3 = quantized free CV.
     uint8_t pitchMode = 0;
     uint8_t freePitchReady = 0;
     uint8_t scaleReady = 0;
@@ -182,7 +182,7 @@ class SequenceState {
         auto pattern = snapshot();
         range.lower = juce::jlimit(-NoteRange::extent, 0, range.lower);
         range.upper = juce::jlimit(0, NoteRange::extent, range.upper);
-        const bool linear = pattern.pitchMode == 1;
+        const bool linear = pattern.pitchMode == 1 || pattern.pitchMode == 3;
         const bool scaleMode = pattern.pitchMode == 2;
         // Freeze the root before any step write so mid-pass updates cannot drift.
         const int rootMidi = SequenceSnapshot::dataA(pattern.steps[0]) & 0x7f;
@@ -314,8 +314,7 @@ class SequenceState {
         arpPattern_.store(static_cast<uint8_t>(juce::jlimit(0, 15,
                                   static_cast<int>(snapshot.arpPattern))),
                           std::memory_order_relaxed);
-        const uint8_t mode = snapshot.pitchMode == 1 || snapshot.pitchMode == 2
-            ? snapshot.pitchMode : 0;
+        const uint8_t mode = snapshot.pitchMode <= 3 ? snapshot.pitchMode : 1;
         pitchMode_.store(mode, std::memory_order_relaxed);
         freePitchReady_.store(snapshot.freePitchReady != 0 ? 1 : 0, std::memory_order_relaxed);
         scaleReady_.store(snapshot.scaleReady != 0 ? 1 : 0, std::memory_order_relaxed);
@@ -397,8 +396,10 @@ class SequenceState {
     void setPitchMode(uint8_t mode, const int16_t* midiDegree = nullptr)
     {
         auto pattern = snapshot();
-        const uint8_t next = mode == 1 ? 1 : mode == 2 ? 2 : 0;
-        if (next == 1 && pattern.freePitchReady == 0)
+        if (mode > 3)
+            return;
+        const uint8_t next = mode;
+        if ((next == 1 || next == 3) && pattern.freePitchReady == 0)
         {
             for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
             {
@@ -466,7 +467,9 @@ class SequenceState {
         restored.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 15,
             static_cast<int>(tree.getProperty("arpPattern", 1))));
         const int storedMode = static_cast<int>(tree.getProperty("pitchMode", 0));
-        restored.pitchMode = static_cast<uint8_t>(storedMode == 1 ? 1 : storedMode == 2 ? 2 : 0);
+        // Unknown modes must not become LEGACY: that route emits MIDI.
+        // They restore as LINEAR, which stays silent and keeps packed notes.
+        restored.pitchMode = static_cast<uint8_t>(storedMode >= 0 && storedMode <= 3 ? storedMode : 1);
         restored.freePitchReady = static_cast<uint8_t>(
             static_cast<int>(tree.getProperty("freePitchReady", 0)) != 0 ? 1 : 0);
         restored.scaleReady = static_cast<uint8_t>(
@@ -497,7 +500,7 @@ class SequenceState {
                                  static_cast<int>(child.getProperty("degree", 0))));
             }
         }
-        if (restored.pitchMode == 1 && restored.freePitchReady == 0)
+        if ((restored.pitchMode == 1 || restored.pitchMode == 3) && restored.freePitchReady == 0)
         {
             for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
             {

@@ -9,6 +9,7 @@
 
 #include "Plugin/SwaraXtParameterLayout.h"
 #include "Plugin/PluginProcessor.h"
+#include "Tuning/ScalePitch.h"
 #include "Ui/SwaraXtLfoVisualizer.h"
 #include "Ui/SwaraXtModulationNames.h"
 
@@ -1213,13 +1214,16 @@ SeqPanel::SeqPanel()
         button->getProperties().set("swaraxtSecondaryAction", true);
     }
     midiOutButton_.setClickingTogglesState(true);
-    midiOutButton_.setTooltip("Send sequencer notes to the host MIDI output. Legacy mode only.");
+    midiOutButton_.setTooltip(
+        "Send sequencer notes to the host MIDI output. LEGACY and QUANTIZED CV emit notes. LINEAR and SCALE stay silent.");
     addAndMakeVisible(pitchModeBox_);
     pitchModeBox_.addItem("LEGACY", 1);
     pitchModeBox_.addItem("LINEAR", 2);
     pitchModeBox_.addItem("SCALE", 3);
+    pitchModeBox_.addItem("QUANTIZED CV", 4);
     pitchModeBox_.setSelectedId(1, juce::dontSendNotification);
-    pitchModeBox_.setTooltip("Sequencer pitch. LEGACY uses integer notes. LINEAR uses free CV. SCALE uses tuning degrees.");
+    pitchModeBox_.setTooltip(
+        "Sequencer pitch. LEGACY uses integer notes. LINEAR uses free CV. SCALE uses tuning degrees. QUANTIZED CV snaps free CV to the active tuning.");
     pitchModeBox_.onChange = [this] {
         if (refreshingSequenceControls_ || sequenceState_ == nullptr)
             return;
@@ -1228,11 +1232,11 @@ SeqPanel::SeqPanel()
             midiDegree[note] = -1;
         if (processor_ != nullptr)
             processor_->copyTuningDegrees(midiDegree, 128);
-        sequenceState_->setPitchMode(static_cast<uint8_t>(juce::jlimit(0, 2, pitchModeBox_.getSelectedId() - 1)),
+        sequenceState_->setPitchMode(static_cast<uint8_t>(juce::jlimit(0, 3, pitchModeBox_.getSelectedId() - 1)),
                                      midiDegree);
     };
     addAndMakeVisible(tuningBox_);
-    tuningBox_.setTooltip("Built-in tuning table. SCALE playback uses this table.");
+    tuningBox_.setTooltip("Built-in tuning table. SCALE and QUANTIZED CV use this table.");
     importTuning_.setTooltip("Import a validated SWT1 tuning table. Scala files are converted offline.");
     importTuning_.onClick = [this] {
         if (processor_ == nullptr)
@@ -1346,7 +1350,7 @@ SeqPanel::SeqPanel()
         if (refreshingSequenceControls_ || sequenceState_ == nullptr)
             return;
         const auto snapshot = sequenceState_->snapshot();
-        if (snapshot.pitchMode == 1)
+        if (snapshot.pitchMode == 1 || snapshot.pitchMode == 3)
         {
             const double semis = note_.slider().getValue();
             const auto units = static_cast<int32_t>(std::llround(semis * swaraxt::FreeCvPitch::kUnitsPerSemitone));
@@ -1618,7 +1622,7 @@ void SeqPanel::refreshSequenceControls()
         const auto a = SequenceSnapshot::dataA(packed);
         const auto b = SequenceSnapshot::dataB(packed);
         juce::String pitch = juce::MidiMessage::getMidiNoteName(a & 0x7f, true, true, 3);
-        if (snapshot.pitchMode == 1)
+        if (snapshot.pitchMode == 1 || snapshot.pitchMode == 3)
             pitch = juce::String(snapshot.freePitch[static_cast<size_t>(i)]
                                  / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone), 2);
         else if (snapshot.pitchMode == 2)
@@ -1663,6 +1667,39 @@ void SeqPanel::refreshSequenceControls()
         midiOutButton_.setTooltip(
             "MIDI OUT is on, but LINEAR does not emit notes. External notes from the previous mode are released.");
     }
+    else if (snapshot.pitchMode == 3)
+    {
+        note_.setLabel("CV");
+        note_.slider().setRange(0.0, 127.0, 0.01);
+        note_.slider().textFromValueFunction = [](double value) {
+            return juce::String(value, 2);
+        };
+        const auto units = snapshot.freePitch[static_cast<size_t>(selectedStep_)];
+        note_.slider().setValue(units / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone),
+                                juce::dontSendNotification);
+        juce::String quantized = "no scale pitch";
+        if (processor_ != nullptr)
+        {
+            const auto chosen = processor_->quantizeActiveHz(swaraxt::FreeCvPitch::hzFromUnits(units));
+            if (chosen.valid)
+                quantized = juce::String(chosen.hz, 2) + " Hz, degree "
+                    + juce::String(chosen.degree) + ", MIDI "
+                    + juce::String(static_cast<int>(swaraxt::ScalePitch::nearestMidiNote(chosen.hz)));
+        }
+        note_.slider().setTooltip(
+            "Continuous CV source. Playback quantizes it to the active tuning: " + quantized
+            + ". Stored CV is not rewritten.");
+        randomType_.setTooltip(
+            "Type 1: unrestricted continuous CV, quantized to the active tuning on playback");
+        noteRange_.setTooltip(
+            "CV offsets from step 1: lower -48..0, upper 0..+48 continuous semitones; quantized on playback");
+        randomNotes_.setTooltip(
+            "Change continuous CV pitches only; quantization happens at playback and does not rewrite CV");
+        randomSequence_.setTooltip(
+            "New continuous CV, velocities, rests/ties and controller values; packed notes stay intact");
+        midiOutButton_.setTooltip(
+            "QUANTIZED CV emits the nearest 12-TET MIDI note of the tuned frequency. Exact Scala pitch is internal only.");
+    }
     else if (snapshot.pitchMode == 2)
     {
         note_.setLabel("DEGREE");
@@ -1699,7 +1736,7 @@ void SeqPanel::refreshSequenceControls()
         randomSequence_.setTooltip(
             "New notes, velocities, rests/ties and controller values; preserve playback settings");
         midiOutButton_.setTooltip(
-            "Send sequencer notes to the host MIDI output. Legacy mode only.");
+            "Send LEGACY sequencer notes to the host MIDI output. LINEAR and SCALE stay silent.");
     }
     velocity_.slider().setValue((dataB & 0x70) >> 4, juce::dontSendNotification);
     controller_.slider().setValue(dataB & 0x0f, juce::dontSendNotification);
@@ -1745,7 +1782,7 @@ void SeqPanel::reflow()
     auto heading = area.removeFromTop(20);
     lockButton_.setBounds(heading.removeFromRight(58));
     heading.removeFromRight(4);
-    pitchModeBox_.setBounds(heading.removeFromRight(88).reduced(0, 1));
+    pitchModeBox_.setBounds(heading.removeFromRight(118).reduced(0, 1));
     heading.removeFromRight(4);
     midiOutButton_.setBounds(heading.removeFromRight(72));
     sequenceHeading_.setBounds(heading);

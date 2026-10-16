@@ -101,6 +101,7 @@ class Part {
   // Sequence-mode free CV only. Keyboard and arp notes keep Tune().
   void setSequencerFreeCv(bool active, const int32_t* units) noexcept;
   void setSequencerScale(bool active, const int16_t* degrees, const void* tuning) noexcept;
+  void setSequencerQuantizedCv(bool active, const int32_t* units, const void* tuning) noexcept;
 
   // Patch manipulation stuff.
   void SetParameter(uint8_t index, uint8_t offset, uint8_t value,
@@ -239,7 +240,8 @@ class Part {
   void StopSequencerArpeggiatorNotes();
   void ReleaseLatchedNotes();
   void InternalNoteOn(uint8_t note, uint8_t velocity);
-  void InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitch);
+  void InternalNoteOnWithPitch(uint8_t note, uint8_t velocity, uint16_t pitch,
+                               uint8_t externalNote = 0xff);
   void InternalNoteOff(uint8_t note);
   void ClockArpeggiator();
   void ClockSequencer();
@@ -294,7 +296,10 @@ class Part {
   bool scale_active_ = false;
   int16_t scale_degrees_[16] {};
   const void* scale_tuning_ = nullptr;
+  bool quantized_cv_active_ = false;
+  const void* quantized_tuning_ = nullptr;
   void clockSequencerScale(uint8_t step_index);
+  void clockSequencerQuantizedCv(uint8_t step_index);
   uint8_t gate_percent_ = 50;
 
   shruthi::Clock clock_;

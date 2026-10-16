@@ -170,8 +170,8 @@ class MidiDispatcher : public midi::MidiDevice {
     }
 
     struct SequencerNoteTap {
-        void (*noteOn)(void* context, uint8_t note, uint8_t velocity) noexcept = nullptr;
-        void (*noteOff)(void* context, uint8_t note) noexcept = nullptr;
+        void (*noteOn)(void* context, uint8_t identity, uint8_t velocity, uint8_t externalNote) noexcept = nullptr;
+        void (*noteOff)(void* context, uint8_t identity) noexcept = nullptr;
         void* context = nullptr;
     };
 
@@ -184,8 +184,12 @@ class MidiDispatcher : public midi::MidiDevice {
     }
     inline void OnInternalNoteOn(uint8_t note, uint8_t velocity)
     {
+        OnInternalNoteOn(note, velocity, note);
+    }
+    inline void OnInternalNoteOn(uint8_t note, uint8_t velocity, uint8_t externalNote)
+    {
         if (sequencerTap_.noteOn != nullptr)
-            sequencerTap_.noteOn(sequencerTap_.context, note, velocity);
+            sequencerTap_.noteOn(sequencerTap_.context, note, velocity, externalNote);
     }
     inline void ForwardNoteOn(uint8_t, uint8_t, uint8_t) {}
     inline void ForwardNoteOff(uint8_t, uint8_t) {}

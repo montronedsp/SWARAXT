@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <limits>
 #include <vector>
 
@@ -149,6 +150,7 @@ class SwaraXtEngine {
     void copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept;
     SequenceState::ScaleRandomView scaleRandomView() const noexcept;
     double hzForActiveDegree(int degree) const noexcept;
+    tuning::PublishedTuning::QuantizedPitch quantizeActiveHz(double sourceHz) const noexcept;
     const std::vector<uint8_t>& tuningBytesForState() const noexcept { return tuningBytes_; }
 
     SwaraXtFilter& filter() noexcept { return filter_; }
@@ -293,10 +295,12 @@ class SwaraXtEngine {
     void resetHostState() noexcept;
     double hostTickPpq(uint64_t tick) const noexcept;
     void installSequencerMidiTap() noexcept;
-    static void sequencerNoteOnTap(void* context, uint8_t note, uint8_t velocity) noexcept;
+    static void sequencerNoteOnTap(void* context, uint8_t note, uint8_t velocity, uint8_t external) noexcept;
     static void sequencerNoteOffTap(void* context, uint8_t note) noexcept;
     void onSequencerNote(bool noteOn, uint8_t note, uint8_t velocity) noexcept;
-    void scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity) noexcept;
+    void onSequencerNoteOn(uint8_t identity, uint8_t velocity, uint8_t external) noexcept;
+    void onSequencerNoteOff(uint8_t identity) noexcept;
+    bool scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity) noexcept;
     void flushSequencerMidi(juce::MidiBuffer& output, int numSamples) noexcept;
     void releaseHeldSequencerNotes(uint64_t sample) noexcept;
     int sequencerMidiLeadSamples() const noexcept;
@@ -309,6 +313,7 @@ class SwaraXtEngine {
         uint8_t note = 0;
         uint8_t velocity = 0;
         uint8_t noteOn = 0;
+        uint8_t channel = 1;
     };
     static constexpr int kMaxScheduledMidi = 128;
 
@@ -319,24 +324,29 @@ class SwaraXtEngine {
     int renderHostCursor_ = 0;
     uint64_t hostBlockOrigin_ = 0;
     std::array<uint8_t, 128> heldMidi_ {};
+    std::array<uint8_t, 128> identityExternal_ {};
+    std::array<uint8_t, 128> externalOwners_ {};
     std::array<ScheduledMidi, kMaxScheduledMidi> scheduledMidi_ {};
     int scheduledMidiCount_ = 0;
     juce::MidiBuffer* midiOutput_ = nullptr;
     static constexpr int kTuningSlots = 3;
-    std::array<tuning::PublishedTuning, kTuningSlots> tuningSlots_ {};
-    // Even sequence = stable slot contents; odd = writer in progress.
-    std::array<std::atomic<uint32_t>, kTuningSlots> tuningSlotSequence_ {};
+    // Heap slots keep the processor off a large stack frame. Allocated once
+    // in the constructor and never resized. Audio reads only an immutable slot.
+    std::array<std::unique_ptr<tuning::PublishedTuning>, kTuningSlots> tuningSlots_;
     std::atomic<int> publishedTuning_ { 0 };
     std::atomic<int> tuningSlotThisBlock_ { 0 };
+    // Previous published index. Kept immutable until the reader has claimed a
+    // newer slot, so a publication cannot be recycled before it is observed.
+    std::atomic<int> retiredTuning_ { 0 };
+    std::atomic<bool> tuningAudioActive_ { false };
     std::atomic<bool> tuningWriteBusy_ { false };
     int builtinTuningIndex_ = 0;
     bool scaleRouteActive_ = false;
+    bool quantizedRouteActive_ = false;
     std::vector<uint8_t> tuningBytes_;
     void latchPublishedTuning() noexcept;
-    int freeTuningSlot() const noexcept;
-    void beginTuningSlotWrite(int slot) noexcept;
-    void endTuningSlotWrite(int slot) noexcept;
-    bool waitTuningSlotStable(int slot) const noexcept;
+    int freeTuningSlot(int published, int latched, int retired) const noexcept;
+    const tuning::PublishedTuning* publishedTuningSlot() const noexcept;
     shruthi::Storage storage_;
     static_assert(std::atomic<unsigned>::is_always_lock_free);
     std::atomic<unsigned> sequencePlayback_ { 0 };

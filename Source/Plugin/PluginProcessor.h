@@ -74,6 +74,10 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     void copyTuningDegrees(int16_t* midiDegree, int count) const noexcept { engine_.copyActiveTuningDegrees(midiDegree, count); }
     swaraxt::SequenceState::ScaleRandomView scaleRandomView() const noexcept { return engine_.scaleRandomView(); }
     double hzForActiveDegree(int degree) const noexcept { return engine_.hzForActiveDegree(degree); }
+    swaraxt::tuning::PublishedTuning::QuantizedPitch quantizeActiveHz(double sourceHz) const noexcept
+    {
+        return engine_.quantizeActiveHz(sourceHz);
+    }
 
     swaraxt::SequenceState::NoteRange randomNoteRange() const noexcept
     {
