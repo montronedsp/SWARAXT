@@ -660,12 +660,27 @@ class HdVoice {
 
     osc_[0].set_parameter(U15ShiftRight7(
         static_cast<uint16_t>(dst_[kModDestPwm1])));
-    osc_[0].set_secondary_parameter(
-        static_cast<uint8_t>(patch.osc[0].range + 24));
     osc_[1].set_parameter(U15ShiftRight7(
         static_cast<uint16_t>(dst_[kModDestPwm2])));
+    // FM range selects a ratio, it does not transpose. The table is addressed
+    // by range+24 over -24..+24. Converting a more negative sum to uint8_t
+    // wraps onto the 8:1 entry, so clamp in the signed domain first. Other
+    // shapes keep range as pitch and the original secondary byte.
+    const auto secondary_for = [](int8_t range, uint8_t shape) -> uint8_t {
+      int value = static_cast<int>(range);
+      if (shape == kRealFm) {
+        if (value < -24) {
+          value = -24;
+        } else if (value > 24) {
+          value = 24;
+        }
+      }
+      return static_cast<uint8_t>(value + 24);
+    };
+    osc_[0].set_secondary_parameter(
+        secondary_for(patch.osc[0].range, patch.osc[0].shape));
     osc_[1].set_secondary_parameter(
-        static_cast<uint8_t>(patch.osc[1].range + 24));
+        secondary_for(patch.osc[1].range, patch.osc[1].shape));
 
     int8_t attack_mod = static_cast<int8_t>(
         (U15ShiftRight7(static_cast<uint16_t>(dst_[kModDestAttack])) - 64) * 2);

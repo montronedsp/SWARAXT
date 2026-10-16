@@ -99,6 +99,19 @@ if(NOT MSVC)
 endif()
 add_test(NAME AvrlibHdOscillatorTests COMMAND AvrlibHdOscillatorTests)
 
+# Linear FM public range -48..-25 used to wrap through uint8_t onto the 8:1 ratio.
+add_executable(AvrlibHdFmRangeTests
+    avrlib_hd/FmRangeTestsMain.cpp
+)
+target_include_directories(AvrlibHdFmRangeTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+swaraxt_configure_shruthi_target(AvrlibHdFmRangeTests)
+swaraxt_enable_warnings(AvrlibHdFmRangeTests)
+swaraxt_enable_warnings_as_errors(AvrlibHdFmRangeTests)
+target_link_libraries(AvrlibHdFmRangeTests PRIVATE AvrlibHdResourceData)
+add_test(NAME AvrlibHdFmRangeTests COMMAND AvrlibHdFmRangeTests)
+
 # Envelope + LFO parity: the Classic Envelope/Lfo are header-only, so the parity
 # TU drives them directly against HdEnvelope/HdLfo faithful mode. It carries the
 # classic flag set and links the resource tables + the Classic Random state.
@@ -395,6 +408,11 @@ swaraxt_add_shruthi_timing_target(SwaraXTVcaHoldTests 7)
 swaraxt_add_plugin_console_test(SwaraXTCutoffRefineTests Filter/CutoffRefineTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTGuiSyncTests GuiSync/GuiSyncTestsMain.cpp)
 swaraxt_add_plugin_console_test(SwaraXTPitchInputTests avrlib_hd/PitchInputTestsMain.cpp)
+swaraxt_add_plugin_console_test(SwaraXTFmRangePluginTests avrlib_hd/FmRangePluginTestsMain.cpp)
+target_compile_definitions(SwaraXTFmRangePluginTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+if(MSVC)
+    target_compile_options(SwaraXTFmRangePluginTests PRIVATE /WX)
+endif()
 target_include_directories(SwaraXTPitchInputTests PRIVATE "${CMAKE_SOURCE_DIR}/Tests")
 if(MSVC)
     target_compile_options(SwaraXTPitchInputTests PRIVATE /WX)
