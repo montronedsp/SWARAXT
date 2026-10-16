@@ -374,6 +374,35 @@ void testLegacySequenceIgnoresInputTuning()
     std::printf("LEGACY under QUANTIZED input word=%u\n", sequenceWord);
 }
 
+void testArpeggiatorUsesInputTuning()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 128);
+    setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+    setInt(processor, swaraxt::IDs::seqClockMode, 0);
+    setInt(processor, swaraxt::IDs::seqTempo, 200);
+    setInt(processor, swaraxt::IDs::arpOctaves, 1);
+    setInt(processor, swaraxt::IDs::perfGlide, 0);
+    setInt(processor, swaraxt::IDs::midiInputTuning, 1);
+    expect(processor.loadBuiltinTuning(1), "19-EDO arp");
+    const auto expected = expectedTuned(processor, 64);
+    juce::AudioBuffer<float> buffer(2, 128);
+    bool matched = false;
+    uint16_t word = 0;
+    for (int block = 0; block < 20; ++block)
+    {
+        juce::MidiBuffer midi;
+        if (block == 0)
+            midi.addEvent(juce::MidiMessage::noteOn(1, 64, static_cast<juce::uint8>(100)), 0);
+        processor.processBlock(buffer, midi);
+        word = static_cast<uint16_t>(processor.engineForTests().shruthiPart().voice().pitch_value());
+        if (word == expected)
+            matched = true;
+    }
+    expect(matched && expected != 64 * 128, "ARP notes use the input-tuning pitch of the held key");
+    std::printf("ARP TUNED key 64 word=%u expected=%u hz=%.6f\n", word, expected, hzFromWord(word));
+}
+
 void testStateDefaultsOff()
 {
     SwaraXtAudioProcessor processor;
@@ -451,6 +480,7 @@ int main()
     testSustainBendAndPortamento();
     testHeldPitchAndSequencerIsolation();
     testLegacySequenceIgnoresInputTuning();
+    testArpeggiatorUsesInputTuning();
     testStateDefaultsOff();
     testLayout();
     if (failures == 0)
