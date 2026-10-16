@@ -300,11 +300,15 @@ class SwaraXtEngine {
     void onSequencerNote(bool noteOn, uint8_t note, uint8_t velocity) noexcept;
     void onSequencerNoteOn(uint8_t identity, uint8_t velocity, uint8_t external) noexcept;
     void onSequencerNoteOff(uint8_t identity) noexcept;
-    bool scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity) noexcept;
+    bool enqueueScheduledMidi(uint64_t sample, bool noteOn, uint8_t note, uint8_t velocity,
+                              uint8_t channel) noexcept;
+    bool scheduleSequencerMidi(bool noteOn, uint8_t note, uint8_t velocity, uint8_t channel) noexcept;
     void flushSequencerMidi(juce::MidiBuffer& output, int numSamples) noexcept;
     void releaseHeldSequencerNotes(uint64_t sample) noexcept;
+    void forceFlushSequencerMidiRelease(uint64_t sample) noexcept;
     int sequencerMidiLeadSamples() const noexcept;
     int outputMidiChannel() const noexcept;
+    uint8_t heldOutputChannel(uint8_t external) const noexcept;
 
     shruthi::HostAudioRing audioRing_;
     avrlib::Random random_;
@@ -324,6 +328,8 @@ class SwaraXtEngine {
     int renderHostCursor_ = 0;
     uint64_t hostBlockOrigin_ = 0;
     std::array<uint8_t, 128> heldMidi_ {};
+    // Channel captured at Note On. Note Off must use this, never the live parameter.
+    std::array<uint8_t, 128> heldMidiChannel_ {};
     std::array<uint8_t, 128> identityExternal_ {};
     std::array<uint8_t, 128> externalOwners_ {};
     std::array<ScheduledMidi, kMaxScheduledMidi> scheduledMidi_ {};

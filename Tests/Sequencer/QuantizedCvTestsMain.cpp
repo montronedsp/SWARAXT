@@ -3,8 +3,10 @@
 
 #include <JuceHeader.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <thread>
 #include <vector>
 
 #include "Engine/FreeCvPitch.h"
@@ -407,6 +409,85 @@ void testStateAndLayout()
     juce::Desktop::getInstance().setGlobalScaleFactor(previous);
 }
 
+void testTuningPublicationConcurrency()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 128);
+    processor.sequenceState().setPitchMode(3);
+    setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_SEQ);
+    setInt(processor, swaraxt::IDs::seqClockMode, 0);
+    setInt(processor, swaraxt::IDs::seqTempo, 140);
+    std::atomic<bool> stop { false };
+    std::atomic<int> audioFailures { 0 };
+    std::atomic<int> blocks { 0 };
+    std::atomic<int> mode = 3;
+
+    std::thread audio([&] {
+        juce::AudioBuffer<float> buffer(2, 128);
+        while (! stop.load(std::memory_order_acquire))
+        {
+            processor.sequenceState().setPitchMode(
+                static_cast<uint8_t>(mode.load(std::memory_order_relaxed)));
+            processor.engineForTests().applyParameters();
+            juce::MidiBuffer midi;
+            processor.processBlock(buffer, midi);
+            const auto chosen = processor.quantizeActiveHz(440.0);
+            const double degree0 = processor.hzForActiveDegree(0);
+            if (! chosen.valid || ! (degree0 > 0.0))
+                audioFailures.fetch_add(1, std::memory_order_relaxed);
+            else
+            {
+                // Scale table and embedded quantizer must be one coherent generation:
+                // a 440 Hz probe must land on a playable degree frequency from the same table.
+                const double again = processor.hzForActiveDegree(chosen.degree);
+                if (! (again > 0.0) || std::abs(1200.0 * std::log2(again / chosen.hz)) > 0.05)
+                    audioFailures.fetch_add(1, std::memory_order_relaxed);
+            }
+            blocks.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    const int tunings[] = { 0, 1, 2, 3, 4, 5 };
+    const int modes[] = { 3, 2, 1, 0, 3 };
+    for (int round = 0; round < 40; ++round)
+    {
+        expect(processor.loadBuiltinTuning(tunings[round % 6]), "rapid builtin publication");
+        mode.store(modes[round % 5], std::memory_order_relaxed);
+        if ((round % 7) == 0)
+        {
+            const uint8_t garbage[] = { 9, 9, 9 };
+            const auto before = processor.activeTuningName();
+            expect(! processor.loadTuningBytes(garbage, sizeof(garbage)), "failed import during concurrency");
+            expect(processor.activeTuningName() == before, "failed import keeps prior generation");
+        }
+        if ((round % 11) == 0)
+        {
+            juce::MemoryBlock state;
+            processor.getStateInformation(state);
+            processor.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    stop.store(true, std::memory_order_release);
+    audio.join();
+    expect(blocks.load() > 20, "audio thread latched many blocks");
+    expect(audioFailures.load() == 0, "audio never observed a torn tuning generation");
+    std::printf("tuning concurrency: blocks=%d failures=%d\n",
+                blocks.load(), audioFailures.load());
+
+    // Teardown while publication is idle: destructor must not leave dangling readers.
+    {
+        SwaraXtAudioProcessor dying;
+        dying.prepareToPlay(44100.0, 64);
+        expect(dying.loadBuiltinTuning(5), "tritave before teardown");
+        juce::AudioBuffer<float> buffer(2, 64);
+        juce::MidiBuffer midi;
+        dying.processBlock(buffer, midi);
+        expect(dying.quantizeActiveHz(330.0).valid, "quantizer valid before teardown");
+    }
+}
+
 }  // namespace
 
 int main()
@@ -417,6 +498,7 @@ int main()
     testVoiceWord();
     testQuantizedMidi();
     testStateAndLayout();
+    testTuningPublicationConcurrency();
     if (failures == 0)
     {
         std::printf("quantized CV tests: PASSED\n");
