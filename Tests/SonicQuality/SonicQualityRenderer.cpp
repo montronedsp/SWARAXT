@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 
 #include "shruthi/patch.h"
 
@@ -118,6 +119,36 @@ double schematicOpenFilterGain(double frequencyHz) noexcept
     return dcGain / fourPole / inputPole;
 }
 
+double highpassMagnitude(double frequencyHz, double tau) noexcept
+{
+    const double wTau = 2.0 * kPi * frequencyHz * tau;
+    return wTau / std::sqrt(1.0 + wTau * wTau);
+}
+
+double lowpassMagnitude(double frequencyHz, double tau) noexcept
+{
+    const double wTau = 2.0 * kPi * frequencyHz * tau;
+    return 1.0 / std::sqrt(1.0 + wTau * wTau);
+}
+
+double coupledOpenFilterGain(double frequencyHz) noexcept
+{
+    using Core = swaraxt::Ir3109BoardCore;
+    constexpr double outputAcTau = 33000.0 * 4.7e-6;
+    constexpr double vcaIvTau = 10000.0 * 10.0e-12;
+    return schematicOpenFilterGain(frequencyHz)
+        * highpassMagnitude(frequencyHz, Core::kInputTau)
+        * highpassMagnitude(frequencyHz, Core::kSharedOutputTau)
+        * lowpassMagnitude(frequencyHz, vcaIvTau)
+        * highpassMagnitude(frequencyHz, outputAcTau)
+        * lowpassMagnitude(frequencyHz, Core::kOutputPoleTau);
+}
+
+float requestedCutoff(const PluginTone& tone, int sample) noexcept
+{
+    return cutoffAt(tone, sample);
+}
+
 BoardRender renderBoardTone(const BoardTone& tone)
 {
     BoardRender render;
@@ -166,17 +197,39 @@ FxRender renderClassicFxInsert(const FxInsert& insert)
     const int total = insert.blocks * static_cast<int>(swaraxt::board::blockSize);
     render.samples.reserve(static_cast<size_t>(std::max(0, total)));
     int rendered = 0;
+    std::uint32_t noise = 0x12345678u;
     for (int block = 0; block < insert.blocks; ++block)
     {
         swaraxt::board::FloatBlock frame {};
         for (std::size_t i = 0; i < frame.size(); ++i)
         {
             const int index = rendered + static_cast<int>(i);
-            frame[i] = static_cast<float>(static_cast<double>(insert.amplitude)
-                * std::sin(2.0 * kPi * insert.frequencyHz * static_cast<double>(index) / render.sampleRate));
+            const double time = static_cast<double>(index) / render.sampleRate;
+            double sample = 0.0;
+            switch (insert.stimulus)
+            {
+                case FxStimulus::saw:
+                {
+                    const double phase = time * insert.frequencyHz;
+                    sample = (2.0 * (phase - std::floor(phase)) - 1.0) * insert.amplitude;
+                    break;
+                }
+                case FxStimulus::impulse:
+                    sample = index == 0 ? insert.amplitude : 0.0;
+                    break;
+                case FxStimulus::noise:
+                    noise = noise * 1664525u + 1013904223u;
+                    sample = (static_cast<int32_t>(noise) / 2147483648.0) * insert.amplitude;
+                    break;
+                case FxStimulus::sine:
+                    sample = static_cast<double>(insert.amplitude)
+                        * std::sin(2.0 * kPi * insert.frequencyHz * time);
+                    break;
+            }
+            frame[i] = static_cast<float>(sample);
         }
         processor.processClassicFx(frame, control);
-        if (control.effect != swaraxt::board::Effect::off)
+        if (insert.applyPostDac && control.effect != swaraxt::board::Effect::off)
             postDac.process(frame, frame.size());
         for (float sample : frame)
         {
@@ -251,7 +304,7 @@ PluginRender renderPluginTone(const PluginTone& tone)
         const int count = std::min(blockSize, total - rendered);
         buffer.setSize(2, count, false, false, true);
         buffer.clear();
-        setFloat(processor, swaraxt::IDs::filterCutoff, cutoffAt(tone, rendered));
+        setFloat(processor, swaraxt::IDs::filterCutoff, requestedCutoff(tone, rendered));
         juce::MidiBuffer midi;
         if (tone.note >= 0 && rendered == 0)
             midi.addEvent(juce::MidiMessage::noteOn(1, tone.note, (juce::uint8) 100), 0);

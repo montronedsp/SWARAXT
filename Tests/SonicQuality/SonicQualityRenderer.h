@@ -34,6 +34,14 @@ struct BoardRender
     bool finite = true;
 };
 
+enum class FxStimulus
+{
+    sine,
+    saw,
+    impulse,
+    noise
+};
+
 struct FxInsert
 {
     int effectChoice = 0;
@@ -42,6 +50,8 @@ struct FxInsert
     double frequencyHz = 1000.0;
     float amplitude = 0.25f;
     int blocks = 80;
+    FxStimulus stimulus = FxStimulus::sine;
+    bool applyPostDac = true;
 };
 
 struct FxRender
@@ -113,6 +123,8 @@ FxRender renderClassicFxInsert(const FxInsert& insert);
 PluginRender renderPluginTone(const PluginTone& tone);
 ReprepareRender renderPluginReprepare();
 double schematicOpenFilterGain(double frequencyHz) noexcept;
+double coupledOpenFilterGain(double frequencyHz) noexcept;
+float requestedCutoff(const PluginTone& tone, int sample) noexcept;
 const char* qualityName(swaraxt::FilterQuality quality) noexcept;
 const char* effectName(int choice) noexcept;
 bool effectCanBeTransparent(int choice) noexcept;

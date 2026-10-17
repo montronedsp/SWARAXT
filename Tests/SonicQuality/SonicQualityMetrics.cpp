@@ -225,11 +225,11 @@ DistortionStats measureDistortion(const float* samples, int count, double sample
     return stats;
 }
 
-TruePeakStats measureTruePeak(const float* samples, int count)
+TruePeakStats measureTruePeak(const float* samples, int count, int factor, int taps)
 {
     TruePeakStats stats;
-    stats.factor = 4;
-    stats.taps = 48;
+    stats.factor = factor < 2 ? 2 : factor;
+    stats.taps = taps < 8 ? 8 : taps;
     if (samples == nullptr || count <= 0)
         return stats;
     const auto levels = measureLevels(samples, count);
@@ -264,6 +264,28 @@ TruePeakStats measureTruePeak(const float* samples, int count)
     }
     stats.truePeak = peak;
     return stats;
+}
+
+TruePeakStats measureTruePeak(const float* samples, int count)
+{
+    return measureTruePeak(samples, count, 4, 48);
+}
+
+double zeroLagCorrelation(const std::vector<float>& a, const std::vector<float>& b)
+{
+    const int count = static_cast<int>(std::min(a.size(), b.size()));
+    double score = 0.0;
+    int used = 0;
+    for (int i = 0; i < count; ++i)
+    {
+        const float left = a[static_cast<size_t>(i)];
+        const float right = b[static_cast<size_t>(i)];
+        if (!std::isfinite(left) || !std::isfinite(right))
+            continue;
+        score += static_cast<double>(left) * static_cast<double>(right);
+        ++used;
+    }
+    return used > 0 ? score / static_cast<double>(used) : 0.0;
 }
 
 int bestIntegerLag(const std::vector<float>& reference, const std::vector<float>& other,
@@ -489,6 +511,79 @@ int runMetricSelfTests(std::string& detail)
     const int lag = bestIntegerLag(sine, delayed, 8, correlation);
     if (lag != 3)
         fail(failures, text, "integer lag search did not find a 3-sample delay");
+
+    std::vector<float> silence(static_cast<size_t>(count), 0.0f);
+    std::vector<float> nearSilence(static_cast<size_t>(count), 1.0e-8f);
+    double silenceCorrelation = 1.0;
+    if (bestIntegerLag(silence, silence, 64, silenceCorrelation) != 0 || silenceCorrelation > 1.0e-12)
+        fail(failures, text, "exact silence produced a non-zero correlation lag");
+    double nearCorrelation = 1.0;
+    if (bestIntegerLag(nearSilence, nearSilence, 64, nearCorrelation) != 0)
+        fail(failures, text, "near-silence produced a non-zero correlation lag");
+
+    std::vector<float> inverted(sine.size());
+    std::vector<float> louder(sine.size());
+    for (size_t i = 0; i < sine.size(); ++i)
+    {
+        inverted[i] = -sine[i];
+        louder[i] = sine[i] * 2.0f;
+    }
+    if (!(zeroLagCorrelation(sine, inverted) < -0.1))
+        fail(failures, text, "inverted polarity was not negative at zero lag");
+    double invertedCorrelation = 0.0;
+    const int invertedLag = bestIntegerLag(sine, inverted, 30, invertedCorrelation);
+    if (std::abs(invertedLag) != 24)
+        fail(failures, text, "maximum-correlation alignment of an inverted sine missed the half period");
+    double louderCorrelation = 0.0;
+    const auto louderLevel = measureLevels(louder.data(), count);
+    if (bestIntegerLag(sine, louder, 8, louderCorrelation) != 0
+        || std::abs(louderLevel.rms / sineLevel.rms - 2.0) > 1.0e-5)
+        fail(failures, text, "a scaled copy changed lag or RMS ratio");
+
+    std::vector<float> twoTone(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i)
+    {
+        const double t = static_cast<double>(i);
+        twoTone[static_cast<size_t>(i)] = static_cast<float>(
+            std::sin(2.0 * kPi * 1000.0 * t / rate) + 0.5 * std::sin(2.0 * kPi * 3000.0 * t / rate));
+    }
+    const auto firstTone = projectTone(twoTone.data(), count, rate, 1000.0, AnalysisWindow::rectangular);
+    const auto secondTone = projectTone(twoTone.data(), count, rate, 3000.0, AnalysisWindow::rectangular);
+    if (std::abs(firstTone.peakAmplitude - 1.0) > 1.0e-4 || std::abs(secondTone.peakAmplitude - 0.5) > 1.0e-4)
+        fail(failures, text, "two-tone amplitudes were not recovered");
+    const auto intermod = projectTone(twoTone.data(), count, rate, 2000.0, AnalysisWindow::rectangular);
+    if (intermod.peakAmplitude > 1.0e-4)
+        fail(failures, text, "a linear two-tone sum reported intermodulation");
+
+    std::vector<float> drifting(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i)
+        drifting[static_cast<size_t>(i)] = static_cast<float>(0.5 * std::sin(2.0 * kPi * 1000.3 * i / rate));
+    const auto driftingTone = projectTone(drifting.data(), count, rate, 1000.3, AnalysisWindow::hann);
+    if (std::abs(driftingTone.peakAmplitude - 0.5) > 0.01)
+        fail(failures, text, "Hann projection of a non-bin-centred sine missed 0.5");
+
+    std::vector<float> over(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i)
+        over[static_cast<size_t>(i)] = static_cast<float>(1.2 * std::sin(2.0 * kPi * 1000.0 * i / rate));
+    if (measureLevels(over.data(), count).aboveUnity < count / 4)
+        fail(failures, text, "a 1.2 peak sine was not counted above full scale");
+
+    std::vector<float> impulse(64, 0.0f);
+    impulse[10] = 1.0f;
+    const auto impulseLevel = measureLevels(impulse.data(), static_cast<int>(impulse.size()));
+    const auto impulsePeak = measureTruePeak(impulse.data(), static_cast<int>(impulse.size()));
+    if (impulseLevel.samplePeak != 1.0 || impulsePeak.truePeak != 1.0 || impulseLevel.nonfinite != 0)
+        fail(failures, text, "a short impulse was not reported at unity sample peak");
+
+    const auto empty = measureLevels(nullptr, 0);
+    const auto emptyTone = projectTone(sine.data(), 8, rate, 1000.0, AnalysisWindow::rectangular);
+    if (empty.samples != 0 || emptyTone.measurable)
+        fail(failures, text, "empty or short analysis was treated as a valid spectrum");
+
+    const auto finePeak = measureTruePeak(shifted.data(), count, 8, 96);
+    if (std::abs(finePeak.truePeak - 1.0) > kTruePeakTolerance
+        || std::abs(finePeak.truePeak - peak.truePeak) > 0.01)
+        fail(failures, text, "8x true-peak reference disagreed with the 4x estimator beyond 0.01");
 
     if (failures == 0)
         text << "metric self-tests passed\n";

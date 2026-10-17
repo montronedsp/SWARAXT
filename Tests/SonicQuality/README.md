@@ -10,9 +10,13 @@ Layer B constructs `SwaraXtAudioProcessor` and renders MIDI through the voice, m
 
 ## Profiles
 
-`SwaraXTSonicQualityTests` is the quick profile: analytic measurement self-tests and a short production smoke set.
+Quick profile, `SwaraXTSonicQualityTests`, is the ordinary CTest target. A Windows MSVC Release run measured about 1.2 seconds. It covers analytic self-tests, the qualified 1 kHz small-signal check, a short board and plugin smoke set, FX Off identity, latency, and one post-mixer ratio.
 
-`SwaraXTSonicQualityTests --extended` adds the frequency, distortion, FX, rate, block-size, quality-mode and modulation matrices. CTest registers that profile as `SwaraXTSonicQualityExtended` with `DISABLED TRUE`, so an ordinary `ctest` run does not execute it.
+`SwaraXTSonicQualityTests --extended` adds the frequency, distortion, FX, rate, block-size, low-frequency, comb, automation and headroom matrices, and writes listening WAVs. CTest registers it as `SwaraXTSonicQualityExtended` with `DISABLED TRUE`. A Windows MSVC Release run measured about 20 seconds.
+
+The simplified open-filter estimate used by the 1 kHz gate does not include AC coupling. `coupledOpenFilterGain()` adds the input, shared-output and output coupling magnitudes from the production time constants. A residual against that linear model is still an observation unless it is the existing 1 kHz gate.
+
+True peak is a 4×, 48-tap Blackman-windowed sinc with unity DC gain. An 8×, 96-tap variant is an uncertainty check. Neither is a certified true-peak meter.
 
 Artifacts are written under the current directory in `sonic-quality-artifacts/`, or to `--output <directory>`. They are build-local and are not source files.
 

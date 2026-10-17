@@ -66,6 +66,8 @@ ToneComponent projectTone(const float* samples, int count, double sampleRate,
 DistortionStats measureDistortion(const float* samples, int count, double sampleRate,
                                   double fundamentalHz, AnalysisWindow window);
 TruePeakStats measureTruePeak(const float* samples, int count);
+TruePeakStats measureTruePeak(const float* samples, int count, int factor, int taps);
+double zeroLagCorrelation(const std::vector<float>& a, const std::vector<float>& b);
 double db(double amplitude) noexcept;
 double foldFrequency(double frequencyHz, double sampleRate) noexcept;
 int coherentLength(double sampleRate, double frequencyHz, int minimumSamples) noexcept;

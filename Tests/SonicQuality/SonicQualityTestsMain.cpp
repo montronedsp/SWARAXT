@@ -50,7 +50,8 @@ std::string buildName()
 
 const char* kFrequencyHeader =
     "case,path,frequency_hz,amplitude,resonance,quality,sample_rate,fundamental_gain_db,"
-    "relative_to_1khz_db,phase_rad,rms,sample_peak,schematic_gain_db,gain_error_db,result";
+    "relative_to_1khz_db,phase_rad,rms,sample_peak,schematic_gain_db,schematic_error_db,"
+    "coupled_gain_db,coupled_error_db,result";
 const char* kDistortionHeader =
     "case,path,frequency_hz,amplitude_dbfs,resonance,quality,sample_rate,thd,thd_n,h2,h3,h4,h5,"
     "alias_db,alias_hz,fundamental_db,result";
@@ -137,7 +138,10 @@ void measureBoardFrequency(Suite& suite, const sonic::BoardTone& tone, const std
                                                 render.sampleRate, tone.frequencyHz, window);
     const double measuredGain = tone.amplitude > 0.0f ? fundamental.peakAmplitude / tone.amplitude : 0.0;
     const double schematic = sonic::schematicOpenFilterGain(tone.frequencyHz);
+    const double coupled = sonic::coupledOpenFilterGain(tone.frequencyHz);
     const double relative = referenceGain > 0.0 ? measuredGain / referenceGain : 0.0;
+    const double schematicRatio = schematic > 0.0 ? measuredGain / schematic : 0.0;
+    const double coupledRatio = coupled > 0.0 ? measuredGain / coupled : 0.0;
     auto row = suite.base(test, "frequency_response");
     row.sourceClass = tone.instrumentPath ? "production-processInstrumentSample" : "diagnostic-processSample";
     row.input = "sine " + num(tone.frequencyHz) + " Hz amp " + num(tone.amplitude);
@@ -145,35 +149,39 @@ void measureBoardFrequency(Suite& suite, const sonic::BoardTone& tone, const std
         + " oversample " + std::to_string(render.oversample);
     row.quality = sonic::qualityName(tone.quality);
     row.hostRate = render.sampleRate;
-    row.reference = "schematic small-signal gain " + num(schematic)
-        + "; 1 kHz measured gain " + num(referenceGain);
+    row.reference = "simplified schematic " + num(schematic) + "; coupling-inclusive linear model " + num(coupled);
     row.observed = "gain " + num(measuredGain) + " (" + num(sonic::db(measuredGain)) + " dB)";
     const bool schematicCheck = tone.instrumentPath && tone.oversampleOverride == 0
         && tone.quality == swaraxt::FilterQuality::normal && tone.resonance == 0.0f
         && tone.amplitude <= sonic::kSchematicCheckAmplitude * 1.01f
         && std::abs(tone.frequencyHz - sonic::kSchematicCheckFrequencyHz) < 0.1
         && std::abs(tone.cutoffHz - 20000.0f) < 0.1f;
+    const bool smallSignal = tone.instrumentPath && tone.oversampleOverride == 0
+        && tone.amplitude <= 1.0e-3f && tone.resonance == 0.0f && tone.frequencyHz <= 4000.0;
     if (!render.finite || levels.nonfinite != 0)
         row.result = sonic::Classification::fail;
     else if (schematicCheck)
     {
         row.tolerance = "relative error 0.015, same condition as SwaraXTIR3109BoardTests";
-        row.result = std::abs(measuredGain / schematic - 1.0) <= sonic::kSchematicGainTolerance
+        row.result = std::abs(schematicRatio - 1.0) <= sonic::kSchematicGainTolerance
             ? sonic::Classification::pass
             : sonic::Classification::fail;
         row.notes = "Validated small-signal cross-check. Not a flat-response requirement.";
     }
-    else if (tone.instrumentPath && tone.oversampleOverride == 0
-             && tone.amplitude <= 1.0e-3f && tone.resonance == 0.0f && tone.frequencyHz <= 4000.0
-             && std::abs(measuredGain / schematic - 1.0) > 0.05)
+    else if (smallSignal && std::abs(coupledRatio - 1.0) > 0.05)
     {
         row.result = sonic::Classification::needsReview;
-        row.notes = "Screening bound of 5 percent versus the schematic estimate. Not an approved sonic limit.";
+        row.notes = "Residual versus the coupling-inclusive linear model exceeds 5 percent. Screening bound only.";
     }
     else if (!tone.instrumentPath)
     {
         row.result = sonic::Classification::observed;
         row.notes = "processSample is the diagnostic core. It is not the production instrument path and the schematic VCA estimate does not apply.";
+    }
+    else if (smallSignal && std::abs(schematicRatio - 1.0) > 0.05)
+    {
+        row.result = sonic::Classification::observed;
+        row.notes = "The simplified schematic omits AC coupling. The coupling-inclusive linear model accounts for this difference.";
     }
     else
     {
@@ -186,7 +194,7 @@ void measureBoardFrequency(Suite& suite, const sonic::BoardTone& tone, const std
          << tone.resonance << ',' << row.quality << ',' << render.sampleRate << ','
          << sonic::db(measuredGain) << ',' << sonic::db(relative) << ',' << fundamental.phaseRadians << ','
          << levels.rms << ',' << levels.samplePeak << ',' << sonic::db(schematic) << ','
-         << sonic::db(measuredGain / std::max(schematic, 1.0e-15)) << ','
+         << sonic::db(schematicRatio) << ',' << sonic::db(coupled) << ',' << sonic::db(coupledRatio) << ','
          << sonic::classificationName(row.result);
     suite.report.addTableRow("frequency_response.csv", kFrequencyHeader, line.str());
 }
@@ -570,8 +578,360 @@ void runQuick(Suite& suite)
     suite.add(trim);
 }
 
+void runLowFrequencySweep(Suite& suite)
+{
+    const double native = swaraxt::SwaraXtEngine::kInternalSampleRate;
+    const double frequencies[] = {10, 15, 20, 25, 30, 40, 60, 80, 100, 200, 440, 1000};
+    for (double frequency : frequencies)
+        for (double decibels : {-60.0, -12.0})
+        {
+            sonic::BoardTone tone;
+            tone.frequencyHz = frequency;
+            tone.amplitude = static_cast<float>(std::pow(10.0, decibels / 20.0));
+            tone.cutoffHz = 20000.0f;
+            tone.resonance = 0.0f;
+            tone.captureSamples = sonic::coherentLength(native, frequency, 2048);
+            tone.warmupSamples = frequency < 80.0
+                ? static_cast<int>(std::lround(2.5 * native))
+                : static_cast<int>(std::lround(0.2 * native));
+            measureBoardFrequency(suite, tone, "board.lowfreq." + num(frequency) + "." + num(decibels), 0.0);
+        }
+}
+
+void recordFxCase(Suite& suite, const sonic::FxRender& dry, const sonic::FxInsert& insert, const std::string& label)
+{
+    const auto wet = sonic::renderClassicFxInsert(insert);
+    const auto dryLevel = sonic::measureLevels(dry.samples.data(), static_cast<int>(dry.samples.size()));
+    const auto wetLevel = sonic::measureLevels(wet.samples.data(), static_cast<int>(wet.samples.size()));
+    const auto wetPeak = sonic::measureTruePeak(wet.samples.data(), static_cast<int>(wet.samples.size()));
+    auto row = suite.base(label, "fx_gain");
+    row.sourceClass = insert.applyPostDac ? "classic-fx-plus-post-dac" : "classic-fx-12bit";
+    row.input = label;
+    row.parameters = "cv1 " + std::to_string(insert.cv1) + " cv2 " + std::to_string(insert.cv2);
+    row.hostRate = wet.sampleRate;
+    row.blockSize = 40;
+    const double gainDb = dryLevel.rms > 1.0e-12 ? sonic::db(wetLevel.rms) - sonic::db(dryLevel.rms) : 0.0;
+    row.reference = "dry/wet equivalence is not expected; control 0 is not bypass";
+    row.observed = "gain " + num(gainDb) + " dB peak " + num(wetLevel.samplePeak)
+        + " true " + num(wetPeak.truePeak) + " dc " + num(wetLevel.mean);
+    row.result = wet.finite && wetLevel.nonfinite == 0
+        ? sonic::Classification::observed : sonic::Classification::fail;
+    if ((insert.effectChoice == 3 || insert.effectChoice == 4) && insert.cv1 < 40 && insert.cv2 == 0)
+        row.notes = "lut_res_comb_delays[0] is 1024. Modulo 1024 that tap is zero delay, and the feedforward sum is approximately dry plus dry.";
+    suite.add(row);
+    std::ostringstream line;
+    line << label << ',' << row.sourceClass << ',' << sonic::effectName(insert.effectChoice) << ','
+         << static_cast<int>(insert.cv1) << ',' << static_cast<int>(insert.cv2) << ','
+         << gainDb << ',' << wetLevel.rms << ',' << wetLevel.samplePeak << ','
+         << wetPeak.truePeak << ',' << wetLevel.mean << ',' << wetLevel.aboveUnity << ','
+         << sonic::classificationName(row.result);
+    suite.report.addTableRow("comb_gain.csv",
+        "case,path,effect,cv1,cv2,gain_db,rms,sample_peak,true_peak,dc,above_unity,result",
+        line.str());
+}
+
+void runCombStudy(Suite& suite)
+{
+    sonic::FxInsert dryInsert;
+    dryInsert.blocks = 40;
+    dryInsert.amplitude = 0.25f;
+    const auto dry = sonic::renderClassicFxInsert(dryInsert);
+    const std::uint8_t times[] = {0, 128, 254};
+    const std::uint8_t feedbacks[] = {0, 128, 255};
+    for (int choice : {3, 4})
+        for (std::uint8_t time : times)
+            for (std::uint8_t feedback : feedbacks)
+            {
+                if (!(feedback == 0 || time == 0 || (time == 128 && feedback == 128) || (time == 254 && feedback == 255)))
+                    continue;
+                sonic::FxInsert wet = dryInsert;
+                wet.effectChoice = choice;
+                wet.cv1 = time;
+                wet.cv2 = feedback;
+                recordFxCase(suite, dry, wet, std::string("comb.") + sonic::effectName(choice)
+                    + ".t" + std::to_string(time) + ".f" + std::to_string(feedback));
+            }
+    sonic::FxInsert bare = dryInsert;
+    bare.effectChoice = 3;
+    bare.applyPostDac = false;
+    recordFxCase(suite, dry, bare, "comb.Comb +.zero-delay.no-post-dac");
+    for (sonic::FxStimulus stimulus : {sonic::FxStimulus::saw, sonic::FxStimulus::impulse, sonic::FxStimulus::noise})
+    {
+        sonic::FxInsert shaped = dryInsert;
+        shaped.stimulus = stimulus;
+        shaped.amplitude = stimulus == sonic::FxStimulus::noise ? 0.2f : 0.25f;
+        const auto shapedDry = sonic::renderClassicFxInsert(shaped);
+        shaped.effectChoice = 3;
+        const char* name = stimulus == sonic::FxStimulus::saw ? "saw"
+            : stimulus == sonic::FxStimulus::impulse ? "impulse" : "noise";
+        recordFxCase(suite, shapedDry, shaped, std::string("comb.Comb +.") + name);
+        shaped.effectChoice = 4;
+        recordFxCase(suite, shapedDry, shaped, std::string("comb.Comb -.") + name);
+    }
+    sonic::FxInsert full = dryInsert;
+    full.amplitude = 0.9f;
+    full.effectChoice = 3;
+    dryInsert.amplitude = 0.9f;
+    const auto loudDry = sonic::renderClassicFxInsert(dryInsert);
+    recordFxCase(suite, loudDry, full, "comb.Comb +.full-scale-sine");
+}
+
+std::vector<float> applyGain(const std::vector<float>& input, double gain)
+{
+    std::vector<float> scaled(input.size());
+    for (size_t i = 0; i < input.size(); ++i)
+        scaled[i] = static_cast<float>(static_cast<double>(input[i]) * gain);
+    return scaled;
+}
+
+void exportListening(Suite& suite, const std::filesystem::path& directory, const std::string& name,
+                     const std::vector<float>& raw, double sampleRate, const std::string& settings,
+                     const std::string& stimulus, const std::string& question)
+{
+    const auto levels = sonic::measureLevels(raw.data(), static_cast<int>(raw.size()));
+    const double target = 0.25;
+    const double listeningGain = levels.samplePeak > 1.0e-8 ? target / levels.samplePeak : 1.0;
+    const auto matched = applyGain(raw, listeningGain);
+    std::filesystem::create_directories(directory);
+    sonic::writeFloatWav((directory / (name + "-raw.wav")).string(), raw, static_cast<int>(std::lround(sampleRate)));
+    sonic::writeFloatWav((directory / (name + "-matched.wav")).string(), matched, static_cast<int>(std::lround(sampleRate)));
+    std::ostringstream line;
+    line << name << ',' << sampleRate << ',' << raw.size() << ',' << settings << ',' << stimulus << ','
+         << 0 << ',' << listeningGain << ',' << levels.samplePeak << ',' << levels.rms << ','
+         << levels.mean << ',' << question;
+    suite.report.addTableRow("listening_manifest.csv",
+        "name,host_rate,samples,settings,stimulus,alignment_samples,listening_gain,raw_peak,raw_rms,raw_dc,question",
+        line.str());
+}
+
+void runListeningPackage(Suite& suite, const std::filesystem::path& directory)
+{
+    const auto listen = directory / "listening";
+    const double native = swaraxt::SwaraXtEngine::kInternalSampleRate;
+    auto boardTone = [&](double frequency) {
+        sonic::BoardTone tone;
+        tone.frequencyHz = frequency;
+        tone.amplitude = 0.05f;
+        tone.cutoffHz = 20000.0f;
+        tone.captureSamples = sonic::coherentLength(native, frequency, 8192);
+        tone.warmupSamples = static_cast<int>(std::lround(2.5 * native));
+        return sonic::renderBoardTone(tone);
+    };
+    const auto low = boardTone(20.0);
+    const auto mid = boardTone(1000.0);
+    exportListening(suite, listen, "A-open-filter-1k", mid.samples, native,
+                    "processInstrumentSample cutoff 20000 resonance 0 quality normal amp 0.05",
+                    "1 kHz sine", "Compare level and tone with B. Do not treat either as a defect.");
+    exportListening(suite, listen, "B-open-filter-20", low.samples, native,
+                    "processInstrumentSample cutoff 20000 resonance 0 quality normal amp 0.05",
+                    "20 Hz sine", "Is the 20 Hz tone quieter or duller than the 1 kHz reference after level match?");
+
+    sonic::PluginTone off;
+    off.cutoffHz = 8000.0f;
+    off.resonance = 0.0f;
+    off.totalSamples = 24000;
+    off.fxChoice = 0;
+    const auto offRender = sonic::renderPluginTone(off);
+    exportListening(suite, listen, "reference-fx-off", offRender.left, 48000.0,
+                    "saw note 69 cutoff 8000 resonance 0 fx Off block 64 quality normal master 0.85",
+                    "plugin saw", "Reference for the comb comparison.");
+    for (int choice : {3, 4})
+    {
+        sonic::PluginTone comb = off;
+        comb.fxChoice = choice;
+        comb.fxParam1 = 0;
+        comb.fxParam2 = 0;
+        const auto render = sonic::renderPluginTone(comb);
+        const std::string name = choice == 3 ? "candidate-comb-plus" : "candidate-comb-minus";
+        exportListening(suite, listen, name, render.left, 48000.0,
+                        "saw note 69 cutoff 8000 resonance 0 fx param 0/0 block 64",
+                        sonic::effectName(choice),
+                        "After level match, what changes besides loudness: tone, chorus, or distortion?");
+    }
+
+    for (int block : {1, 64, 512})
+    {
+        sonic::PluginTone sweep;
+        sweep.cutoffHz = 180.0f;
+        sweep.cutoffEndHz = 6000.0f;
+        sweep.cutoffLaw = sonic::CutoffLaw::linear;
+        sweep.blockSize = block;
+        sweep.totalSamples = 24000;
+        const auto render = sonic::renderPluginTone(sweep);
+        exportListening(suite, listen, "automation-linear-block-" + std::to_string(block), render.left, 48000.0,
+                        "linear cutoff 180 to 6000 Hz over the render",
+                        "saw note, block " + std::to_string(block),
+                        "Do block sizes change zipper, or only the timing of the same sweep?");
+    }
+    sonic::PluginTone jump;
+    jump.cutoffHz = 200.0f;
+    jump.cutoffEndHz = 8000.0f;
+    jump.cutoffLaw = sonic::CutoffLaw::jump;
+    jump.totalSamples = 24000;
+    const auto jumpRender = sonic::renderPluginTone(jump);
+    exportListening(suite, listen, "automation-jump-block-64", jumpRender.left, 48000.0,
+                    "cutoff jumps 200 to 8000 at mid-buffer block 64",
+                    "saw note", "Is the jump a click, a filter sweep, or both?");
+    sonic::PluginTone lfo;
+    lfo.cutoffHz = 400.0f;
+    lfo.filterLfo = 63;
+    lfo.lfoRate = 80;
+    lfo.totalSamples = 48000;
+    const auto lfoRender = sonic::renderPluginTone(lfo);
+    exportListening(suite, listen, "automation-lfo-cutoff", lfoRender.left, 48000.0,
+                    "cutoff 400 filter LFO depth 63 rate 80",
+                    "saw note", "Is the movement smooth, stepped, or distorted?");
+
+    sonic::PluginTone extreme;
+    extreme.master = 1.0f;
+    extreme.resonance = 0.95f;
+    extreme.cutoffHz = 1500.0f;
+    extreme.mixSub = 127;
+    extreme.mixNoise = 63;
+    extreme.osc2Shape = 1;
+    extreme.totalSamples = 24000;
+    const auto extremeRender = sonic::renderPluginTone(extreme);
+    exportListening(suite, listen, "headroom-extreme", extremeRender.left, 48000.0,
+                    "master 1 resonance 0.95 cutoff 1500 sub 127 noise 63 osc2 saw",
+                    "plugin saw plus sub and noise",
+                    "Does the raw file sound clamped? The matched file is only for tone, not headroom.");
+}
+
+void runAutomationMatrix(Suite& suite)
+{
+    sonic::PluginTone fine;
+    fine.cutoffHz = 180.0f;
+    fine.cutoffEndHz = 6000.0f;
+    fine.cutoffLaw = sonic::CutoffLaw::linear;
+    fine.blockSize = 1;
+    fine.totalSamples = 8192;
+    const auto reference = sonic::renderPluginTone(fine);
+    const int requestedCount = std::max(1, fine.totalSamples);
+    for (int block : {32, 64, 127, 256, 512})
+    {
+        sonic::PluginTone coarse = fine;
+        coarse.blockSize = block;
+        const auto render = sonic::renderPluginTone(coarse);
+        double correlation = 0.0;
+        const int lag = sonic::bestIntegerLag(reference.left, render.left, 64, correlation);
+        double controlEnergy = 0.0;
+        const int coarseBlock = std::max(1, coarse.blockSize);
+        const int fineBlock = std::max(1, fine.blockSize);
+        for (int sample = 0; sample < fine.totalSamples; ++sample)
+        {
+            const int coarseOrigin = sample - (sample % coarseBlock);
+            const int fineOrigin = sample - (sample % fineBlock);
+            const double delta = static_cast<double>(sonic::requestedCutoff(coarse, coarseOrigin))
+                - static_cast<double>(sonic::requestedCutoff(fine, fineOrigin));
+            controlEnergy += delta * delta;
+        }
+        auto row = suite.base("automation.linear.block1-vs-" + std::to_string(block), "automation");
+        row.sourceClass = "complete-plugin";
+        row.hostRate = 48000.0;
+        row.blockSize = block;
+        row.reference = "block 1 requested trajectory; block-sized updates are a different request";
+        row.observed = "audio-rms-diff " + num(sonic::rmsDifference(reference.left, render.left, lag))
+            + " lag " + std::to_string(lag)
+            + " requested-cutoff-rms " + num(std::sqrt(controlEnergy / std::max(1, requestedCount)));
+        row.result = reference.finite && render.finite
+            ? sonic::Classification::observed : sonic::Classification::fail;
+        row.notes = "Host parameter updates occur once per processBlock. These trajectories are not equivalent.";
+        suite.add(row);
+    }
+    sonic::PluginTone once = fine;
+    once.blockSize = 64;
+    once.cutoffLaw = sonic::CutoffLaw::hold;
+    once.cutoffHz = 2000.0f;
+    const auto first = sonic::renderPluginTone(once);
+    const auto second = sonic::renderPluginTone(once);
+    const double repeat = sonic::maxAbsDifference(first.left, second.left, 0);
+    auto repeatRow = suite.base("plugin.repeat.block64", "partition");
+    repeatRow.sourceClass = "complete-plugin";
+    repeatRow.hostRate = 48000.0;
+    repeatRow.blockSize = 64;
+    repeatRow.reference = "identical setup renders the same samples";
+    repeatRow.observed = "max-diff " + num(repeat);
+    repeatRow.tolerance = "max abs difference 0";
+    repeatRow.result = first.finite && second.finite && repeat == 0.0
+        ? sonic::Classification::pass : sonic::Classification::needsReview;
+    repeatRow.notes = "A non-zero difference would be a reproducibility question, not a sonic tolerance.";
+    suite.add(repeatRow);
+}
+
+void runHeadroomMatrix(Suite& suite)
+{
+    const double rates[] = {44100.0, 48000.0, 96000.0, 192000.0};
+    for (double rate : rates)
+    {
+        sonic::PluginTone tone;
+        tone.hostRate = rate;
+        tone.master = 1.0f;
+        tone.resonance = 0.95f;
+        tone.cutoffHz = 1500.0f;
+        tone.mixSub = 127;
+        tone.mixNoise = 63;
+        tone.osc2Shape = 1;
+        tone.totalSamples = static_cast<int>(rate * 0.2);
+        tone.postMixerDb = 0.0f;
+        const auto neutral = sonic::renderPluginTone(tone);
+        tone.postMixerDb = -18.0f;
+        const auto reduced = sonic::renderPluginTone(tone);
+        tone.postMixerDb = 0.0f;
+        tone.fxChoice = 1;
+        tone.fxParam1 = 127;
+        tone.fxParam2 = 63;
+        const auto distorted = sonic::renderPluginTone(tone);
+        const sonic::PluginRender* renders[] = {&neutral, &reduced, &distorted};
+        const char* names[] = {"neutral", "post-mixer-18", "distortion-max"};
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto& audio = renders[i]->left;
+            const auto levels = sonic::measureLevels(audio.data(), static_cast<int>(audio.size()));
+            const auto peak4 = sonic::measureTruePeak(audio.data(), static_cast<int>(audio.size()), 4, 48);
+            const int window = std::min(4096, static_cast<int>(audio.size()));
+            int centre = 0;
+            for (int sample = 1; sample < static_cast<int>(audio.size()); ++sample)
+                if (std::fabs(audio[static_cast<size_t>(sample)]) > std::fabs(audio[static_cast<size_t>(centre)]))
+                    centre = sample;
+            const int begin = std::max(0, centre - window / 2);
+            const int count = std::min(window, static_cast<int>(audio.size()) - begin);
+            const auto peak8 = sonic::measureTruePeak(audio.data() + begin, count, 8, 96);
+            auto row = suite.base(std::string("headroom.") + names[i] + "." + num(rate), "peaks");
+            row.sourceClass = "complete-plugin";
+            row.hostRate = rate;
+            row.quality = "normal";
+            row.blockSize = 64;
+            row.reference = "no approved true-peak ceiling; 4x estimator uncertainty versus 8x/96-tap";
+            row.observed = "sample " + num(sonic::db(levels.samplePeak))
+                + " dBFS 4x " + num(sonic::db(peak4.truePeak))
+                + " dBTP 8x " + num(sonic::db(peak8.truePeak))
+                + " above-unity " + std::to_string(levels.aboveUnity);
+            row.result = levels.nonfinite == 0 && renders[i]->finite
+                ? sonic::Classification::observed : sonic::Classification::fail;
+            row.notes = "The 4x 48-tap estimator is not a certified true-peak meter. "
+                        "A sample below full scale can still have an intersample crest.";
+            suite.add(row);
+            std::ostringstream line;
+            line << row.testCase << ',' << rate << ',' << sonic::db(levels.samplePeak) << ','
+                 << sonic::db(peak4.truePeak) << ',' << sonic::db(peak8.truePeak) << ','
+                 << levels.aboveUnity << ',' << levels.longestNearFullScaleRun << ','
+                 << levels.rms << ',' << levels.mean << ',' << levels.nonfinite << ','
+                 << sonic::classificationName(row.result);
+            suite.report.addTableRow("headroom.csv",
+                "case,host_rate,sample_peak_dbfs,true_peak_4x_dbtp,true_peak_8x_dbtp,above_unity,"
+                "longest_near_full_scale,rms,dc,nonfinite,result",
+                line.str());
+        }
+    }
+}
+
 void runExtended(Suite& suite, const std::filesystem::path& directory)
 {
+    runLowFrequencySweep(suite);
+    runCombStudy(suite);
+    runAutomationMatrix(suite);
+    runHeadroomMatrix(suite);
+    runListeningPackage(suite, directory);
     const double native = swaraxt::SwaraXtEngine::kInternalSampleRate;
     const double frequencies[] = {
         20, 40, 60, 100, 250, 500, 1000, 2000, 4000, 5000, 8000, 10000, 12000, 16000, 18000, 19000
