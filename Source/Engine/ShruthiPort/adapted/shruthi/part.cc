@@ -566,7 +566,10 @@ void Part::NextStep() {
 void Part::ClockArpeggiator() {
   bool has_note = false;
   if (sequencer_settings_.arp_pattern < kNumArpeggiatorPatterns) {
-    uint16_t pattern_mask = 1 << arp_seq_step_;
+    // ROM patterns have 16 steps; 0xff is the position before the first clock.
+    const uint16_t pattern_mask = arp_seq_step_ < 16
+        ? static_cast<uint16_t>(uint32_t{1} << arp_seq_step_)
+        : uint16_t{0};
     uint16_t pattern = ResourcesManager::Lookup<uint16_t, uint8_t>(
           lut_res_arpeggiator_patterns,
           sequencer_settings_.arp_pattern);
