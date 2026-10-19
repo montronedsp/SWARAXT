@@ -153,9 +153,8 @@ void SwaraXtAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     if (numSamples <= 0)
         return;
 
-    juce::MidiBuffer incoming;
-    incoming.swapWith(midi);
-    engine_.process(incoming, buffer, 0, numSamples, captureHostTransport(), &midi);
+    // The engine snapshots input before replacing this host-owned MIDI buffer.
+    engine_.process(midi, buffer, 0, numSamples, captureHostTransport(), &midi);
 }
 
 swaraxt::HostTransportSnapshot SwaraXtAudioProcessor::captureHostTransport() noexcept

@@ -641,19 +641,19 @@ void SwaraXtEngine::dispatchMidi(const PendingMidi& event)
     }
 }
 
-void SwaraXtEngine::collectMidiEvents(const juce::MidiBuffer& midi,
+void SwaraXtEngine::collectMidiEvents(juce::MidiBufferIterator& cursor,
+                                     const juce::MidiBufferIterator& end,
                                      int startSample,
                                      int numSamples)
 {
     pendingMidiCount_ = 0;
     const int endSample = startSample + numSamples;
 
-    for (const auto metadata : midi)
+    for (; cursor != end && pendingMidiCount_ < kMaxPendingMidi; ++cursor)
     {
+        const auto metadata = *cursor;
         if (metadata.samplePosition < startSample || metadata.samplePosition >= endSample)
             continue;
-        if (pendingMidiCount_ >= kMaxPendingMidi)
-            break;
 
         if (metadata.numBytes < 1 || metadata.numBytes > 3)
             continue;
@@ -990,7 +990,9 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         forceFlushSequencerMidiRelease(hostBlockOrigin_);
         releaseSequencerMidi_ = false;
     }
-    collectMidiEvents(midi, startSample, numSamples);
+    auto midiCursor = midi.cbegin();
+    const auto midiEnd = midi.cend();
+    collectMidiEvents(midiCursor, midiEnd, startSample, numSamples);
     boardTempo_ = board::BoardControl::tempoCode(sequencerHostSync_ && transport.hasHostTransport
         ? transport.bpm : static_cast<double>(requestedBoard_.tempo));
     updateHostLfoRates(transport.bpm);
@@ -1001,17 +1003,31 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         std::chrono::duration_cast<std::chrono::nanoseconds>(audioStart - processStart).count());
 #endif
     int midiIndex = 0;
+    // Refill fixed storage as it drains. The cursor only advances through the
+    // caller's finite input; later events retain their original order/offsets.
+    const auto dispatchMidiThrough = [&](int sample) {
+        for (;;)
+        {
+            if (midiIndex == pendingMidiCount_)
+            {
+                if (midiCursor == midiEnd)
+                    return;
+                collectMidiEvents(midiCursor, midiEnd, startSample, numSamples);
+                midiIndex = 0;
+                if (pendingMidiCount_ == 0)
+                    return;
+            }
+            if (pendingMidi_[static_cast<size_t>(midiIndex)].sampleOffset > sample)
+                return;
+            dispatchMidi(pendingMidi_[static_cast<size_t>(midiIndex++)]);
+        }
+    };
 
     auto* left = buffer.getWritePointer(0, startSample);
     float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1, startSample) : nullptr;
 
     int guard = 0;
-    while (midiIndex < pendingMidiCount_
-           && pendingMidi_[static_cast<size_t>(midiIndex)].sampleOffset <= startSample)
-    {
-        dispatchMidi(pendingMidi_[static_cast<size_t>(midiIndex)]);
-        ++midiIndex;
-    }
+    dispatchMidiThrough(startSample);
     updateDormantWakeState();
 
     const auto queueTarget = [&]() {
@@ -1048,12 +1064,7 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
             }
             updateDormantWakeState();
         }
-        while (midiIndex < pendingMidiCount_
-               && pendingMidi_[static_cast<size_t>(midiIndex)].sampleOffset <= absoluteSample)
-        {
-            dispatchMidi(pendingMidi_[static_cast<size_t>(midiIndex)]);
-            ++midiIndex;
-        }
+        dispatchMidiThrough(absoluteSample);
         updateDormantWakeState();
 
         if (dormant_)
@@ -1111,6 +1122,10 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         if (right != nullptr)
             right[i] = sample;
     }
+    // All borrowed input has now been consumed. Clear without surrendering
+    // host storage; supported wrappers reserve output capacity before processing.
+    if (midiOut == &midi)
+        midiOut->clear();
     if (midiOut != nullptr)
         flushSequencerMidi(*midiOut, numSamples);
     else

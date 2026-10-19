@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "MidiOutputCapacity.h"
 
 #include <array>
 #include <atomic>
@@ -278,7 +279,8 @@ class SwaraXtEngine {
     bool voiceRequiresAudio() const noexcept;
     bool patchRequiresAudioSource() const noexcept;
     void dispatchMidi(const PendingMidi& event);
-    void collectMidiEvents(const juce::MidiBuffer& midi, int startSample, int numSamples);
+    void collectMidiEvents(juce::MidiBufferIterator& cursor, const juce::MidiBufferIterator& end,
+                           int startSample, int numSamples);
     void updateFilterFromShruthi();
     void applyPendingFilterQuality() noexcept;
     void applyExperimentalSvfSelection() noexcept;
@@ -321,6 +323,9 @@ class SwaraXtEngine {
         uint8_t channel = 1;
     };
     static constexpr int kMaxScheduledMidi = 128;
+    static_assert(kMaxScheduledMidi * (3 + sizeof(int32_t) + sizeof(uint16_t))
+                      <= kMidiOutputReserveBytes,
+                  "Scheduled MIDI must fit supported wrapper storage");
 
     shruthi::MidiDispatcher midiDispatcher_;
     bool midiOutEnabled_ = false;

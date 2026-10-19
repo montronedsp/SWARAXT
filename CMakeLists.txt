@@ -15,6 +15,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(Dependencies)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    include(StandaloneMidiCapacity)
+endif()
 include(CompilerWarnings)
 
 option(SWARA_BUILD_TESTS "Build SWARA XT test executables" OFF)
