@@ -1,0 +1,4 @@
+// Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+// The mode selects test cases, not a different production implementation.
+#define @SWARAXT_TEST_MODE_DEFINE@ @SWARAXT_TEST_MODE_VALUE@
+#include "@SWARAXT_TEST_MODE_SOURCE@"

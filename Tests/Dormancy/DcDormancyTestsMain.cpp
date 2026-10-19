@@ -612,7 +612,8 @@ void lowEndRenders(const std::filesystem::path& directory)
                        << ',' << std::sqrt(square / count) << ',' << maximum << ',' << sum / count << '\n';
                 const auto name = std::to_string(static_cast<int>(frequency)) + "-"
                     + std::to_string(resonance) + "-" + std::to_string(fx);
-                for (const auto& item : {std::make_pair("host", &host), std::make_pair("upstream", &upstream)})
+                const std::array artifacts {std::make_pair("host", &host), std::make_pair("upstream", &upstream)};
+                for (const auto& item : artifacts)
                 {
                     std::ofstream file(directory / (name + "-" + item.first + ".f32"), std::ios::binary);
                     file.write(reinterpret_cast<const char*>(item.second->data()),

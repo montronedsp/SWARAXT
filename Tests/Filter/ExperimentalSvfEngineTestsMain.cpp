@@ -116,17 +116,18 @@ void testConcurrentPublication()
     SwaraXtAudioProcessor proc;
     proc.prepareToPlay(48000.0, 64);
     proc.setExperimentalSvfEnabled(true);
-    std::atomic<bool> stop { false };
     std::atomic<int> bad { 0 };
+    int renderedBlocks = 0; // Read only after joining the audio thread.
     std::thread audio([&] {
         juce::AudioBuffer<float> buffer(2, 64);
-        for (int b = 0; b < 400 && ! stop.load(std::memory_order_relaxed); ++b)
+        for (int b = 0; b < 400; ++b)
         {
             buffer.clear();
             juce::MidiBuffer midi;
             if (b == 0)
                 midi.addEvent(juce::MidiMessage::noteOn(1, 40, static_cast<juce::uint8>(100)), 0);
             proc.processBlock(buffer, midi);
+            ++renderedBlocks;
             if (! bufferFinite(buffer))
                 bad.fetch_add(1, std::memory_order_relaxed);
         }
@@ -140,10 +141,10 @@ void testConcurrentPublication()
             proc.setExperimentalSvfRouting(static_cast<swaraxt::ShruthiSvfDualRouting>(i % 3));
             proc.setExperimentalSvfCalibration(static_cast<swaraxt::ShruthiSvfCalibration>(i & 1));
         }
-        stop.store(true, std::memory_order_relaxed);
     });
     gui.join();
     audio.join();
+    expect(renderedBlocks == 400, "publication stress renders every required audio block");
     expect(bad.load() == 0, "concurrent publication during processBlock stays finite");
 }
 

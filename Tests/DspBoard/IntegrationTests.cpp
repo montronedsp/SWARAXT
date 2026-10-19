@@ -1,6 +1,7 @@
 // Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
 #include <JuceHeader.h>
 #include "Plugin/PluginProcessor.h"
+#include "../Support/ParameterContractV1.h"
 #include <iostream>
 #include <stdexcept>
 #include <chrono>
@@ -42,12 +43,7 @@ void stateTests()
     require(p.getNumPrograms()==57,"factory count");
     require(get(p,IDs::filterModel)==0 && get(p,IDs::dspFxProgram)==0,"Classic Off default");
     const int count=p.getParameters().size();
-    int index=count-7;
-    for(const auto* id:{IDs::filterModel,IDs::dspFxProgram,IDs::dspFxParam1,IDs::dspFxParam2,IDs::dspBoardRouting,IDs::postMixer,IDs::inputConditioning})
-    {
-        auto* parameter=dynamic_cast<juce::RangedAudioParameter*>(p.getParameters()[index++]);
-        require(parameter != nullptr && parameter->paramID==id,"append-only parameter order");
-    }
+    swaraxt::test::checkParameterContract(p, require);
     juce::String error;
     for(int preset=0;preset<p.getNumPrograms();++preset)
     {

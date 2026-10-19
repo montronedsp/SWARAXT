@@ -1166,6 +1166,11 @@ int main(int argc, char** argv)
             suite.extended = true;
         else if (argument == "--output" && i + 1 < argc)
             suite.directory = argv[++i];
+        else
+        {
+            std::cerr << "Usage: SwaraXTSonicQualityTests [--extended] [--output DIRECTORY]\n";
+            return 2;
+        }
     }
     suite.report.setContext(suite.commit, suite.extended ? "extended" : "quick", buildName());
     std::cout << "SWARA XT sonic quality " << (suite.extended ? "extended" : "quick")

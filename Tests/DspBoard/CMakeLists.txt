@@ -57,7 +57,14 @@ add_executable(SwaraBoardSafetyTests SafetyTests.cpp
     "${CMAKE_SOURCE_DIR}/Source/Engine/SampleRate/HostResampler.cpp")
 target_link_libraries(SwaraBoardSafetyTests PRIVATE SwaraBoardAlgorithm)
 swaraxt_enable_warnings(SwaraBoardSafetyTests)
-add_test(NAME SwaraBoardSafetyTests COMMAND SwaraBoardSafetyTests)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    add_test(NAME SwaraBoardSafetyTests COMMAND SwaraBoardSafetyTests --quick)
+    set_tests_properties(SwaraBoardSafetyTests PROPERTIES TIMEOUT 300 LABELS quick)
+    add_test(NAME SwaraBoardSafetyExtended COMMAND SwaraBoardSafetyTests --extended)
+    set_tests_properties(SwaraBoardSafetyExtended PROPERTIES TIMEOUT 7200 LABELS extended)
+else()
+    add_test(NAME SwaraBoardSafetyTests COMMAND SwaraBoardSafetyTests)
+endif()
 
 swaraxt_add_plugin_console_test(SwaraBoardIntegrationTests IntegrationTests.cpp)
 target_compile_definitions(SwaraBoardIntegrationTests PRIVATE SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
@@ -82,4 +89,8 @@ if(MSVC)
     set_tests_properties(SwaraBoardSanitizerTests SwaraBoardIntegrationSanitizerTests PROPERTIES
         ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${swara_board_compiler_directory}")
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    swaraxt_label_tests()
 endif()

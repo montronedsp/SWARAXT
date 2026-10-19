@@ -101,6 +101,13 @@ int main()
     expect(cv > 440.0 && cv < twelve.hzForMidi(70), "continuous CV sits between equal semitones");
     expect(std::abs(cv / 440.0 - std::pow(2.0, 0.5 / 12.0)) < 1.0e-9, "CV conversion is equal temperament");
 
+    for (size_t length = 0; length < bytes.size(); ++length)
+        expect(!swaraxt::tuning::readTuningTable(bytes.data(), length, loaded, error),
+               "every truncated tuning table is rejected");
+    auto wrongMagic = bytes;
+    wrongMagic[0] ^= 0xff;
+    expect(!swaraxt::tuning::readTuningTable(wrongMagic.data(), wrongMagic.size(), loaded, error),
+           "wrong tuning magic is rejected");
     bytes.push_back(0);
     expect(! swaraxt::tuning::readTuningTable(bytes.data(), bytes.size(), loaded, error), "trailing bytes are rejected");
 

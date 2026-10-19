@@ -4,6 +4,8 @@
 #include "Engine/SampleRate/PolyphaseFirResampler.h"
 #include <iostream>
 #include <stdexcept>
+#include <chrono>
+#include <string>
 
 namespace {
 using namespace swaraxt::board;
@@ -81,12 +83,18 @@ void hostBoundary()
             const double observationSeconds = (input == 1 || input == 2) ? 5.0 : 1.25;
             const int total = static_cast<int>(rate * observationSeconds);
             const int window = static_cast<int>(rate * .25);
+            const auto started = std::chrono::steady_clock::now();
             std::uint64_t nativeIndex = 0;
             std::uint32_t random = 21;
             for (int i = 0; i < total; ++i)
             {
+                if ((i & 8191) == 0)
+                    require(std::chrono::steady_clock::now() - started < std::chrono::seconds(120),
+                            "host-boundary case watchdog (120s)");
+                int fills = 0;
                 while (converter.size() < converter.queueTargetSize())
                 {
+                    require(++fills <= 1024, "SRC queue fill makes bounded progress");
                     FloatBlock samples{};
                     for (auto& value : samples)
                     {
@@ -158,8 +166,10 @@ void oscillationLoopAndFeedback()
         std::uint64_t nativeIndex = 0;
         for (int i = 0; i < total; ++i)
         {
+            int fills = 0;
             while (converter.size() < converter.queueTargetSize())
             {
+                require(++fills <= 1024, "SRC queue fill makes bounded progress");
                 FloatBlock samples{};
                 if (nativeIndex < 200)
                     samples.fill(0.25f);
@@ -183,8 +193,10 @@ void oscillationLoopAndFeedback()
         peak = 0; windowSum = 0; nativeIndex = 0;
         for (int i = 0; i < total; ++i)
         {
+            int fills = 0;
             while (converter.size() < converter.queueTargetSize())
             {
+                require(++fills <= 1024, "SRC queue fill makes bounded progress");
                 FloatBlock samples{};
                 if (nativeIndex < 40) samples[0] = 1.f;
                 combProc.processBoard(samples, comb);
@@ -215,8 +227,10 @@ void oscillationLoopAndFeedback()
         peak = 0; windowSum = 0;
         for (int i = 0; i < total; ++i)
         {
+            int fills = 0;
             while (converter.size() < converter.queueTargetSize())
             {
+                require(++fills <= 1024, "SRC queue fill makes bounded progress");
                 FloatBlock samples{};
                 loopProc.processBoard(samples, loop);
                 for (const float value : samples) converter.push(value);
@@ -232,9 +246,15 @@ void oscillationLoopAndFeedback()
     }
 }
 }
-int main()
+int main(int argc, char** argv)
 {
-    try { endpointMatrix(); hostBoundary(); oscillationLoopAndFeedback(); }
+    std::cout << std::unitbuf;
+    const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
+    if (argc > 1 && !quick && !(argc == 2 && std::string(argv[1]) == "--extended")) {
+        std::cerr << "Usage: SwaraBoardSafetyTests [--quick|--extended]\n";
+        return 2;
+    }
+    try { endpointMatrix(); if (!quick) hostBoundary(); oscillationLoopAndFeedback(); }
     catch (const std::exception& error) { std::cerr << "FAIL: " << error.what() << '\n'; return 1; }
     return 0;
 }

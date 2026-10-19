@@ -12,16 +12,6 @@ if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
 
 & (Join-Path $PSScriptRoot "configure-windows.ps1") -Config $Config -BuildDirectory $BuildDirectory -EnableTests
 & (Join-Path $PSScriptRoot "build-windows.ps1") -Config $Config -BuildDirectory $BuildDirectory -Target @(
-    "SwaraXT_VST3", "SwaraXT_Standalone", "SwaraXTTests",
-    "SwaraXtFilterTests", "SwaraXtFilterCoreTests", "SwaraXtFilterDcTests",
-    "SwaraXtFilterResponseTests", "SwaraXtFilterResonanceTests",
-    "SwaraXtFilterModulationTests", "SwaraXtFilterOversamplingTests",
-    "SwaraXtFilterIntegrationTests", "SwaraXTLiveEngineTests",
-    "SwaraXTMultiInstanceTests", "SwaraXTAudioParityTests",
-    "SwaraXTSignalChainTests", "SwaraXTInitializationTests",
-    "SwaraXTQueueIntegrityTests", "SwaraXTShruthiTimingTests",
-    "SwaraXTRawOscillatorParityTests", "SwaraXTControlRateTests",
-    "SwaraXTModulationNeutralityTests", "SwaraXTStreamingSrcTests",
-    "SwaraXTChunkContinuityTests", "SwaraXTCutoffRefineTests"
+    "SwaraXT_VST3", "SwaraXT_Standalone", "SwaraXTQualificationTests"
 )
 & (Join-Path $PSScriptRoot "test-windows.ps1") -Config $Config -BuildDirectory $BuildDirectory

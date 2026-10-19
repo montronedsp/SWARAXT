@@ -102,6 +102,37 @@ float renderPeak(SwaraXtAudioProcessor& processor)
     return buffer.getMagnitude(0, buffer.getNumSamples());
 }
 
+void testMalformedStatePreservesParameters()
+{
+    SwaraXtAudioProcessor source;
+    customizeSound(source);
+    const auto saved = captureState(source);
+    for (bool prepareFirst : {false, true}) {
+        SwaraXtAudioProcessor restored;
+        restoreState(restored, saved);
+        if (prepareFirst) restored.prepareToPlay(48000, 128);
+        const int size = static_cast<int>(saved.getSize());
+        for (int length : {0, 1, 4, 8, 9, size / 2, size - 1}) {
+            restored.setStateInformation(saved.getData(), length);
+            expect(maxParameterDifference(source, restored) == 0,
+                   "truncated state preserves the previous parameter snapshot");
+        }
+        auto corrupted = saved;
+        static_cast<unsigned char*>(corrupted.getData())[0] ^= 0xff;
+        restoreState(restored, corrupted);
+        expect(maxParameterDifference(source, restored) == 0,
+               "invalid state magic preserves the previous parameter snapshot");
+        restored.setStateInformation(nullptr, 0);
+        expect(maxParameterDifference(source, restored) == 0, "empty state is harmless");
+        if (!prepareFirst) restored.prepareToPlay(48000, 128);
+        processControlState(restored);
+        restoreState(restored, saved);
+        processControlState(restored);
+        expect(maxParameterDifference(source, restored) == 0,
+               "valid state still restores after malformed input");
+    }
+}
+
 void testProcessorOnlyRestore()
 {
     SwaraXtAudioProcessor source;
@@ -506,6 +537,7 @@ int main(int argc, char* argv[])
     juce::ignoreUnused(argc, argv);
     juce::ScopedJuceInitialiser_GUI juceInit;
 
+    testMalformedStatePreservesParameters();
     testProcessorOnlyRestore();
     testHostProgramReassertDoesNotReload();
     testEditorOpenAfterRestore();

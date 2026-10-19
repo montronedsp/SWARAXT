@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 
 #include "avrlib/base.h"
 #include "avrlib/random.h"
@@ -45,13 +46,13 @@ class ParityRunner {
   // Seed the Classic RNG and Reset both oscillators so they share the same
   // rng msb byte (which Classic's Reset() embeds in the vowel union residue
   // and RenderVowel samples as its noise source). The Classic oscillator union
-  // is zeroed first so render timing (update cadence) is deterministic,
+  // is reconstructed with its C++ member initializers so the render cadence is deterministic,
   // matching a freshly spawned voice on the device.
   void seedAndReset(uint16_t seed) {
-    std::memset(&classic_, 0, sizeof(classic_));
+    classic_.emplace();
     random_.Seed(seed);
-    classic_.set_random(&random_);
-    classic_.Reset();  // advances the LFSR one step.
+    classic_->set_random(&random_);
+    classic_->Reset();  // advances the LFSR one step.
     noise_ = random_.state_msb();
     hd_.set_tables(tables_);
     hd_.Reset(noise_);
@@ -68,8 +69,8 @@ class ParityRunner {
     increment.fractional = 0;
     std::memset(buffer_, 0, sizeof(buffer_));
     std::memset(hdOut_, 0, sizeof(hdOut_));
-    classic_.set_parameter(vowel_param);
-    classic_.Render(shruthi::WAVEFORM_VOWEL, 60, increment, nullptr, nullptr,
+    classic_->set_parameter(vowel_param);
+    classic_->Render(shruthi::WAVEFORM_VOWEL, 60, increment, nullptr, nullptr,
                     buffer_ + 4);
     hd_.RenderNaive(increment16, vowel_param, noise_, kNum, hdOut_);
     for (int i = 0; i < kNum; ++i) {
@@ -96,7 +97,7 @@ class ParityRunner {
 
  private:
   avrlib::Random random_;
-  shruthi::Oscillator classic_;
+  std::optional<shruthi::Oscillator> classic_;
   avrlib_hd::VowelTables tables_{};
   avrlib_hd::HdVowel hd_;
   uint8_t noise_ = 0;

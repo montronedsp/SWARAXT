@@ -156,7 +156,8 @@ int main()
     reports.push_back(measureJump("saw both low->high", true, 200.0f, 8000.0f, 0.1f, 0.9f, settle, jumpAt));
     reports.push_back(measureJump("saw both high->low", true, 8000.0f, 200.0f, 0.9f, 0.1f, settle, jumpAt));
 
-    auto runSteppedSweep = [](const char* name, bool cutoffNotRes, int hostBlock, double hostHz) {
+    int finiteFails = 0;
+    auto runSteppedSweep = [&finiteFails](const char* name, bool cutoffNotRes, int hostBlock, double hostHz) {
         const double internalPerHost = kFs / hostHz;
         const int updateEvery = std::max(1, static_cast<int>(std::lround(static_cast<double>(hostBlock) * internalPerHost)));
         const int duration = static_cast<int>(kFs * 0.5); // 500 ms
@@ -207,6 +208,7 @@ int main()
                     static_cast<double>(maxInteriorDy),
                     static_cast<double>(ratio),
                     invalid);
+        if (invalid != 0) ++finiteFails;
         return ratio;
     };
 
@@ -265,10 +267,10 @@ int main()
         }
         std::printf("%-32s sweep max|dy|=%.5f invalid=%d\n",
                     "saw cutoff sweep 1k->8k r0.6", static_cast<double>(maxDy), invalid);
+        if (invalid != 0) ++finiteFails;
     }
 
     int clicks = 0;
-    int finiteFails = 0;
     std::printf("\n=== FILTER KERNEL TRANSITION AUDIT ===\n");
     for (const auto& r : reports)
     {

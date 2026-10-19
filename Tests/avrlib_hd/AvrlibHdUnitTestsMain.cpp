@@ -28,7 +28,7 @@ int g_failures = 0;
     const double va = static_cast<double>(a);                             \
     const double vb = static_cast<double>(b);                             \
     const double vt = static_cast<double>(tol);                           \
-    if (std::fabs(va - vb) > vt) {                                        \
+    if (!(std::fabs(va - vb) <= vt)) {                                        \
       std::printf("FAIL line %d: |%g - %g| > %g\n", __LINE__, va, vb, vt); \
       ++g_failures;                                                       \
     }                                                                     \

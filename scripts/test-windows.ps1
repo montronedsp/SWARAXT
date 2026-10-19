@@ -1,7 +1,9 @@
 param(
     [ValidateSet("Release", "Debug")]
     [string]$Config = "Release",
-    [string]$BuildDirectory = ""
+    [string]$BuildDirectory = "",
+    [ValidateSet("all", "quick", "extended")]
+    [string]$Profile = "all"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,5 +12,7 @@ if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path $repoRoot ("build-" + $Config.ToLowerInvariant())
 }
 
-ctest --test-dir $BuildDirectory -C $Config --output-on-failure
+$testArgs = @("--test-dir", $BuildDirectory, "-C", $Config, "--output-on-failure", "--no-tests=error", "--parallel", "1")
+if ($Profile -ne "all") { $testArgs += @("-L", "^$Profile`$") }
+& ctest @testArgs
 if ($LASTEXITCODE -ne 0) { throw "Tests failed." }

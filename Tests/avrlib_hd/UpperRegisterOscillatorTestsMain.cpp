@@ -9,12 +9,22 @@
 #include "avrlib_hd/voice.h"
 #include "shruthi/resources.h"
 
+#ifdef _WIN32
 #include <windows.h>
+#elif defined(__linux__)
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <csignal>
+#include <cerrno>
+#include <sys/resource.h>
+#endif
 
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <utility>
 
 namespace {
 
@@ -119,6 +129,8 @@ void testRendererZones() {
   }
 }
 
+#ifdef _WIN32
+
 struct GuardWave {
   uint8_t* block = nullptr;
   uint8_t* data = nullptr;
@@ -186,6 +198,125 @@ void testGuardPage() {
     renderGuarded(table, avrlib_hd::kRealSquare, note, 0);
   std::printf("guard-page upper-register renders completed\n");
 }
+
+#elif defined(__linux__)
+
+class GuardWave {
+ public:
+  explicit GuardWave(size_t bytes) {
+    const long size = sysconf(_SC_PAGESIZE);
+    if (size <= 0 || bytes > static_cast<size_t>(size)) {
+      expect(false, "valid system page size");
+      return;
+    }
+    page_ = static_cast<size_t>(size);
+    void* allocation = mmap(nullptr, page_ * 2, PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (allocation == MAP_FAILED) {
+      expect(false, "guard allocation succeeds");
+      return;
+    }
+    block_ = static_cast<uint8_t*>(allocation);
+    if (mprotect(block_ + page_, page_, PROT_NONE) != 0) {
+      expect(false, "guard protection succeeds");
+      return;
+    }
+    data = block_ + page_ - bytes;
+    std::memset(data, 128, bytes);
+  }
+  ~GuardWave() {
+    if (block_ != nullptr)
+      expect(munmap(block_, page_ * 2) == 0, "guard mapping released");
+  }
+  GuardWave(const GuardWave&) = delete;
+  GuardWave& operator=(const GuardWave&) = delete;
+  uint8_t* data = nullptr;
+ private:
+  uint8_t* block_ = nullptr;
+  size_t page_ = 0;
+};
+
+template <typename Operation>
+void checkChild(Operation operation, bool expectFault) {
+  const pid_t pid = fork();
+  if (pid < 0) {
+    expect(false, "guard child creation succeeds");
+    return;
+  }
+  if (pid == 0) {
+    const rlimit noCore {0, 0};
+    if (setrlimit(RLIMIT_CORE, &noCore) != 0)
+      _exit(3);
+    // The deliberate protection probe must terminate through the kernel signal,
+    // including when a sanitizer otherwise installs its own signal handler.
+    std::signal(SIGSEGV, SIG_DFL);
+    alarm(5);
+    const int before = gFailures;
+    operation();
+    _exit(gFailures == before ? 0 : 1);
+  }
+  int status = 0;
+  pid_t waited;
+  do { waited = waitpid(pid, &status, 0); } while (waited < 0 && errno == EINTR);
+  expect(waited == pid, "guard child reaped");
+  if (waited != pid)
+    return;
+  const bool valid = expectFault ? WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV
+                                : WIFEXITED(status) && WEXITSTATUS(status) == 0;
+  if (!valid)
+    std::fprintf(stderr, "guard child status=%d expected=%s\n", status,
+                 expectFault ? "SIGSEGV" : "exit 0");
+  expect(valid, expectFault ? "protected access raises exactly SIGSEGV"
+                           : "production guard render exits successfully");
+}
+
+void renderGuarded(const uint8_t* const* table, uint8_t shape, int note, uint8_t parameter) {
+  avrlib_hd::OscillatorTables tables;
+  tables.waveform_table = table;
+  tables.sine = table[2];
+  tables.bandlimited_triangle_0 = table[17];
+  avrlib_hd::HdOscillator osc;
+  osc.set_tables(tables);
+  osc.set_parameter(parameter);
+  float out[320];
+  uint8_t syncOut[320];
+  osc.RenderNaiveFull(shape, static_cast<uint8_t>(note), 0x010000u, 320, out, nullptr, syncOut);
+  for (float sample : out)
+    expect(sample >= -1.0f && sample <= 1.0f, "guard-page render stays in range");
+}
+
+void testGuardPage() {
+  GuardWave full(257), blocked(63);
+  if (full.data == nullptr || blocked.data == nullptr)
+    return; // Allocation/protection errors have already failed the test.
+  // Independent negative controls prove the first byte beyond each ROM extent
+  // is inaccessible; the preceding byte remains readable.
+  for (const auto& probe : {std::make_pair(full.data, 257), std::make_pair(blocked.data, 63)}) {
+    checkChild([&] { volatile uint8_t value = probe.first[probe.second - 1]; (void)value; }, false);
+    checkChild([&] { volatile uint8_t value = probe.first[probe.second]; (void)value; }, true);
+  }
+  const uint8_t* table[26];
+  for (auto& entry : table) entry = full.data;
+  auto render = [&](uint8_t shape, int note, uint8_t parameter) {
+    checkChild([&] { renderGuarded(table, shape, note, parameter); }, false);
+  };
+  table[24] = blocked.data;
+  for (int note : {124, 125, 126, 127}) render(avrlib_hd::kRealTriangle, note, 0);
+  table[24] = full.data;
+  table[17] = table[18] = blocked.data;
+  for (int note : {124, 125, 126, 127}) {
+    render(avrlib_hd::kRealSaw, note, 0);
+    render(avrlib_hd::kRealSquare, note, 1);
+    render(avrlib_hd::kRealSquare, note, 127);
+  }
+  for (int note : {108, 109, 123, 124, 127}) render(avrlib_hd::kRealSquare, note, 64);
+  table[17] = table[18] = full.data;
+  table[10] = blocked.data;
+  for (int note : {124, 125, 126, 127}) render(avrlib_hd::kRealSquare, note, 0);
+  std::printf("Linux guard-page controls and upper-register renders completed\n");
+}
+
+#endif
 
 avrlib_hd::OscillatorTables voiceTables() {
   avrlib_hd::OscillatorTables tables;

@@ -99,9 +99,13 @@ void testInvalidHostPositions()
             setInt(*processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
             setInt(*processor, swaraxt::IDs::seqClockMode, 1);
         }
+        expect(malformed.getParameters().size() == missing.getParameters().size(),
+               "PPQ processors start with identical parameter inventories");
+        for (int index = 0; index < malformed.getParameters().size(); ++index)
+            expect(malformed.getParameters()[index]->getValue() == missing.getParameters()[index]->getValue(),
+                   "PPQ processors start with identical parameter values");
         juce::AudioBuffer<float> badAudio(2, 128), reference(2, 128);
-        juce::MidiBuffer midi;
-        midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        bool audibleBeforeResume = false, audibleAfterResume = false;
         for (int block = 0; block < 256; ++block)
         {
             if (block == 128)
@@ -109,16 +113,34 @@ void testInvalidHostPositions()
                 badHost.ppq = absentHost.ppq = 2.0;
                 absentHost.providePpq = true;
             }
+            juce::MidiBuffer midi;
+            if (block == 0)
+                midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+            // processBlock consumes MIDI: copy before either processor runs.
+            juce::MidiBuffer referenceMidi(midi);
             malformed.processBlock(badAudio, midi);
-            missing.processBlock(reference, midi);
-            midi.clear();
+            missing.processBlock(reference, referenceMidi);
+            for (int channel = 0; channel < 2; ++channel)
             for (int sample = 0; sample < 128; ++sample)
-                expect(std::isfinite(badAudio.getSample(0, sample))
-                           && badAudio.getSample(0, sample) == reference.getSample(0, sample),
+            {
+                if (std::abs(reference.getSample(channel, sample)) > 1.0e-6f)
+                    (block < 128 ? audibleBeforeResume : audibleAfterResume) = true;
+                expect(std::isfinite(badAudio.getSample(channel, sample))
+                           && badAudio.getSample(channel, sample) == reference.getSample(channel, sample),
                        "invalid PPQ uses identical fallback and resumes valid host timing");
+            }
+            // Independent timing oracle: 128 blocks * 128 frames at 48 kHz,
+            // 120 BPM and 24 ticks/quarter contains ticks 0..16. Resuming at
+            // PPQ 2 contains ticks 48..64, for another 17 events.
+            if (block == 127 || block == 255)
+                expect(malformed.engineForTests().hostClockEventCountForTests()
+                           == static_cast<uint64_t>(block == 127 ? 17 : 34),
+                       "fallback advances across blocks and valid PPQ resumes at the correct tick");
             if (block >= 128)
                 badHost.ppq = absentHost.ppq += 128.0 / 24000.0;
         }
+        expect(audibleBeforeResume && audibleAfterResume,
+               "PPQ comparison exercises audible MIDI before and after resume");
         expect(malformed.engineForTests().hostClockEventCountForTests()
                    == missing.engineForTests().hostClockEventCountForTests(),
                "malformed and missing PPQ clock identically");

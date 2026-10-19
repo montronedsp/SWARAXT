@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <JuceHeader.h>
+#include <stdexcept>
 
 #include "Engine/Filter/Circuit/Ir3109Pole.h"
 #include "Engine/Filter/SwaraXtFilter.h"
@@ -153,7 +154,8 @@ double measuredRelativeCutoff(double requestedHz, double resonance)
 juce::RangedAudioParameter& cutoffParameter(SwaraXtAudioProcessor& processor)
 {
     auto* parameter = processor.getApvts().getParameter(swaraxt::IDs::filterCutoff);
-    jassert(parameter != nullptr);
+    if (parameter == nullptr)
+        throw std::runtime_error("cutoff parameter missing");
     return *parameter;
 }
 

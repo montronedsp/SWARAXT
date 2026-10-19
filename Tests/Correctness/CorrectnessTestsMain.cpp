@@ -16,6 +16,7 @@
 
 #include "Engine/SwaraXtEngine.h"
 #include "Plugin/PluginProcessor.h"
+#include "../Support/ParameterContractV1.h"
 #include "Plugin/SwaraXtParameterLayout.h"
 #include "Ui/SwaraXtLfoVisualizer.h"
 #include "Ui/SwaraXtModulationNames.h"
@@ -249,7 +250,6 @@ struct PwmStats {
     double rms = 0.0;
     double peak = 0.0;
     double fundHz = 0.0;
-    int invalid = 0;
 };
 
 double estimatePitchHz(const std::vector<uint8_t>& samples, double rate)
@@ -276,8 +276,6 @@ PwmStats measurePwm(const std::vector<uint8_t>& samples, double rate)
     int high = 0;
     for (uint8_t sample : samples)
     {
-        if (sample != sample) // unreachable for uint8, keeps the pattern obvious
-            ++s.invalid;
         const double centered = (static_cast<double>(sample) - 128.0) / 128.0;
         sumSq += centered * centered;
         s.peak = std::max(s.peak, std::abs(centered));
@@ -483,7 +481,7 @@ void testJuce9ParameterMetadataCompatibility()
 {
     SwaraXtAudioProcessor proc;
     const auto& parameters = proc.getParameters();
-    expect(parameters.size() == 93, "active parameter schema excludes the two retired direct filter controls");
+    swaraxt::test::checkParameterContract(proc, expect);
 
     std::set<std::string> parameterIds;
     for (const auto* parameter : parameters)
@@ -595,7 +593,7 @@ void testPwmDutyAndParity()
         const auto stats = measurePwm(samples, kRate);
         std::printf("PWM timbre=%3d duty=%.4f rms=%.4f peak=%.4f pitch=%.1f\n",
                     timbre, stats.duty, stats.rms, stats.peak, stats.fundHz);
-        expect(stats.invalid == 0, "PWM samples are valid");
+        expect(samples.size() == 200 * shruthi::kAudioBlockSize, "PWM renders every requested sample");
         expect(stats.peak > 0.05 || timbre == 127, "PWM output is not silent");
         if (timbre < 127)
             expect(stats.fundHz > 200.0 && stats.fundHz < 320.0, "PWM pitch remains near C4");
