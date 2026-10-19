@@ -146,6 +146,11 @@ set_tests_properties(SwaraXtFilterTests PROPERTIES LABELS extended TIMEOUT 1800)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME SwaraXTFactoryGeneratorTests COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/Presets/FactoryGeneratorTests.py")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_test(NAME SwaraXTQualificationArgumentTests COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Diagnostics/VerifyQualificationTests.py")
+    set_tests_properties(SwaraXTQualificationArgumentTests PROPERTIES LABELS quick TIMEOUT 30)
+endif()
 
 
 

@@ -12,15 +12,21 @@ parser.add_argument("build", type=Path)
 parser.add_argument("--expect-build-type", required=True, choices=("Release", "Debug", "RelWithDebInfo", "MinSizeRel"))
 parser.add_argument("--require-sanitizer", choices=("address,undefined", "thread", "realtime"))
 args = parser.parse_args()
+try:
+    build = args.build.resolve(strict=True)
+except (OSError, ValueError, RuntimeError) as error:
+    parser.error(f"invalid build directory: {error}")
+if not build.is_dir():
+    parser.error("build path must be an existing directory")
 cache = {}
-for line in (args.build / "CMakeCache.txt").read_text().splitlines():
+for line in (build / "CMakeCache.txt").read_text().splitlines():
     if not line or line.startswith(("//", "#")) or "=" not in line:
         continue
     key, value = line.split("=", 1)
     cache[key.split(":", 1)[0]] = value
 if cache.get("CMAKE_BUILD_TYPE") != args.expect_build_type:
     raise SystemExit("FAIL: CMAKE_BUILD_TYPE differs from requested mode")
-commands_file = args.build / "compile_commands.json"
+commands_file = build / "compile_commands.json"
 if not commands_file.is_file():
     raise SystemExit("NOT RUN: compile_commands.json required; inspect MSVC generated rules separately")
 commands = json.loads(commands_file.read_text())
@@ -54,10 +60,10 @@ version = subprocess.check_output([compiler, "--version"], text=True).splitlines
 links_checked = 0
 if args.require_sanitizer:
     if cache.get("CMAKE_GENERATOR") != "Ninja":
-        errors.append((str(args.build), "sanitizer linkage verification requires the Ninja qualification generator"))
+        errors.append((str(build), "sanitizer linkage verification requires the Ninja qualification generator"))
     else:
         generated = subprocess.check_output(
-            ["ninja", "-C", str(args.build), "-t", "commands"], text=True)
+            ["ninja", "-t", "commands"], cwd=build, text=True)
         for command in generated.splitlines():
             words = shlex.split(command)
             if compiler not in words or "-c" in words or (not core and "Tests/" not in command):
@@ -66,7 +72,7 @@ if args.require_sanitizer:
             if "-fsanitize=" + args.require_sanitizer not in words:
                 errors.append((command, "test executable lacks required sanitizer linkage"))
         if links_checked == 0:
-            errors.append((str(args.build), "no executable sanitizer link commands found"))
+            errors.append((str(build), "no executable sanitizer link commands found"))
 print(json.dumps({"status": "FAIL" if errors else "PASS", "compiler": compiler,
                   "version": version, "build_type": args.expect_build_type,
                   "commands_checked": len(selected), "optimization": sorted(optimizations),
