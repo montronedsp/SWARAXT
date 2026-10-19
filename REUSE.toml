@@ -16,6 +16,7 @@ path = [
   "CHANGELOG.md",
   "CMakeLists.txt",
   "CMakePresets.json",
+  "CMakeQualificationPresets.json",
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
   "COPYRIGHT",
