@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Native validator toolchain preflight
+run-name: SWARA XT validator toolchains ${{ inputs.source_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed revision; validator compilation only
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: swaraxt-validator-toolchains-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  validator:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2022, compiler: msvc }
+          - { os: ubuntu-24.04, compiler: gcc }
+          - { os: ubuntu-24.04, compiler: clang }
+    env:
+      REVIEWED_SHA: ${{ inputs.source_sha }}
+      COMPILER: ${{ matrix.compiler }}
+    steps:
+      - name: Deterministic source checkout
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Verify revision and pinned frontends
+        shell: bash
+        run: |
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+          python -m pip install cmake==3.31.6 ninja==1.11.1.4
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/ci/setup-linux.sh "$COMPILER"
+      - name: Native external validators build and smoke tests
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            xvfb-run -a -s "-screen 0 1600x1200x24" bash scripts/ci/run-linux.sh \
+              python scripts/ci/desktop.py toolchain --compiler "$COMPILER" --root "$RUNNER_TEMP/validator-toolchain"
+          else
+            python scripts/ci/desktop.py toolchain --compiler "$COMPILER" --root "$RUNNER_TEMP/validator-toolchain"
+          fi
+      - name: Toolchain evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validator-toolchain-${{ matrix.compiler }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/validator-toolchain/*.log
+            ${{ runner.temp }}/validator-toolchain/*.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Linux VST3 qualification
+run-name: SWARA XT Linux qualification ${{ inputs.source_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed revision, must match the selected ref
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: swaraxt-linux-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      REVIEWED_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Verify revision and portable harness controls
+        shell: bash
+        run: |
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+          cd scripts/ci
+          python -m unittest test_common test_native_reference
+  native:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { compiler: gcc, profile: Release }
+          - { compiler: gcc, profile: Debug }
+          - { compiler: clang, profile: Release }
+          - { compiler: clang, profile: Debug }
+          - { compiler: clang, profile: asan-ubsan }
+          - { compiler: clang, profile: tsan }
+          - { compiler: clang, profile: rtsan }
+          - { compiler: clang, profile: fuzz }
+    env:
+      REVIEWED_SHA: ${{ inputs.source_sha }}
+      PROFILE: ${{ matrix.profile }}
+      COMPILER: ${{ matrix.compiler }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Verify revision and install pinned build frontend
+        shell: bash
+        run: |
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+          python -m pip install cmake==3.31.6 ninja==1.11.1.4
+      - name: Native Linux dependencies
+        run: bash scripts/ci/setup-linux.sh "$COMPILER"
+      - name: TSan runner address-space compatibility
+        if: matrix.profile == 'tsan'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Complete native qualification
+        shell: bash
+        run: xvfb-run -a -s "-screen 0 1600x1200x24" bash scripts/ci/run-linux.sh python scripts/ci/desktop.py native --compiler "$COMPILER" --profile "$PROFILE" --root "$RUNNER_TEMP/swara-native"
+      - name: Qualification evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-linux-${{ env.COMPILER }}-${{ matrix.profile }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/swara-native/*.log
+            ${{ runner.temp }}/swara-native/*.json
+            ${{ runner.temp }}/swara-native/*.xml
+            ${{ runner.temp }}/swara-native/*.png
+            ${{ runner.temp }}/swara-native/*-negative.cpp
+            ${{ runner.temp }}/swara-native/native-reference/*.json
+            ${{ runner.temp }}/swara-native/build/Testing/Temporary/**
+            ${{ runner.temp }}/swara-native/build/Tests/sonic-*/**
+            ${{ runner.temp }}/swara-native/*-crashes/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Unsigned VST3 candidate
+        if: success() && matrix.profile == 'Release'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: candidate-linux-${{ env.COMPILER }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/swara-native/swaraxt-*.zip
+            ${{ runner.temp }}/swara-native/swaraxt-*.sha256
+          if-no-files-found: error
+          retention-days: 14
+  qualification-gate:
+    if: always()
+    needs: [preflight, native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+      NATIVE_RESULT: ${{ needs.native.result }}
+    steps:
+      - name: Require every native profile
+        run: test "$PREFLIGHT_RESULT" = success && test "$NATIVE_RESULT" = success
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: native-linux-*-${{ github.sha }}
+          path: ${{ runner.temp }}/native-evidence
+      - name: Independently verify all source-bound reports and CTest results
+        run: >-
+          python scripts/ci/desktop.py gate --platform Linux
+          --evidence "$RUNNER_TEMP/native-evidence" --output "$RUNNER_TEMP/linux-gate.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate-linux-${{ github.sha }}
+          path: ${{ runner.temp }}/linux-gate.json
+          if-no-files-found: error
+          retention-days: 14

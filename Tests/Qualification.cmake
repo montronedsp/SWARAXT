@@ -182,8 +182,7 @@ if(SWARAXT_DIAGNOSTICS_MODULE AND DIAG_SANITIZER STREQUAL "rtsan")
 endif()
 swaraxt_qualify_directory("${CMAKE_CURRENT_SOURCE_DIR}")
 if(MSVC)
-    set_tests_properties(SwaraXtShruthiSvf2pSanitizerTests SwaraBoardSanitizerTests
-        SwaraBoardIntegrationSanitizerTests
+    set_tests_properties(SwaraXtShruthiSvf2pSanitizerTests
         PROPERTIES LABELS sanitizer TIMEOUT 600)
 endif()
 swaraxt_label_tests()

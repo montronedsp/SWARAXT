@@ -14,6 +14,7 @@
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
 #include "Tuning/ScalePitch.h"
+#include "Tuning/TuningTable.h"
 #include "shruthi/sequencer_settings.h"
 
 namespace {
@@ -551,6 +552,14 @@ void testTuningPublicationConcurrency()
     {
         juce::MemoryBlock state;
         processor.getStateInformation(state);
+        const auto xml = juce::AudioProcessor::getXmlFromBinary(state.getData(), static_cast<int>(state.getSize()));
+        juce::MemoryBlock tuningBytes;
+        swaraxt::tuning::TuningSnapshot savedTuning;
+        swaraxt::tuning::ParseError error;
+        expect(xml != nullptr && tuningBytes.fromBase64Encoding(xml->getStringAttribute("tuningTable"))
+                   && swaraxt::tuning::readTuningTable(static_cast<const uint8_t*>(tuningBytes.getData()),
+                                                      tuningBytes.getSize(), savedTuning, error),
+               "concurrent state saves contain a complete valid tuning snapshot");
         processor.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
         processor.loadBuiltinTuning(pass & 1 ? 1 : 5);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));

@@ -4,6 +4,7 @@
 #include <JuceHeader.h>
 #include "Plugin/PluginEditor.h"
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -29,6 +30,16 @@ void expect(bool ok, const char* message)
 void pump(int milliseconds = 2)
 {
     juce::MessageManager::getInstance()->runDispatchLoopUntil(milliseconds);
+}
+
+template <typename Condition>
+bool pumpUntil(Condition ready, int timeoutMilliseconds)
+{
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::milliseconds(timeoutMilliseconds);
+    while (! ready() && std::chrono::steady_clock::now() < deadline)
+        pump(10);
+    return ready();
 }
 
 void click(juce::Button& button)
@@ -171,9 +182,19 @@ void selectionMatrix()
     }
     processor.setExperimentalSvfEnabled(true);
     processor.setExperimentalSvfCalibration(ShruthiSvfCalibration::eagleHardware);
-    pump(300);
-    expect(main.filterModelForTests().getSelectedId() == 2 && panel.calibrationForTests().selectedIndex() == 1,
-           "existing editor timer reflects external processor request");
+    // The editor's 4 Hz timer is asynchronous. Observe its actual publication;
+    // one 300 ms dispatch interval can miss a delayed tick under instrumentation.
+    const auto started = std::chrono::steady_clock::now();
+    const bool synchronized = pumpUntil([&] {
+        return main.filterModelForTests().getSelectedId() == 2
+            && panel.calibrationForTests().selectedIndex() == 1;
+    }, 5000);
+    std::printf("External editor timer: synchronized=%d elapsed_ms=%lld model=%d calibration=%d\n",
+                static_cast<int>(synchronized),
+                static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - started).count()),
+                main.filterModelForTests().getSelectedId(), panel.calibrationForTests().selectedIndex());
+    expect(synchronized, "existing editor timer reflects external processor request");
     std::printf("Selection matrix: %d configurations, real controls + processBlock\n", count);
 }
 

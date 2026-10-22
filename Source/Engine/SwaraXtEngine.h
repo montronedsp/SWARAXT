@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <limits>
 #include <vector>
 
@@ -147,13 +148,13 @@ class SwaraXtEngine {
     bool loadBuiltinTuning(int index);
     int builtinTuningCount() const noexcept;
     const char* builtinTuningName(int index) const noexcept;
-    int activeBuiltinTuning() const noexcept { return builtinTuningIndex_; }
+    int activeBuiltinTuning() const noexcept { return builtinTuningIndex_.load(std::memory_order_relaxed); }
     juce::String activeTuningName() const;
     void copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept;
     SequenceState::ScaleRandomView scaleRandomView() const noexcept;
     double hzForActiveDegree(int degree) const noexcept;
     tuning::PublishedTuning::QuantizedPitch quantizeActiveHz(double sourceHz) const noexcept;
-    const std::vector<uint8_t>& tuningBytesForState() const noexcept { return tuningBytes_; }
+    std::vector<uint8_t> tuningBytesForState() const;
 
     SwaraXtFilter& filter() noexcept { return filter_; }
     const SwaraXtFilter& filter() const noexcept { return filter_; }
@@ -352,10 +353,14 @@ class SwaraXtEngine {
     std::atomic<int> retiredTuning_ { 0 };
     std::atomic<bool> tuningAudioActive_ { false };
     std::atomic<bool> tuningWriteBusy_ { false };
-    int builtinTuningIndex_ = 0;
+    std::atomic<int> builtinTuningIndex_ { 0 };
     bool scaleRouteActive_ = false;
     bool quantizedRouteActive_ = false;
+    // State serialization and tuning imports are non-audio operations. Audio
+    // reads the immutable slots above and never acquires this mutex.
+    mutable std::mutex tuningBytesMutex_;
     std::vector<uint8_t> tuningBytes_;
+    bool publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex);
     void latchPublishedTuning() noexcept;
     int freeTuningSlot(int published, int latched, int retired) const noexcept;
     const tuning::PublishedTuning* publishedTuningSlot() const noexcept;

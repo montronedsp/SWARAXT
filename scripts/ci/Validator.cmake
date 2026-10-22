@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
+cmake_minimum_required(VERSION 3.29)
+project(SwaraXTExternalVst3Validator LANGUAGES C CXX)
+set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
+set(SMTG_CREATE_PLUGIN_LINK OFF CACHE BOOL "" FORCE)
+set(SMTG_RUN_VST_VALIDATOR OFF CACHE BOOL "" FORCE)
+add_subdirectory("${SWARAXT_SDK_ROOT}" steinberg EXCLUDE_FROM_ALL)

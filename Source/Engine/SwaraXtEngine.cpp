@@ -1390,7 +1390,18 @@ int SwaraXtEngine::freeTuningSlot(int published, int latched, int retired) const
     return -1;
 }
 
+std::vector<uint8_t> SwaraXtEngine::tuningBytesForState() const
+{
+    const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
+    return tuningBytes_;
+}
+
 bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
+{
+    return publishTuningBytes(data, size, -1);
+}
+
+bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex)
 {
     if (data == nullptr || size == 0)
         return false;
@@ -1413,8 +1424,11 @@ bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
         publishedTuning_.store(0, std::memory_order_release);
         retiredTuning_.store(0, std::memory_order_release);
         tuningSlotThisBlock_.store(0, std::memory_order_release);
-        tuningBytes_.assign(data, data + size);
-        builtinTuningIndex_ = -1;
+        {
+            const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
+            tuningBytes_.assign(data, data + size);
+        }
+        builtinTuningIndex_.store(builtinIndex, std::memory_order_relaxed);
         tuningWriteBusy_.store(false, std::memory_order_release);
         return true;
     }
@@ -1452,8 +1466,11 @@ bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
     *tuningSlots_[static_cast<size_t>(slot)] = decoded;
     retiredTuning_.store(published, std::memory_order_release);
     publishedTuning_.store(slot, std::memory_order_release);
-    tuningBytes_.assign(data, data + size);
-    builtinTuningIndex_ = -1;
+    {
+        const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
+        tuningBytes_.assign(data, data + size);
+    }
+    builtinTuningIndex_.store(builtinIndex, std::memory_order_relaxed);
     tuningWriteBusy_.store(false, std::memory_order_release);
     return true;
 }
@@ -1471,11 +1488,8 @@ bool SwaraXtEngine::loadBuiltinTuning(int index)
     };
     if (index < 0 || index >= static_cast<int>(std::size(items)))
         return false;
-    if (! loadTuningBytes(items[static_cast<size_t>(index)].data, items[static_cast<size_t>(index)].size))
-        return false;
-    builtinTuningIndex_ = index;
-    juce::ignoreUnused(items[static_cast<size_t>(index)].name);
-    return true;
+    return publishTuningBytes(items[static_cast<size_t>(index)].data,
+                              items[static_cast<size_t>(index)].size, index);
 }
 
 int SwaraXtEngine::builtinTuningCount() const noexcept
