@@ -343,14 +343,22 @@ class SwaraXtEngine {
     int scheduledMidiCount_ = 0;
     juce::MidiBuffer* midiOutput_ = nullptr;
     static constexpr int kTuningSlots = 3;
+    static constexpr int kSnapshotClaims = 2;
     // Heap slots keep the processor off a large stack frame. Allocated once
     // in the constructor and never resized. Audio reads only an immutable slot.
     std::array<std::unique_ptr<tuning::PublishedTuning>, kTuningSlots> tuningSlots_;
+    // Stable copy installed into the sequencer/input consumers. The audio
+    // thread fills it while it owns the latched slot. Part never keeps a
+    // pointer into a slot the writer is allowed to recycle.
+    std::unique_ptr<tuning::PublishedTuning> stableTuning_;
     std::atomic<int> publishedTuning_ { 0 };
     std::atomic<int> tuningSlotThisBlock_ { 0 };
-    // Previous published index. Kept immutable until the reader has claimed a
-    // newer slot, so a publication cannot be recycled before it is observed.
+    // Previous published index. Kept immutable until the next publication
+    // replaces it. The latched index is not cleared when the callback ends.
     std::atomic<int> retiredTuning_ { 0 };
+    // Off-audio readers pin a slot here for the duration of one copy.
+    // -1 means the claim is free. The writer will not recycle a pinned slot.
+    mutable std::array<std::atomic<int>, kSnapshotClaims> snapshotClaims_;
     std::atomic<bool> tuningAudioActive_ { false };
     std::atomic<bool> tuningWriteBusy_ { false };
     std::atomic<int> builtinTuningIndex_ { 0 };
@@ -363,7 +371,11 @@ class SwaraXtEngine {
     bool publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex);
     void latchPublishedTuning() noexcept;
     int freeTuningSlot(int published, int latched, int retired) const noexcept;
+    bool snapshotClaimed(int slot) const noexcept;
+    bool pinPublished(const tuning::PublishedTuning*& tuning, int& claim) const noexcept;
+    void unpinPublished(int claim) const noexcept;
     const tuning::PublishedTuning* publishedTuningSlot() const noexcept;
+    void installSequencerTuning(const int16_t* degrees, const int32_t* quantizedUnits) noexcept;
     shruthi::Storage storage_;
     static_assert(std::atomic<unsigned>::is_always_lock_free);
     std::atomic<unsigned> sequencePlayback_ { 0 };

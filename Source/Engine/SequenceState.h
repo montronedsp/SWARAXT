@@ -79,11 +79,15 @@ class SequenceState {
         int upper = 12;
         static constexpr int extent = 48;
     };
+    // Owned degree table. A view must stay valid after the tuning slot that
+    // produced it has been published again. The array is the storage; it is
+    // copied with the view and never aliases a reusable slot.
+    static constexpr int kMaxScaleDegreeCents = 256;
     struct ScaleRandomView {
         int formalPeriod = 12;
         double periodCents = 1200.0;
-        const double* degreeCents = nullptr;
         int degreeCount = 0;
+        double degreeCents[kMaxScaleDegreeCents] {};
     };
     static constexpr int kScaleDegreeLimit = 512;
 
@@ -103,7 +107,7 @@ class SequenceState {
             inside = degree - periodIndex * period;
         }
         double cents = static_cast<double>(periodIndex) * view.periodCents;
-        if (inside > 0 && view.degreeCents != nullptr)
+        if (inside > 0 && view.degreeCount > 0)
         {
             const int index = inside - 1;
             if (index >= 0 && index < view.degreeCount)
@@ -118,7 +122,7 @@ class SequenceState {
         std::array<int, 1025> offsets {};
         int count = 0;
         const bool tuned = view != nullptr && view->formalPeriod > 0 && view->periodCents > 0.0
-            && view->degreeCents != nullptr && view->degreeCount > 0;
+            && view->degreeCount > 0;
         if (tuned)
         {
             const double lo = static_cast<double>(range.lower) * 100.0;

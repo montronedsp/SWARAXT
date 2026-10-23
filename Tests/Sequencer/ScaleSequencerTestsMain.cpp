@@ -469,8 +469,9 @@ void testModeIsolationAndRandom()
     view.formalPeriod = 12;
     view.periodCents = 1200.0;
     const double cents[] = { 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100 };
-    view.degreeCents = cents;
     view.degreeCount = 11;
+    for (int index = 0; index < view.degreeCount; ++index)
+        view.degreeCents[static_cast<size_t>(index)] = cents[index];
     const auto before = state.snapshot().steps;
     const auto beforeCv = state.snapshot().freePitch;
     state.randomize(swaraxt::SequenceState::Randomize::notes, random,
@@ -478,6 +479,27 @@ void testModeIsolationAndRandom()
     expect(state.snapshot().steps == before, "SCALE random notes keep packed notes");
     expect(state.snapshot().freePitch == beforeCv, "SCALE random notes keep CV");
     expect(state.snapshot().scaleDegree != degrees, "SCALE random notes change degrees");
+}
+
+void testOwnedScaleViewSurvivesPublication()
+{
+    SwaraXtAudioProcessor processor;
+    expect(processor.loadBuiltinTuning(0), "owned view starts on 12-EDO");
+    const auto view = processor.scaleRandomView();
+    expect(view.degreeCount > 1, "owned view copies interior degrees");
+    const int count = view.degreeCount;
+    const double first = view.degreeCents[0];
+    const double last = view.degreeCents[static_cast<size_t>(count - 1)];
+    for (int index = 0; index < 6; ++index)
+        expect(processor.loadBuiltinTuning(index), "rapid publication reuses slots");
+    expect(view.degreeCount == count, "owned view count survives later publications");
+    expect(view.degreeCents[0] == first && view.degreeCents[static_cast<size_t>(count - 1)] == last,
+           "owned view degrees survive later publications");
+    int16_t midiDegree[128];
+    processor.copyTuningDegrees(midiDegree, 128);
+    expect(midiDegree[60] != 0 || processor.hzForActiveDegree(0) > 0.0, "degree and rate readers still resolve");
+    expect(processor.quantizeActiveHz(440.0).valid, "quantizer reader still resolves");
+    expect(processor.activeTuningName().isNotEmpty(), "name reader still resolves");
 }
 
 void testTuningPublicationConcurrency()
@@ -511,7 +533,36 @@ void testTuningPublicationConcurrency()
             // One seqlock-stable metadata snapshot per block: reject mixed
             // formal-period / period-cents generations.
             const auto view = processor.scaleRandomView();
-            if (view.formalPeriod == 0 || ! (view.periodCents > 0.0) || view.degreeCount == 0)
+            bool consistent = view.formalPeriod > 0 && view.periodCents > 0.0 && view.degreeCount > 0
+                && view.degreeCount <= swaraxt::SequenceState::kMaxScaleDegreeCents;
+            double previous = 0.0;
+            for (int index = 0; index < view.degreeCount; ++index)
+            {
+                const double cents = view.degreeCents[static_cast<size_t>(index)];
+                if (! std::isfinite(cents) || ! (cents > previous))
+                    consistent = false;
+                previous = cents;
+            }
+            if (consistent && ! (view.periodCents > previous))
+                consistent = false;
+            const double first = view.degreeCount > 0 ? view.degreeCents[0] : 0.0;
+            const int savedCount = view.degreeCount;
+            int16_t midiDegree[128];
+            processor.copyTuningDegrees(midiDegree, 128);
+            const double tonic = processor.hzForActiveDegree(0);
+            const auto quantized = processor.quantizeActiveHz(440.0);
+            const auto name = processor.activeTuningName();
+            swaraxt::SequenceState local;
+            local.setPitchMode(2);
+            juce::Random random(audioBlocks.load());
+            local.randomize(swaraxt::SequenceState::Randomize::notes, random,
+                            { -12, 12 }, swaraxt::SequenceState::RandomizationType::type1, &view);
+            if (view.degreeCount != savedCount
+                || (savedCount > 0 && view.degreeCents[0] != first))
+                consistent = false;
+            if (! (tonic > 0.0) || ! quantized.valid || name.isEmpty())
+                consistent = false;
+            if (! consistent)
             {
                 badBlocks.fetch_add(1, std::memory_order_relaxed);
             }
@@ -654,6 +705,7 @@ int main()
     testAudiblePitchMatrix();
     testDegreeChangeWithSameIdentity();
     testModeIsolationAndRandom();
+    testOwnedScaleViewSurvivesPublication();
     testTuningPublicationConcurrency();
     testScaleStateLockAndMidi();
     if (failures == 0)
