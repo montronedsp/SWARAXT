@@ -560,9 +560,8 @@ def admit_reference_record(profile_root, name, entry):
         raise RuntimeError('Changed native reference record')
 
 
-def gate(system, evidence, output):
+def gate(system, evidence):
     evidence = contained_runner_path(evidence, True)
-    output = contained_runner_path(output, False)
     expected = set(LINUX_PROFILES if system == 'Linux' else WINDOWS_PROFILES)
     results = {}
     for path in evidence.rglob('report.json'):
@@ -632,8 +631,7 @@ def gate(system, evidence, output):
     report = {'source_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'], 'platform': system,
               'decision': 'NATIVE_CI_MATRIX_PASS', 'profiles': {c + '-' + p: s for (c, p), s in results.items()},
               'distribution_approval': False, 'visible_gui_acceptance': 'NOT_RUN', 'installation': 'NOT_RUN'}
-    output.write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(report, indent=2))
+    sys.stdout.write(json.dumps(report, indent=2) + '\n')
 
 
 def main():
@@ -650,11 +648,10 @@ def main():
     review = commands.add_parser('gate')
     review.add_argument('--platform', choices=['Linux', 'Windows'], required=True)
     review.add_argument('--evidence', type=Path, required=True)
-    review.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if args.task == 'native': Campaign(args).execute()
     elif args.task == 'toolchain': toolchain(args)
-    else: gate(args.platform, args.evidence, args.output)
+    else: gate(args.platform, args.evidence)
 
 
 if __name__ == '__main__':

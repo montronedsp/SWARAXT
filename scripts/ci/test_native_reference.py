@@ -1,14 +1,22 @@
 # SPDX-FileCopyrightText: 2026 MontroneDSP
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Negative controls for native audio evidence admission."""
+import inspect
+import io
+import json
 import os
+from contextlib import redirect_stdout
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from common import sha
-from desktop import admit_reference_record, contained_runner_path, gate
-from native_reference import TESTS, validate_output
+from desktop import (PLUGINVAL_AFTER, PLUGINVAL_BEFORE, PLUGINVAL_FIX_SHA, PLUGINVAL_JUCE_SHA,
+                     PLUGINVAL_PORTABILITY, PLUGINVAL_SHA, SDK_SHA, WINDOWS_PROFILES,
+                     admit_reference_record, contained_runner_path, gate)
+from native_reference import BASELINE_SHA, TESTS, validate_output
 
 
 class NativeReferenceTests(unittest.TestCase):
@@ -153,14 +161,123 @@ class ReferencePathTests(unittest.TestCase):
                 evidence.mkdir()
                 self.assertEqual(contained_runner_path(evidence, True), evidence.resolve())
                 with self.assertRaisesRegex(RuntimeError, 'escaped RUNNER_TEMP'):
-                    gate('Windows', evidence, Path(outside) / 'gate.json')
-                with self.assertRaisesRegex(RuntimeError, 'escaped RUNNER_TEMP'):
-                    gate('Windows', Path(outside), Path(runner) / 'gate.json')
+                    gate('Windows', Path(outside))
             finally:
                 if previous is None:
                     os.environ.pop('RUNNER_TEMP', None)
                 else:
                     os.environ['RUNNER_TEMP'] = previous
+
+
+class GateReportTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.runner = Path(self.tmp.name)
+        self.evidence = self.runner / 'evidence'
+        self.evidence.mkdir()
+        self.previous = {name: os.environ.get(name) for name in ('RUNNER_TEMP', 'GITHUB_SHA', 'GITHUB_RUN_ID')}
+        os.environ['RUNNER_TEMP'] = str(self.runner)
+        os.environ['GITHUB_SHA'] = 'c' * 40
+        os.environ['GITHUB_RUN_ID'] = '39935259841'
+        for compiler, profile in WINDOWS_PROFILES:
+            self.write_profile(compiler, profile)
+
+    def tearDown(self):
+        for name, value in self.previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        self.tmp.cleanup()
+
+    def write_profile(self, compiler, profile):
+        directory = self.evidence / (compiler + '-' + profile)
+        reference = directory / 'native-reference'
+        reference.mkdir(parents=True)
+        tests = {}
+        for name in TESTS:
+            record = reference / (name + '.json')
+            record.write_bytes(b'{"records":{}}\n')
+            tests[name] = {'record_file': record.name, 'record_sha256': sha(record)}
+        cases = ''.join('<testcase name="t%d"/>' % index for index in range(90))
+        (directory / 'ctest.xml').write_text('<testsuite>%s</testsuite>' % cases)
+        (directory / 'actual-VST3.log').write_text(
+            'PASS: actual plugin two-instance audio/editor/state/reopen lifecycle\nBOOLEAN_NORMALIZATION_PASS\n')
+        commands = [{'name': name, 'exit_code': 0} for name in (
+            'harness-tests', 'configure', 'actual-VST3', 'ctest', 'build-regressions')]
+        data = {
+            'compiler': compiler, 'profile': profile, 'platform': 'Windows',
+            'source_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'],
+            'decision': 'PASS', 'commands': commands, 'test_count': 90,
+            'actual_native_vst3': 'PASS', 'native_reference_negative_control': 'PASS',
+            'sanitizer_negative_controls': 'PASS',
+            'native_audio_reference': {
+                'candidate_sha': os.environ['GITHUB_SHA'], 'baseline_sha': BASELINE_SHA,
+                'run_id': os.environ['GITHUB_RUN_ID'], 'profile': compiler + '-' + profile,
+                'architecture': 'x86_64', 'tests': tests,
+            },
+        }
+        if profile == 'Release':
+            commands.extend({'name': name, 'exit_code': 0} for name in (
+                'configure-pluginval', 'build-pluginval', 'pluginval-tool-selftest', 'pluginval',
+                'configure-validator', 'build-validator', 'validator-selftest', 'validator-extensive'))
+            data['vst3sdk_tool'] = {'source_sha': SDK_SHA, 'binary_sha256': 'b' * 64}
+            data['external_validators'] = {'vst3sdk_binary_sha256': 'b' * 64, 'sha256': 'a' * 64}
+            data['pluginval_source'] = {
+                'source_sha': PLUGINVAL_SHA, 'vendor_juce_sha': PLUGINVAL_JUCE_SHA,
+                'upstream_fix_sha': PLUGINVAL_FIX_SHA, 'before_sha256': PLUGINVAL_BEFORE,
+                'after_sha256': PLUGINVAL_AFTER, 'compiler_portability': PLUGINVAL_PORTABILITY,
+                'binary_sha256': 'a' * 64,
+            }
+            (directory / 'pluginval.log').write_text('Num plugins found: 1\nStrictness level: 10\nv1.2.3\nSUCCESS\n')
+            (directory / 'validator-extensive.log').write_text('Result: 100 tests passed, 0 tests failed\n')
+        (directory / 'report.json').write_text(json.dumps(data))
+
+    def files(self):
+        return sorted(path.relative_to(self.runner).as_posix() for path in self.runner.rglob('*') if path.is_file())
+
+    def test_success_report_is_stdout_only(self):
+        before = self.files()
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            gate('Windows', self.evidence)
+        text = buffer.getvalue()
+        report = json.loads(text)
+        self.assertTrue(text.endswith('\n'))
+        self.assertEqual(text, json.dumps(report, indent=2) + '\n')
+        self.assertEqual(report['decision'], 'NATIVE_CI_MATRIX_PASS')
+        self.assertEqual(report['source_sha'], os.environ['GITHUB_SHA'])
+        self.assertEqual(set(report['profiles']), {'msvc-Release', 'msvc-Debug', 'msvc-asan'})
+        self.assertEqual(self.files(), before)
+        self.assertNotIn('write_text', inspect.getsource(gate))
+        self.assertNotIn('open(', inspect.getsource(gate))
+
+    def test_failed_gate_emits_no_success_report(self):
+        record = next((self.evidence / 'msvc-Release' / 'native-reference').glob('*.json'))
+        record.write_bytes(b'tampered')
+        before = self.files()
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            with self.assertRaisesRegex(RuntimeError, 'Changed native reference record'):
+                gate('Windows', self.evidence)
+        self.assertNotIn('NATIVE_CI_MATRIX_PASS', buffer.getvalue())
+        self.assertEqual(buffer.getvalue(), '')
+        self.assertEqual(self.files(), before)
+
+    def test_cli_has_no_output_path_and_failure_writes_nothing(self):
+        script = Path(__file__).resolve().parent / 'desktop.py'
+        help_text = subprocess.run([sys.executable, str(script), 'gate', '--help'],
+                                   check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(help_text.returncode, 0, help_text.stdout)
+        self.assertNotIn('--output', help_text.stdout)
+        target = self.runner / 'attacker-gate.json'
+        env = dict(os.environ)
+        failed = subprocess.run([sys.executable, str(script), 'gate', '--platform', 'Windows',
+                                 '--evidence', str(self.runner / 'missing'), '--output', str(target)],
+                                check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertNotIn('NATIVE_CI_MATRIX_PASS', failed.stdout)
+        self.assertFalse(target.exists())
 
 
 if __name__ == '__main__':

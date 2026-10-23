@@ -166,7 +166,9 @@ COMMAND
             native, = [line.split('run: ', 1)[1] for line in lines if 'run: ' in line and 'desktop.py native' in line]
             index, = [i for i, line in enumerate(lines) if 'python scripts/ci/desktop.py gate' in line]
             gate = lines[index].strip() + ' ' + lines[index + 1].strip()
-            for command in (native, gate):
+            self.assertNotIn('--output', gate)
+            self.assertIn('> "$RUNNER_TEMP/' + system + '-gate.json"', gate)
+            for command in (native, gate.split('>', 1)[0].strip()):
                 with self.subTest(system=system, command=command):
                     result = self.execute(command)
                     self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
@@ -175,8 +177,8 @@ COMMAND
                         self.assertEqual(args[args.index('--root') + 1], '/ci temp with spaces/swara-native')
                         self.assertEqual(args[args.index('--profile') + 1], 'Release')
                     else:
+                        self.assertNotIn('--output', args)
                         self.assertEqual(args[args.index('--evidence') + 1], '/ci temp with spaces/native-evidence')
-                        self.assertEqual(args[args.index('--output') + 1], '/ci temp with spaces/' + system + '-gate.json')
 
     def test_original_placeholder_corruption_is_rejected(self):
         result = self.execute('python scripts/ci/desktop.py native --root "$ubuntu-24.04_TEMP/swara-native"')
