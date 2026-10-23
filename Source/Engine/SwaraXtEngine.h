@@ -133,6 +133,7 @@ class SwaraXtEngine {
     void bindParameters(ParameterCache& cache) noexcept { parameterCache_ = &cache; }
     void bindSequenceState(SequenceState& state) noexcept { sequenceState_ = &state; }
     void applyParameters();
+    uint8_t appliedSequencerPitchModeForTests() const noexcept { return appliedPitchMode_; }
     double boardTailSeconds() const noexcept { return boardTailSeconds_.load(std::memory_order_relaxed); }
     const board::BoardControl& boardControlsForTests() const noexcept { return activeBoard_; }
     const board::BoardProcessor& boardProcessorForTests() const noexcept { return boardProcessor_; }
@@ -374,7 +375,6 @@ class SwaraXtEngine {
     bool snapshotClaimed(int slot) const noexcept;
     bool pinPublished(const tuning::PublishedTuning*& tuning, int& claim) const noexcept;
     void unpinPublished(int claim) const noexcept;
-    const tuning::PublishedTuning* publishedTuningSlot() const noexcept;
     void installSequencerTuning(const int16_t* degrees, const int32_t* quantizedUnits) noexcept;
     shruthi::Storage storage_;
     static_assert(std::atomic<unsigned>::is_always_lock_free);
@@ -383,6 +383,9 @@ class SwaraXtEngine {
     PatchBridge patchBridge_;
     SequenceState* sequenceState_ = nullptr;
     uint32_t appliedSequenceRevision_ = std::numeric_limits<uint32_t>::max();
+    // Last pitch mode taken from a capture that succeeded. Audio routing uses
+    // this when a later capture finds a writer in progress.
+    uint8_t appliedPitchMode_ = 0;
 
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
