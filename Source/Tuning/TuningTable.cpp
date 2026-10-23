@@ -378,8 +378,6 @@ bool parseScalaAndKeyboard(const char* sclText, const char* kbmText, TuningSnaps
         out.midiDegree[note] = -1;
     out.referenceNote = 69;
     out.referenceHz = 440.0;
-    int mapFirst = 0;
-    int mapLast = 127;
     int middle = 60;
     if (kbmText == nullptr || kbmText[0] == '\0')
     {
@@ -422,8 +420,6 @@ bool parseScalaAndKeyboard(const char* sclText, const char* kbmText, TuningSnaps
             setError(error, "keyboard reference frequency must be positive");
             return false;
         }
-        mapFirst = static_cast<int>(mapFirstValue);
-        mapLast = static_cast<int>(mapLastValue);
         middle = static_cast<int>(middleValue);
         out.referenceNote = static_cast<uint16_t>(referenceValue);
         out.referenceHz = frequency;
