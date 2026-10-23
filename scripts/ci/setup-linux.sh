@@ -10,7 +10,7 @@ sudo apt-get install -y --no-install-recommends build-essential pkg-config ninja
     libasound2-dev libfreetype6-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
     libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libxi-dev libxfixes-dev \
     libgl1-mesa-dev libgtk-3-dev libgtkmm-3.0-dev ladspa-sdk xvfb xauth x11-utils openbox ca-certificates curl gnupg
-test -f /usr/include/ladspa.h
+[[ -f /usr/include/ladspa.h ]]
 pkg-config --modversion gtk+-3.0 gtkmm-3.0
 if [[ "$compiler" == clang ]]; then
     curl --fail --silent --show-error https://apt.llvm.org/llvm-snapshot.gpg.key \

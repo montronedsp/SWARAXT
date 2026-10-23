@@ -515,10 +515,57 @@ def toolchain(args):
         campaign.save()
 
 
+def contained_runner_path(path, must_exist):
+    """Resolve a qualification path and keep it inside RUNNER_TEMP."""
+    root_text = os.environ.get('RUNNER_TEMP')
+    if not root_text:
+        raise RuntimeError('Qualification paths require RUNNER_TEMP')
+    root = Path(root_text).resolve(strict=True)
+    candidate = Path(path)
+    if candidate.is_symlink():
+        raise RuntimeError('Qualification path must not be a symlink')
+    resolved = candidate.resolve(strict=must_exist)
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise RuntimeError('Qualification path escaped RUNNER_TEMP') from error
+    return resolved
+
+
+def admit_reference_record(profile_root, name, entry):
+    """Read one native-reference record without leaving its evidence directory."""
+    expected = name + '.json'
+    record_file = entry.get('record_file') if isinstance(entry, dict) else None
+    digest = entry.get('record_sha256') if isinstance(entry, dict) else None
+    if name not in TESTS or record_file != expected:
+        raise RuntimeError('Unexpected native reference filename')
+    if (not isinstance(digest, str) or len(digest) != 64
+            or any(character not in '0123456789abcdef' for character in digest)):
+        raise RuntimeError('Malformed native reference checksum')
+    evidence = Path(profile_root).resolve(strict=True)
+    reference = evidence / 'native-reference'
+    if reference.is_symlink() or not reference.is_dir():
+        raise RuntimeError('Native reference directory is not a trusted directory')
+    candidate = reference / expected
+    if candidate.is_symlink() or not candidate.is_file():
+        raise RuntimeError('Missing or untrusted native reference record')
+    resolved = candidate.resolve(strict=True)
+    try:
+        relative = resolved.relative_to(evidence)
+    except ValueError as error:
+        raise RuntimeError('Native reference record escaped the evidence directory') from error
+    if relative != Path('native-reference') / expected or resolved.parent != reference.resolve():
+        raise RuntimeError('Native reference record escaped the evidence directory')
+    if sha(resolved) != digest:
+        raise RuntimeError('Changed native reference record')
+
+
 def gate(system, evidence, output):
+    evidence = contained_runner_path(evidence, True)
+    output = contained_runner_path(output, False)
     expected = set(LINUX_PROFILES if system == 'Linux' else WINDOWS_PROFILES)
     results = {}
-    for path in Path(evidence).rglob('report.json'):
+    for path in evidence.rglob('report.json'):
         data = json.loads(path.read_text())
         key = (data['compiler'], data['profile'])
         if key in results or data['platform'] != system or data['source_sha'] != os.environ['GITHUB_SHA'] or data['run_id'] != os.environ['GITHUB_RUN_ID']:
@@ -542,9 +589,7 @@ def gate(system, evidence, output):
             if reference['candidate_sha'] != data['source_sha'] or reference['baseline_sha'] != BASELINE_SHA or reference['run_id'] != data['run_id'] or reference['profile'] != data['compiler'] + '-' + data['profile'] or reference['architecture'] != 'x86_64':
                 raise RuntimeError('Mismatched native reference provenance')
             for name in TESTS:
-                entry = reference['tests'][name]
-                if sha(path.parent / 'native-reference' / entry['record_file']) != entry['record_sha256']:
-                    raise RuntimeError('Changed native reference record')
+                admit_reference_record(path.parent, name, reference['tests'][name])
             host = (path.parent / 'actual-VST3.log').read_text(errors='replace')
             validate_host_log(host)
             if 'BOOLEAN_NORMALIZATION_PASS' not in host:
@@ -587,7 +632,7 @@ def gate(system, evidence, output):
     report = {'source_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'], 'platform': system,
               'decision': 'NATIVE_CI_MATRIX_PASS', 'profiles': {c + '-' + p: s for (c, p), s in results.items()},
               'distribution_approval': False, 'visible_gui_acceptance': 'NOT_RUN', 'installation': 'NOT_RUN'}
-    Path(output).write_text(json.dumps(report, indent=2) + '\n')
+    output.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 
 

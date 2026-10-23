@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           test "$REVIEWED_SHA" = "$GITHUB_SHA"
-          python -m pip install cmake==3.31.6 ninja==1.11.1.4
+          python -m pip install --only-binary :all: --require-hashes -r scripts/ci/requirements-frontend.txt
       - name: Linux dependencies
         if: runner.os == 'Linux'
         shell: bash
