@@ -3,12 +3,15 @@
 
 #include "Tuning/TuningTable.h"
 
+#include <charconv>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <limits>
-#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <system_error>
 
 namespace swaraxt::tuning {
 namespace {
@@ -43,9 +46,15 @@ void writeF64(std::vector<uint8_t>& out, double value)
         out.push_back(static_cast<uint8_t>((bits >> (8 * i)) & 0xffu));
 }
 
+bool hasBytes(const uint8_t* cursor, const uint8_t* end, size_t count) noexcept
+{
+    return cursor != nullptr && end != nullptr && cursor <= end
+        && static_cast<size_t>(end - cursor) >= count;
+}
+
 bool readU16(const uint8_t*& cursor, const uint8_t* end, uint16_t& value)
 {
-    if (cursor + 2 > end)
+    if (! hasBytes(cursor, end, 2))
         return false;
     value = static_cast<uint16_t>(cursor[0] | (static_cast<uint16_t>(cursor[1]) << 8));
     cursor += 2;
@@ -63,7 +72,7 @@ bool readI16(const uint8_t*& cursor, const uint8_t* end, int16_t& value)
 
 bool readF64(const uint8_t*& cursor, const uint8_t* end, double& value)
 {
-    if (cursor + 8 > end)
+    if (! hasBytes(cursor, end, 8))
         return false;
     uint64_t bits = 0;
     for (int i = 0; i < 8; ++i)
@@ -77,38 +86,101 @@ struct PitchLine {
     double cents = 0.0;
 };
 
+std::string_view stripScalaComment(std::string_view text) noexcept
+{
+    const auto comment = text.find('!');
+    if (comment != std::string_view::npos)
+        text = text.substr(0, comment);
+    while (! text.empty() && (text.front() == ' ' || text.front() == '\t'))
+        text.remove_prefix(1);
+    while (! text.empty() && (text.back() == ' ' || text.back() == '\t'))
+        text.remove_suffix(1);
+    return text;
+}
+
+bool parseFullInteger(std::string_view text, long long& value) noexcept
+{
+    text = stripScalaComment(text);
+    if (text.empty())
+        return false;
+    if (text.front() == '+')
+    {
+        text.remove_prefix(1);
+        if (text.empty() || text.front() == '-' || text.front() == '+')
+            return false;
+    }
+    const char* const first = text.data();
+    const char* const last = first + text.size();
+    const auto parsed = std::from_chars(first, last, value);
+    return parsed.ec == std::errc() && parsed.ptr == last;
+}
+
+bool historicalCommaFraction(const char* cursor, const char* last) noexcept
+{
+    // The built-in EDO scales place the fractional digits after a comma.
+    // The previous converter kept only the number before that comma.
+    if (cursor == last || *cursor != ',')
+        return false;
+    ++cursor;
+    if (cursor == last)
+        return false;
+    for (; cursor != last; ++cursor)
+    {
+        if (*cursor < '0' || *cursor > '9')
+            return false;
+    }
+    return true;
+}
+
+bool parseFullReal(std::string_view text, double& value) noexcept
+{
+    text = stripScalaComment(text);
+    if (text.empty())
+        return false;
+    const char* const first = text.data();
+    const char* const last = first + text.size();
+    const auto parsed = std::from_chars(first, last, value, std::chars_format::general);
+    if (parsed.ec != std::errc() || ! std::isfinite(value))
+        return false;
+    return parsed.ptr == last || historicalCommaFraction(parsed.ptr, last);
+}
+
 bool parsePitchLine(const std::string& line, PitchLine& pitch, ParseError& error)
 {
     const auto slash = line.find('/');
-    try
+    if (slash == std::string::npos)
     {
-        if (slash == std::string::npos)
+        double cents = 0.0;
+        if (! parseFullReal(line, cents))
         {
-            size_t used = 0;
-            const double cents = std::stod(line, &used);
-            if (used == 0 || ! std::isfinite(cents))
-            {
-                setError(error, "pitch is not a finite cent value");
-                return false;
-            }
-            pitch.cents = cents;
-            return true;
-        }
-        const double num = std::stod(line.substr(0, slash));
-        const double den = std::stod(line.substr(slash + 1));
-        if (! finitePositive(num) || ! finitePositive(den))
-        {
-            setError(error, "ratio must be a positive finite fraction");
+            setError(error, "pitch is not a finite cent value");
             return false;
         }
-        pitch.cents = 1200.0 * std::log2(num / den);
-        return std::isfinite(pitch.cents);
+        pitch.cents = cents;
+        return true;
     }
-    catch (...)
+    const auto numerator = line.substr(0, slash);
+    const auto denominator = line.substr(slash + 1);
+    if (denominator.find('/') != std::string::npos)
+    {
+        setError(error, "ratio must be a positive finite fraction");
+        return false;
+    }
+    double num = 0.0;
+    double den = 0.0;
+    if (! parseFullReal(numerator, num) || ! parseFullReal(denominator, den)
+        || ! finitePositive(num) || ! finitePositive(den))
+    {
+        setError(error, "ratio must be a positive finite fraction");
+        return false;
+    }
+    pitch.cents = 1200.0 * std::log2(num / den);
+    if (! std::isfinite(pitch.cents))
     {
         setError(error, "pitch line is malformed");
         return false;
     }
+    return true;
 }
 
 std::vector<std::string> contentLines(const char* text)
@@ -253,25 +325,19 @@ bool parseScalaAndKeyboard(const char* sclText, const char* kbmText, TuningSnaps
         return false;
     }
     std::snprintf(out.name, sizeof(out.name), "%s", scl[0].c_str());
-    int count = 0;
-    try
-    {
-        size_t used = 0;
-        count = std::stoi(scl[1], &used);
-        if (used == 0)
-            throw std::invalid_argument("count");
-    }
-    catch (...)
+    long long countValue = 0;
+    if (! parseFullInteger(scl[1], countValue))
     {
         setError(error, "scala degree count is malformed");
         return false;
     }
-    if (count < 1 || count > kMaxDegrees)
+    if (countValue < 1 || countValue > kMaxDegrees)
     {
         setError(error, "scala degree count is out of range");
         return false;
     }
-    if (static_cast<int>(scl.size()) < 2 + count)
+    const int count = static_cast<int>(countValue);
+    if (scl.size() < static_cast<size_t>(count) + 2)
     {
         setError(error, "scala file has fewer pitches than its count");
         return false;
@@ -328,26 +394,25 @@ bool parseScalaAndKeyboard(const char* sclText, const char* kbmText, TuningSnaps
             setError(error, "keyboard map is incomplete");
             return false;
         }
-        int mapSize = 0;
-        int formal = count;
+        long long mapSize = 0;
+        long long mapFirstValue = 0;
+        long long mapLastValue = 0;
+        long long middleValue = 0;
+        long long referenceValue = 0;
+        long long formal = count;
         double frequency = 440.0;
-        try
-        {
-            mapSize = std::stoi(kbm[0]);
-            mapFirst = std::stoi(kbm[1]);
-            mapLast = std::stoi(kbm[2]);
-            middle = std::stoi(kbm[3]);
-            out.referenceNote = static_cast<uint16_t>(std::stoi(kbm[4]));
-            frequency = std::stod(kbm[5]);
-            formal = std::stoi(kbm[6]);
-        }
-        catch (...)
+        if (! parseFullInteger(kbm[0], mapSize) || ! parseFullInteger(kbm[1], mapFirstValue)
+            || ! parseFullInteger(kbm[2], mapLastValue) || ! parseFullInteger(kbm[3], middleValue)
+            || ! parseFullInteger(kbm[4], referenceValue) || ! parseFullReal(kbm[5], frequency)
+            || ! parseFullInteger(kbm[6], formal))
         {
             setError(error, "keyboard map header is malformed");
             return false;
         }
-        if (mapSize < 0 || mapFirst < 0 || mapLast > 127 || mapFirst > mapLast
-            || middle < 0 || middle > 127 || out.referenceNote > 127 || formal < 1)
+        if (mapSize < 0 || mapFirstValue < 0 || mapFirstValue > 127 || mapLastValue < 0
+            || mapLastValue > 127 || mapFirstValue > mapLastValue || middleValue < 0
+            || middleValue > 127 || referenceValue < 0 || referenceValue > 127
+            || formal < 1 || formal > std::numeric_limits<uint16_t>::max())
         {
             setError(error, "keyboard map header is out of range");
             return false;
@@ -357,35 +422,40 @@ bool parseScalaAndKeyboard(const char* sclText, const char* kbmText, TuningSnaps
             setError(error, "keyboard reference frequency must be positive");
             return false;
         }
+        mapFirst = static_cast<int>(mapFirstValue);
+        mapLast = static_cast<int>(mapLastValue);
+        middle = static_cast<int>(middleValue);
+        out.referenceNote = static_cast<uint16_t>(referenceValue);
         out.referenceHz = frequency;
         out.formalPeriod = static_cast<uint16_t>(formal);
-        const int entries = mapSize == 0 ? (mapLast - mapFirst + 1) : mapSize;
-        if (static_cast<int>(kbm.size()) < 7 + entries)
+        const long long entries = mapSize == 0 ? (mapLastValue - mapFirstValue + 1) : mapSize;
+        if (entries < 0
+            || static_cast<unsigned long long>(entries) > kbm.size() - 7)
         {
             setError(error, "keyboard map is missing entries");
             return false;
         }
-        for (int i = 0; i < entries; ++i)
+        for (long long i = 0; i < entries; ++i)
         {
-            const int note = mapFirst + i;
+            const auto& entry = kbm[static_cast<size_t>(7 + i)];
+            const long long note = mapFirstValue + i;
             if (note < 0 || note >= kMidiNotes)
                 continue;
-            const auto& entry = kbm[static_cast<size_t>(7 + i)];
-            if (entry == "x" || entry == "X")
+            const auto token = stripScalaComment(entry);
+            if (token == "x" || token == "X")
             {
-                out.midiDegree[note] = -1;
+                out.midiDegree[static_cast<int>(note)] = -1;
                 continue;
             }
-            try
-            {
-                const int degree = std::stoi(entry);
-                out.midiDegree[note] = static_cast<int16_t>(degree);
-            }
-            catch (...)
+            long long degree = 0;
+            if (! parseFullInteger(entry, degree)
+                || degree < std::numeric_limits<int16_t>::min()
+                || degree > std::numeric_limits<int16_t>::max())
             {
                 setError(error, "keyboard map entry is neither a degree nor x");
                 return false;
             }
+            out.midiDegree[static_cast<int>(note)] = static_cast<int16_t>(degree);
         }
     }
     return rebuildFrequencies(out, error);
@@ -447,7 +517,7 @@ bool readTuningTable(const uint8_t* data, size_t size, TuningSnapshot& out, Pars
         setError(error, "tuning table header is truncated");
         return false;
     }
-    if (cursor + kNameBytes > end)
+    if (! hasBytes(cursor, end, kNameBytes))
     {
         setError(error, "tuning table name is truncated");
         return false;
