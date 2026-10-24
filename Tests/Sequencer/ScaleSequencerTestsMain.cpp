@@ -697,6 +697,405 @@ void testScaleStateLockAndMidi()
     expect(stateObj.snapshot().freePitch == cv, "return to LINEAR keeps CV");
 }
 
+void testAudioRouteStaysBoundedWhileSequenceWriterIsHeld()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 64);
+    processor.sequenceState().setPitchMode(0);
+    processor.engineForTests().applyParameters();
+    expect(processor.engineForTests().appliedSequencerPitchModeForTests() == 0,
+           "legacy route is applied before the writer is held");
+
+    std::atomic<bool> entered { false };
+    std::atomic<bool> release { false };
+    std::thread writer([&processor, &entered, &release]
+    {
+        processor.sequenceState().holdWriteForTest(entered, release);
+    });
+    while (! entered.load(std::memory_order_acquire))
+    {
+    }
+
+    const int sizes[] = { 1, 16, 32, 64 };
+    for (int size : sizes)
+    {
+        juce::AudioBuffer<float> buffer(2, size);
+        juce::MidiBuffer midi;
+        const auto started = std::chrono::steady_clock::now();
+        processor.processBlock(buffer, midi);
+        const auto elapsed = std::chrono::steady_clock::now() - started;
+        expect(elapsed < std::chrono::milliseconds(200),
+               "processBlock returns while a sequence writer is held");
+        expect(processor.engineForTests().appliedSequencerPitchModeForTests() == 0,
+               "held writer keeps the last applied pitch mode across processBlock");
+    }
+
+    release.store(true, std::memory_order_release);
+    writer.join();
+
+    processor.sequenceState().setPitchMode(2);
+    processor.engineForTests().applyParameters();
+    expect(processor.engineForTests().appliedSequencerPitchModeForTests() == 2,
+           "the scale mode applies after the writer publishes it");
+}
+
+// L2: off-thread stores queue; removal before dispatch drops the callback.
+void testOffThreadSequenceStoreDoesNotEnterTheListenerInline()
+{
+    swaraxt::SequenceState state;
+    struct Listener : swaraxt::SequenceState::Listener
+    {
+        std::atomic<int> calls { 0 };
+        void sequenceStateChanged() override { calls.fetch_add(1, std::memory_order_relaxed); }
+    } listener;
+    state.addListener(&listener);
+
+    std::thread delivered([&state]
+    {
+        auto snapshot = state.snapshot();
+        snapshot.length = 4;
+        state.store(snapshot);
+    });
+    delivered.join();
+    expect(listener.calls.load(std::memory_order_relaxed) == 0,
+           "an off-thread store does not call the listener on the writer thread");
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(200);
+    expect(listener.calls.load(std::memory_order_relaxed) == 1,
+           "the message thread delivers one store notification");
+
+    std::thread dropped([&state]
+    {
+        auto snapshot = state.snapshot();
+        snapshot.length = 8;
+        state.store(snapshot);
+    });
+    dropped.join();
+    state.removeListener(&listener);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(200);
+    expect(listener.calls.load(std::memory_order_relaxed) == 1,
+           "L2: a removed listener is not called for a queued store");
+}
+
+// L1: worker notification overlaps listener destruction.
+void testWorkerNotificationOverlapsListenerDestruction()
+{
+    swaraxt::SequenceState state;
+    std::atomic<int> totalCalls { 0 };
+    std::atomic<bool> run { true };
+
+    std::thread worker([&]
+    {
+        int length = 1;
+        while (run.load(std::memory_order_acquire))
+        {
+            auto snapshot = state.snapshot();
+            snapshot.length = static_cast<uint8_t>((length++ % 16) + 1);
+            state.store(snapshot);
+            std::this_thread::sleep_for(std::chrono::microseconds(20));
+        }
+    });
+
+    for (int pass = 0; pass < 40; ++pass)
+    {
+        struct Listener : swaraxt::SequenceState::Listener
+        {
+            std::atomic<int>* total = nullptr;
+            void sequenceStateChanged() override
+            {
+                if (total != nullptr)
+                    total->fetch_add(1, std::memory_order_relaxed);
+            }
+        } listener;
+        listener.total = &totalCalls;
+        state.addListener(&listener);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(5);
+        state.removeListener(&listener);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(5);
+    }
+
+    run.store(false, std::memory_order_release);
+    worker.join();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+    // Success is survival: no hang on removeListener and no use-after-free in
+    // deliverListeners. Call count may be zero if every attach missed a store.
+    std::printf("L1 overlap notify/destroy calls=%d\n", totalCalls.load());
+}
+
+// L3: SequenceState (processor-owned) destroyed before queued delivery.
+void testQueuedNotificationAfterSequenceDestruction()
+{
+    auto* state = new swaraxt::SequenceState();
+    struct Listener : swaraxt::SequenceState::Listener
+    {
+        std::atomic<int> calls { 0 };
+        void sequenceStateChanged() override { calls.fetch_add(1, std::memory_order_relaxed); }
+    } listener;
+    state->addListener(&listener);
+    std::thread worker([state]
+    {
+        auto snapshot = state->snapshot();
+        snapshot.length = 5;
+        state->store(snapshot);
+    });
+    worker.join();
+    delete state;
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(200);
+    expect(listener.calls.load(std::memory_order_relaxed) == 0,
+           "L3: a queued notification does not run after the sequence is destroyed");
+}
+
+// L3b: whole processor destroyed with a queued sequence notification.
+void testQueuedNotificationAfterProcessorDestruction()
+{
+    struct Listener : swaraxt::SequenceState::Listener
+    {
+        std::atomic<int> calls { 0 };
+        void sequenceStateChanged() override { calls.fetch_add(1, std::memory_order_relaxed); }
+    } listener;
+
+    auto* processor = new SwaraXtAudioProcessor();
+    processor->sequenceState().addListener(&listener);
+    std::thread worker([processor]
+    {
+        auto snapshot = processor->sequenceState().snapshot();
+        snapshot.length = 6;
+        processor->sequenceState().store(snapshot);
+    });
+    worker.join();
+    delete processor;
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(200);
+    expect(listener.calls.load(std::memory_order_relaxed) == 0,
+           "L3b: queued notification is inert after processor destruction");
+}
+
+// L4: rebuild listeners under a store storm; coalescing must keep schedules << stores.
+void testQueuedNotificationsAcrossRepeatedListenerRebuild()
+{
+    swaraxt::SequenceState state;
+    std::atomic<int> calls { 0 };
+    std::atomic<bool> run { true };
+
+    std::thread worker([&]
+    {
+        int length = 1;
+        while (run.load(std::memory_order_acquire))
+        {
+            auto snapshot = state.snapshot();
+            snapshot.length = static_cast<uint8_t>((length++ % 16) + 1);
+            state.store(snapshot);
+        }
+    });
+
+    for (int cycle = 0; cycle < 25; ++cycle)
+    {
+        struct Listener : swaraxt::SequenceState::Listener
+        {
+            std::atomic<int>* counter = nullptr;
+            void sequenceStateChanged() override
+            {
+                if (counter != nullptr)
+                    counter->fetch_add(1, std::memory_order_relaxed);
+            }
+        } listener;
+        listener.counter = &calls;
+        state.addListener(&listener);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(2);
+        state.removeListener(&listener);
+    }
+
+    run.store(false, std::memory_order_release);
+    worker.join();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(100);
+    const auto stats = state.notifyStatsForTests();
+    std::printf("L4 rebuild listener calls=%d schedules=%u deliveries=%u\n",
+                calls.load(), stats.asyncSchedules, stats.asyncDeliveries);
+    expect(calls.load(std::memory_order_relaxed) > 0,
+           "L4: at least one queued notification reached a live listener");
+    expect(stats.asyncSchedules <= stats.asyncDeliveries + 8,
+           "L4: armed coalescing keeps outstanding schedules near deliveries");
+}
+
+// Coalesce: 100k worker stores must not enqueue 100k callAsync jobs.
+void testNotificationCoalescingBoundsOutstandingQueue()
+{
+    swaraxt::SequenceState state;
+    struct Listener : swaraxt::SequenceState::Listener
+    {
+        std::atomic<int> calls { 0 };
+        void sequenceStateChanged() override
+        {
+            calls.fetch_add(1, std::memory_order_relaxed);
+        }
+    } listener;
+    state.addListener(&listener);
+
+    constexpr int kStores = 100000;
+    std::atomic<bool> start { false };
+    std::thread workers[4];
+    for (auto& worker : workers)
+    {
+        worker = std::thread([&]
+        {
+            while (! start.load(std::memory_order_acquire))
+            {
+            }
+            for (int i = 0; i < kStores / 4; ++i)
+            {
+                auto snapshot = state.snapshot();
+                snapshot.length = static_cast<uint8_t>((i % 16) + 1);
+                state.store(snapshot);
+            }
+        });
+    }
+    start.store(true, std::memory_order_release);
+    for (auto& worker : workers)
+        worker.join();
+
+    // Final length publish so delivery observes the newest generation.
+    {
+        auto snapshot = state.snapshot();
+        snapshot.length = 16;
+        state.store(snapshot);
+    }
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(2000);
+    const auto stats = state.notifyStatsForTests();
+    const auto finalLength = state.snapshot().length;
+    std::printf("coalesce stores=%d schedules=%u deliveries=%u listener_calls=%d final_length=%u\n",
+                kStores, stats.asyncSchedules, stats.asyncDeliveries,
+                listener.calls.load(), static_cast<unsigned>(finalLength));
+    expect(finalLength == 16, "coalesce: newest sequence length is visible");
+    expect(listener.calls.load(std::memory_order_relaxed) > 0,
+           "coalesce: at least one delivery reached the listener");
+    expect(stats.asyncSchedules < 5000,
+           "coalesce: async schedules stay far below the store flood");
+    expect(stats.asyncDeliveries <= stats.asyncSchedules + 4,
+           "coalesce: deliveries do not unboundedly exceed schedules");
+    state.removeListener(&listener);
+}
+
+// Program selection cannot interleave with host restore into a mixed generation.
+void testSetCurrentProgramSerializedAgainstRestore()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 64);
+    juce::MemoryBlock session;
+    processor.setCurrentProgram(0);
+    processor.getStateInformation(session);
+
+    std::atomic<bool> run { true };
+    std::atomic<int> mixed { 0 };
+    std::thread saver([&]
+    {
+        while (run.load(std::memory_order_acquire))
+        {
+            juce::MemoryBlock data;
+            processor.getStateInformation(data);
+            auto xml = juce::AudioProcessor::getXmlFromBinary(
+                data.getData(), static_cast<int>(data.getSize()));
+            if (xml == nullptr)
+            {
+                mixed.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            const int program = xml->getIntAttribute("currentProgram", -1);
+            const auto kind = xml->getStringAttribute("presetKind");
+            const auto name = xml->getStringAttribute("presetName");
+            if (program < 0 || kind.isEmpty() || name.isEmpty())
+                mixed.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    for (int i = 0; i < 40; ++i)
+    {
+        if ((i & 1) != 0)
+            processor.setStateInformation(session.getData(), static_cast<int>(session.getSize()));
+        else
+            processor.setCurrentProgram(1 + (i % 3));
+    }
+
+    run.store(false, std::memory_order_release);
+    saver.join();
+    expect(mixed.load(std::memory_order_relaxed) == 0,
+           "setCurrentProgram/restore: serialized states keep program metadata coherent");
+}
+
+// P4/P5: metadata readers stay coherent while program/save mutate.
+void testPresetMetadataCoherentUnderConcurrentSave()
+{
+    SwaraXtAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 64);
+    std::atomic<bool> run { true };
+    std::atomic<int> saves { 0 };
+    std::atomic<int> bad { 0 };
+
+    std::thread host([&]
+    {
+        while (run.load(std::memory_order_acquire))
+        {
+            juce::MemoryBlock data;
+            processor.getStateInformation(data);
+            if (data.getSize() == 0)
+                bad.fetch_add(1, std::memory_order_relaxed);
+            else
+                saves.fetch_add(1, std::memory_order_relaxed);
+            const auto name = processor.currentPresetName();
+            if (name.isEmpty())
+                bad.fetch_add(1, std::memory_order_relaxed);
+            (void) processor.getCurrentProgram();
+            (void) processor.currentPresetIsUser();
+        }
+    });
+
+    for (int i = 0; i < 20; ++i)
+    {
+        processor.setCurrentProgram(i % juce::jmax(1, processor.getNumPrograms()));
+        juce::MemoryBlock roundTrip;
+        processor.getStateInformation(roundTrip);
+        processor.setStateInformation(roundTrip.getData(), static_cast<int>(roundTrip.getSize()));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    run.store(false, std::memory_order_release);
+    host.join();
+    expect(saves.load(std::memory_order_relaxed) > 0, "P4/P5: concurrent host saves produced state");
+    expect(bad.load(std::memory_order_relaxed) == 0, "P4/P5: preset metadata stayed coherent");
+}
+
+void testProcessBlockTimingUncontended()
+{
+    SwaraXtAudioProcessor processor;
+    const double rates[] = { 44100.0, 48000.0, 96000.0, 192000.0 };
+    const int sizes[] = { 1, 16, 32, 64, 256, 512 };
+    for (double rate : rates)
+    {
+        for (int size : sizes)
+        {
+            processor.prepareToPlay(rate, size);
+            juce::AudioBuffer<float> buffer(2, size);
+            juce::MidiBuffer midi;
+            // Warmup
+            for (int i = 0; i < 32; ++i)
+                processor.processBlock(buffer, midi);
+
+            constexpr int kIters = 400;
+            double worstUs = 0.0;
+            double sumUs = 0.0;
+            for (int i = 0; i < kIters; ++i)
+            {
+                const auto t0 = std::chrono::steady_clock::now();
+                processor.processBlock(buffer, midi);
+                const auto us = std::chrono::duration<double, std::micro>(
+                    std::chrono::steady_clock::now() - t0).count();
+                sumUs += us;
+                if (us > worstUs)
+                    worstUs = us;
+            }
+            std::printf("rt rate=%.0f size=%d mean_us=%.3f worst_us=%.3f\n",
+                        rate, size, sumUs / kIters, worstUs);
+        }
+    }
+}
+
 }  // namespace
 
 int main()
@@ -708,6 +1107,16 @@ int main()
     testOwnedScaleViewSurvivesPublication();
     testTuningPublicationConcurrency();
     testScaleStateLockAndMidi();
+    testAudioRouteStaysBoundedWhileSequenceWriterIsHeld();
+    testOffThreadSequenceStoreDoesNotEnterTheListenerInline();
+    testWorkerNotificationOverlapsListenerDestruction();
+    testQueuedNotificationAfterSequenceDestruction();
+    testQueuedNotificationAfterProcessorDestruction();
+    testQueuedNotificationsAcrossRepeatedListenerRebuild();
+    testNotificationCoalescingBoundsOutstandingQueue();
+    testSetCurrentProgramSerializedAgainstRestore();
+    testPresetMetadataCoherentUnderConcurrentSave();
+    testProcessBlockTimingUncontended();
     if (failures == 0)
     {
         std::printf("scale sequencer tests: PASSED\n");

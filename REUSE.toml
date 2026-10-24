@@ -12,6 +12,7 @@ path = [
   ".gitignore",
   ".gitmodules",
   ".github/**",
+  ".sonarcloud.properties",
   "BUILDING.md",
   "CHANGELOG.md",
   "CMakeLists.txt",

@@ -19,6 +19,7 @@
 #include "Tuning/TuningTable.h"
 #include "Ui/SwaraXtPanels.h"
 #include "shruthi/sequencer_settings.h"
+#include "../Tuning/QuantizerTestSupport.h"
 
 namespace {
 
@@ -285,6 +286,57 @@ void testVoiceWord()
     expect(stored == units, "playback does not rewrite stored CV");
 }
 
+void testDenseProductionPitchPaths()
+{
+    swaraxt::tuning::TuningSnapshot snapshot;
+    swaraxt::tuning::ParseError error;
+    expect(quantizer_test::makeEdo(256, snapshot, error), "production 256-EDO fixture parses");
+    std::vector<uint8_t> bytes;
+    expect(swaraxt::tuning::writeTuningTable(snapshot, bytes, error), "production 256-EDO encodes");
+
+    SwaraXtAudioProcessor keyboard;
+    setInt(keyboard, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_STEP);
+    setInt(keyboard, swaraxt::IDs::midiInputTuning, 2);
+    setInt(keyboard, swaraxt::IDs::perfGlide, 0);
+    expect(keyboard.loadTuningBytes(bytes.data(), bytes.size()), "QUANTIZED MIDI loads 256-EDO");
+    keyboard.prepareToPlay(48000.0, 128);
+    juce::AudioBuffer<float> buffer(2, 128);
+
+    SwaraXtAudioProcessor cv;
+    expect(cv.loadTuningBytes(bytes.data(), bytes.size()), "QUANTIZED CV loads 256-EDO");
+    int midiMismatches = 0;
+    int cvMismatches = 0;
+    for (int note = 0; note < 128; ++note)
+    {
+        const auto expected = swaraxt::ScalePitch::toVoicePitchFromHz(quantizer_test::edo256Hz(note));
+        juce::MidiBuffer off;
+        off.addEvent(juce::MidiMessage::allNotesOff(1), 0);
+        keyboard.processBlock(buffer, off);
+        for (int block = 0; block < 4; ++block)
+        {
+            juce::MidiBuffer midi;
+            if (block == 0)
+                midi.addEvent(juce::MidiMessage::noteOn(1, note, static_cast<juce::uint8>(100)), 0);
+            keyboard.processBlock(buffer, midi);
+        }
+        const auto midiWord = keyboard.engineForTests().shruthiPart().voice().pitch_value();
+        armQuantized(cv, swaraxt::FreeCvPitch::fromMidiNote(note));
+        const auto cvWord = renderVoice(cv);
+        if (midiWord != expected)
+            ++midiMismatches;
+        if (cvWord != expected)
+            ++cvMismatches;
+        if (note == 108)
+            std::printf("production 256-EDO C8 expectedWord=%u midiWord=%u cvWord=%u\n",
+                        static_cast<unsigned>(expected), static_cast<unsigned>(midiWord),
+                        static_cast<unsigned>(cvWord));
+    }
+    std::printf("production 256-EDO MIDI 0..127: MIDI mismatches=%d CV mismatches=%d\n",
+                midiMismatches, cvMismatches);
+    expect(midiMismatches == 0, "production QUANTIZED MIDI voice targets cover the full playable band");
+    expect(cvMismatches == 0, "production QUANTIZED CV voice targets cover the full playable band");
+}
+
 void testQuantizedMidi()
 {
     SwaraXtAudioProcessor processor;
@@ -496,6 +548,7 @@ int main()
     testQuantizerFamilies();
     testCvPreservationAndRandom();
     testVoiceWord();
+    testDenseProductionPitchPaths();
     testQuantizedMidi();
     testStateAndLayout();
     testTuningPublicationConcurrency();

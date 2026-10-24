@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 
 namespace swaraxt {
 
@@ -68,6 +69,14 @@ class SequenceState {
     SequenceState()
     {
         store(defaultSnapshot(), false);
+    }
+
+    ~SequenceState()
+    {
+        auto hub = listenerHub_;
+        const juce::ScopedLock lock(hub->lock);
+        hub->alive.store(false, std::memory_order_release);
+        hub->listeners.clear();
     }
 
     static SequenceSnapshot defaultSnapshot() noexcept { return {}; }
@@ -333,7 +342,33 @@ class SequenceState {
         }
         endWrite();
         if (notify)
-            listeners_.call([](Listener& listener) { listener.sequenceStateChanged(); });
+            notifyListeners();
+    }
+
+    // Test writer. Holds the revision odd until release so an audio capture fails
+    // without the audio thread waiting on this thread.
+    void holdWriteForTest(std::atomic<bool>& entered, const std::atomic<bool>& release)
+    {
+        beginWrite();
+        entered.store(true, std::memory_order_release);
+        while (! release.load(std::memory_order_acquire))
+        {
+        }
+        endWrite();
+    }
+
+    struct NotifyStats
+    {
+        uint32_t asyncSchedules = 0;
+        uint32_t asyncDeliveries = 0;
+    };
+
+    NotifyStats notifyStatsForTests() const noexcept
+    {
+        return {
+            listenerHub_->asyncSchedules.load(std::memory_order_relaxed),
+            listenerHub_->asyncDeliveries.load(std::memory_order_relaxed)
+        };
     }
 
     void setLength(int length)
@@ -429,8 +464,20 @@ class SequenceState {
         store(pattern);
     }
 
-    void addListener(Listener* listener) { listeners_.add(listener); }
-    void removeListener(Listener* listener) { listeners_.remove(listener); }
+    void addListener(Listener* listener)
+    {
+        auto hub = listenerHub_;
+        const juce::ScopedLock lock(hub->lock);
+        if (hub->alive.load(std::memory_order_acquire))
+            hub->listeners.add(listener);
+    }
+
+    void removeListener(Listener* listener)
+    {
+        auto hub = listenerHub_;
+        const juce::ScopedLock lock(hub->lock);
+        hub->listeners.remove(listener);
+    }
 
     juce::ValueTree toValueTree() const
     {
@@ -521,6 +568,20 @@ class SequenceState {
     }
 
  private:
+    struct ListenerHub
+    {
+        juce::CriticalSection lock;
+        std::atomic<bool> alive { true };
+        // Coalesced cross-thread notify: pending means "dirty since last
+        // deliver start"; armed means a drain is scheduled or running.
+        std::atomic<bool> pending { false };
+        std::atomic<bool> armed { false };
+        // Test/observability only. Not read by production audio paths.
+        std::atomic<uint32_t> asyncSchedules { 0 };
+        std::atomic<uint32_t> asyncDeliveries { 0 };
+        juce::ListenerList<Listener> listeners;
+    };
+
     template <typename Atomic, typename Value>
     void updateAtomic(Atomic& target, Value value, bool notify = true)
     {
@@ -528,7 +589,77 @@ class SequenceState {
         target.store(value, std::memory_order_relaxed);
         endWrite();
         if (notify)
-            listeners_.call([](Listener& listener) { listener.sequenceStateChanged(); });
+            notifyListeners();
+    }
+
+    void notifyListeners()
+    {
+        // Hub is independently owned. Queued callbacks must never capture
+        // SequenceState* or any field storage that dies with this object.
+        auto hub = listenerHub_;
+        auto* manager = juce::MessageManager::getInstanceWithoutCreating();
+        if (manager == nullptr)
+        {
+            // Shutdown: drop the notification. Delivering on a worker would
+            // violate JUCE listener-thread rules and can race teardown.
+            return;
+        }
+
+        hub->pending.store(true, std::memory_order_release);
+        bool expected = false;
+        if (! hub->armed.compare_exchange_strong(
+                expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            // A drain is already armed. pending ensures it observes this update.
+            return;
+        }
+
+        if (! manager->isThisTheMessageThread())
+        {
+            hub->asyncSchedules.fetch_add(1, std::memory_order_relaxed);
+            if (! juce::MessageManager::callAsync(
+                    [hub] { SequenceState::drainListeners(hub); }))
+            {
+                hub->armed.store(false, std::memory_order_release);
+            }
+            return;
+        }
+        drainListeners(hub);
+    }
+
+    static void drainListeners(const std::shared_ptr<ListenerHub>& hub)
+    {
+        for (;;)
+        {
+            hub->pending.store(false, std::memory_order_release);
+            {
+                const juce::ScopedLock lock(hub->lock);
+                if (hub->alive.load(std::memory_order_acquire))
+                {
+                    // SeqPanel::sequenceStateChanged only posts AsyncUpdater work.
+                    // Holding the hub lock across the call serializes removeListener.
+                    hub->listeners.call([](Listener& listener)
+                    {
+                        listener.sequenceStateChanged();
+                    });
+                }
+            }
+            hub->asyncDeliveries.fetch_add(1, std::memory_order_relaxed);
+            hub->armed.store(false, std::memory_order_release);
+            if (! hub->pending.load(std::memory_order_acquire))
+                return;
+            // Update arrived during deliver. Re-arm on this thread if we win.
+            bool expected = false;
+            if (! hub->armed.compare_exchange_strong(
+                    expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+                return;
+        }
+    }
+
+    // Kept for tests that assert a single delivery step under the hub lock.
+    static void deliverListeners(const std::shared_ptr<ListenerHub>& hub)
+    {
+        drainListeners(hub);
     }
 
     void beginWrite() noexcept
@@ -555,7 +686,7 @@ class SequenceState {
     std::array<std::atomic<uint16_t>, SequenceSnapshot::kNumSteps> steps_ {};
     std::array<std::atomic<int32_t>, SequenceSnapshot::kNumSteps> freePitch_ {};
     std::array<std::atomic<int16_t>, SequenceSnapshot::kNumSteps> scaleDegree_ {};
-    juce::ListenerList<Listener> listeners_;
+    std::shared_ptr<ListenerHub> listenerHub_ { std::make_shared<ListenerHub>() };
 };
 
 }  // namespace swaraxt

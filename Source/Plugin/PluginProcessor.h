@@ -48,7 +48,11 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
         return swaraxt::kUserFactoryPresetStart
             + static_cast<int>(swaraxt::kUserFactoryPresetCount);
     }
-    int getCurrentProgram() override { return currentProgram_; }
+    int getCurrentProgram() override
+    {
+        const juce::ScopedLock lock(publicationLock_);
+        return currentProgram_;
+    }
     void setCurrentProgram(int index) override;
     const juce::String getProgramName(int index) override;
     void changeProgramName(int, const juce::String&) override {}
@@ -95,7 +99,11 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     bool loadPresetEntry(const PresetEntry& entry, juce::String& error);
     bool saveUserPreset(const juce::String& name, bool overwrite, juce::String& error);
     juce::String currentPresetName() const;
-    bool currentPresetIsUser() const noexcept { return currentUserPresetName_.isNotEmpty(); }
+    bool currentPresetIsUser() const
+    {
+        const juce::ScopedLock lock(publicationLock_);
+        return currentUserPresetName_.isNotEmpty();
+    }
     juce::File userPresetDirectory() const;
     void setUserPresetDirectoryForTests(const juce::File& directory);
     void setFilterQuality(swaraxt::FilterQuality quality) noexcept { engine_.setFilterQuality(quality); }
@@ -167,6 +175,10 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     // getStateInformation calls that re-enter from setValueNotifyingHost read
     // committedState_ instead of the half-applied tree. Not taken by processBlock.
     std::atomic<uint32_t> bulkPublicationEpoch_ { 0 };
+    // Covers preset metadata and direct state serialization. Recursive so a
+    // save that re-enters from a parameter listener can return the committed
+    // snapshot. Not taken by the audio callback.
+    juce::CriticalSection publicationLock_;
     juce::CriticalSection committedStateLock_;
     juce::MemoryBlock committedState_;
     std::atomic<bool> requestEngineReset_ { false };
@@ -176,7 +188,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     bool engineInitialized_ = false;
     // True after setStateInformation restores a host session; blocks setCurrentProgram
     // from reloading factory presets until prepareToPlay() completes initialization.
-    bool hostSessionStateRestored_ = false;
+    std::atomic<bool> hostSessionStateRestored_ { false };
     double lastValidHostBpm_ = 120.0;
     juce::String currentUserPresetName_;
     juce::File presetDirectoryOverride_;
