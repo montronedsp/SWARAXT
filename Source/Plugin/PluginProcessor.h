@@ -48,11 +48,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
         return swaraxt::kUserFactoryPresetStart
             + static_cast<int>(swaraxt::kUserFactoryPresetCount);
     }
-    int getCurrentProgram() override
-    {
-        const juce::ScopedLock lock(publicationLock_);
-        return currentProgram_;
-    }
+    int getCurrentProgram() override;
     void setCurrentProgram(int index) override;
     const juce::String getProgramName(int index) override;
     void changeProgramName(int, const juce::String&) override {}
@@ -99,11 +95,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     bool loadPresetEntry(const PresetEntry& entry, juce::String& error);
     bool saveUserPreset(const juce::String& name, bool overwrite, juce::String& error);
     juce::String currentPresetName() const;
-    bool currentPresetIsUser() const
-    {
-        const juce::ScopedLock lock(publicationLock_);
-        return currentUserPresetName_.isNotEmpty();
-    }
+    bool currentPresetIsUser() const;
     juce::File userPresetDirectory() const;
     void setUserPresetDirectoryForTests(const juce::File& directory);
     void setFilterQuality(swaraxt::FilterQuality quality) noexcept { engine_.setFilterQuality(quality); }
@@ -142,15 +134,49 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     static constexpr int kStateVersion = 3;
     static constexpr const char* kStateRoot = "SWARAXT_STATE";
 
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+    enum class StatePublicationPoint {
+        programPublicationLocked, restoreGateLocked, bulkEpochPublished, userPresetFileReady,
+        stateReadBeforeLock
+    };
+    using StatePublicationHook = void (*)(void*, StatePublicationPoint);
+    void setStatePublicationHook(StatePublicationHook hook, void* context) noexcept
+    {
+        statePublicationHook_ = hook;
+        statePublicationHookContext_ = context;
+    }
+#endif
+
  private:
-    void loadFactoryPreset(int index);
-    void restoreState(juce::ValueTree tree, bool fromPreset);
+    bool loadFactoryPreset(int index);
+    void applyFactoryPreset(int index);
+    bool restoreState(juce::ValueTree tree, bool fromPreset, const juce::String& presetName = {});
     void beginBulkPublication();
-    void endBulkPublication();
+    void endBulkPublication() noexcept;
     void writeStateInformation(juce::MemoryBlock& destData);
 
+    struct PresetMetadata {
+        int program = 0;
+        juce::String userName;
+    };
+    PresetMetadata presetMetadata() const;
+
+    // Non-audio writers acquire publication before the audio admission gate.
+    // Synchronous callbacks may read/save the committed generation, but cannot
+    // recursively start another writer transaction.
+    struct StateWriterScope {
+        explicit StateWriterScope(SwaraXtAudioProcessor& processor);
+        ~StateWriterScope();
+        explicit operator bool() const noexcept { return acquired_; }
+        StateWriterScope(const StateWriterScope&) = delete;
+        StateWriterScope& operator=(const StateWriterScope&) = delete;
+        SwaraXtAudioProcessor& processor_;
+        juce::ScopedLock publication_;
+        bool acquired_ = false;
+    };
+
     struct BulkPublicationScope {
-        explicit BulkPublicationScope(SwaraXtAudioProcessor& processor) noexcept
+        explicit BulkPublicationScope(SwaraXtAudioProcessor& processor)
             : processor_(processor)
         {
             processor_.beginBulkPublication();
@@ -171,9 +197,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     swaraxt::SwaraXtEngine engine_;
     int currentProgram_ = 0;
     std::atomic_flag stateUpdateGate_ = ATOMIC_FLAG_INIT;
-    // Odd while a factory/user/session transaction is mutating APVTS. Host
-    // getStateInformation calls that re-enter from setValueNotifyingHost read
-    // committedState_ instead of the half-applied tree. Not taken by processBlock.
+    // The immediate pre-transaction blob/metadata are installed before this
+    // becomes odd. Active-transaction readers never enter APVTS serialization.
     std::atomic<uint32_t> bulkPublicationEpoch_ { 0 };
     // Covers preset metadata and direct state serialization. Recursive so a
     // save that re-enters from a parameter listener can return the committed
@@ -181,6 +206,11 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     juce::CriticalSection publicationLock_;
     juce::CriticalSection committedStateLock_;
     juce::MemoryBlock committedState_;
+    PresetMetadata committedMetadata_;
+    bool stateWriterActive_ = false;       // protected by publicationLock_
+    // Advances for bulk/metadata changes and new save requests, not lock scopes
+    // or stale file completions, which must not invalidate a newer save ticket.
+    uint64_t stateWriterGeneration_ = 0;   // protected by publicationLock_
     std::atomic<bool> requestEngineReset_ { false };
     std::atomic<bool> sequenceLocked_ { false };
     std::atomic<unsigned> randomNoteRange_ { 36u | (12u << 8) };
@@ -192,6 +222,16 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     double lastValidHostBpm_ = 120.0;
     juce::String currentUserPresetName_;
     juce::File presetDirectoryOverride_;
+
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+    void statePublicationPoint(StatePublicationPoint point)
+    {
+        if (statePublicationHook_ != nullptr)
+            statePublicationHook_(statePublicationHookContext_, point);
+    }
+    StatePublicationHook statePublicationHook_ = nullptr;
+    void* statePublicationHookContext_ = nullptr;
+#endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SwaraXtAudioProcessor)
 };
