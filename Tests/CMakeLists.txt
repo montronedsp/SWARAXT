@@ -473,6 +473,14 @@ else()
 endif()
 add_test(NAME SwaraXTTuningTableTests COMMAND SwaraXTTuningTableTests)
 
+add_executable(SwaraXTQuantizerTests Tuning/QuantizerTestsMain.cpp
+    "${CMAKE_SOURCE_DIR}/Source/Tuning/TuningTable.cpp")
+target_include_directories(SwaraXTQuantizerTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings(SwaraXTQuantizerTests)
+swaraxt_enable_warnings_as_errors(SwaraXTQuantizerTests)
+add_test(NAME SwaraXTQuantizerTests COMMAND SwaraXTQuantizerTests
+    "${CMAKE_SOURCE_DIR}/Source/Tuning/builtin")
+
 swaraxt_add_plugin_console_test(SwaraXTSequencerTests Sequencer/SequencerTestsMain.cpp)
 target_compile_definitions(SwaraXTSequencerTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_add_plugin_console_test(SwaraXTSequencePackExactTests Sequencer/SequencePackExactTestsMain.cpp)

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace swaraxt::tuning {
 
@@ -37,6 +38,9 @@ struct PublishedTuning {
             || snapshot.referenceNote >= kMidiNotes
             || snapshot.midiDegree[snapshot.referenceNote] < 0)
             return false;
+        for (double cents : snapshot.degreeCents)
+            if (! std::isfinite(cents))
+                return false;
         formalPeriod = snapshot.formalPeriod;
         degreeCount = snapshot.degreeCount;
         referenceNote = snapshot.referenceNote;
@@ -105,10 +109,9 @@ struct PublishedTuning {
 
     // Precomputed playable scale pitches, sorted by log frequency.
     // Coverage is the oscillator's MIDI 0..127 band, plus one period beyond
-    // each end when the table can express it. At most kMaxCandidates entries;
-    // a pathological micro-period stops at that cap and documents the limit
-    // by leaving quantizerSaturated set. Duplicate frequencies keep the
-    // lower degree. Non-monotonic degree lists are sorted before search.
+    // each end when the table can express it. Complete canonical tables retain
+    // their original lookup. Truncated, deduplicated or irregular tables use
+    // the bounded periodic search instead of treating a partial cache as complete.
     static constexpr int kMaxCandidates = 2048;
     static constexpr double kPlayableMinHz = 8.175798915643707;   // MIDI 0
     static constexpr double kPlayableMaxHz = 12543.853951415975;  // MIDI 127
@@ -124,11 +127,15 @@ struct PublishedTuning {
     int16_t quantizerDegree[kMaxCandidates] {};
     uint16_t quantizerCount = 0;
     bool quantizerSaturated = false;
+    bool quantizerUsesPeriods = false;
+    bool quantizerCanonical = false;
 
     void buildQuantizer() noexcept
     {
         quantizerCount = 0;
         quantizerSaturated = false;
+        quantizerUsesPeriods = false;
+        quantizerCanonical = false;
         if (! valid)
             return;
         const int period = formalPeriod > 0 ? static_cast<int>(formalPeriod) : 1;
@@ -187,6 +194,17 @@ struct PublishedTuning {
             quantizerDegree[quantizerCount] = static_cast<int16_t>(raw[i].degree);
             ++quantizerCount;
         }
+        bool canonical = period == static_cast<int>(degreeCount) + 1;
+        double previous = 0.0;
+        for (uint16_t i = 0; i < degreeCount; ++i)
+        {
+            canonical = canonical && degreeCents[i] > previous && degreeCents[i] < periodCents;
+            previous = degreeCents[i];
+        }
+        quantizerCanonical = canonical;
+        quantizerUsesPeriods = ! canonical || quantizerSaturated || quantizerCount != rawCount
+            || quantizerCount == 0 || quantizerHz[0] > kPlayableMinHz
+            || quantizerHz[quantizerCount - 1] < kPlayableMaxHz;
     }
 
     // Nearest scale frequency in cents. An exact halfway source keeps the
@@ -195,7 +213,11 @@ struct PublishedTuning {
     QuantizedPitch quantizeHz(double sourceHz) const noexcept
     {
         QuantizedPitch result;
-        if (quantizerCount == 0 || ! (sourceHz > 0.0) || ! std::isfinite(sourceHz))
+        if (! valid || ! (sourceHz > 0.0) || ! std::isfinite(sourceHz))
+            return result;
+        if (quantizerUsesPeriods)
+            return quantizePeriodicHz(sourceHz);
+        if (quantizerCount == 0)
             return result;
         const double sourceLog = std::log(sourceHz);
         int lo = 0;
@@ -233,6 +255,97 @@ struct PublishedTuning {
         result.degree = chooseLower ? quantizerDegree[upper - 1] : quantizerDegree[upper];
         result.valid = result.hz > 0.0 && std::isfinite(result.hz);
         return result;
+    }
+
+private:
+    QuantizedPitch quantizePeriodicHz(double sourceHz) const noexcept
+    {
+        // Preserve the signed 16-bit degree domain of the expanded table.
+        // Each residue is an arithmetic progression in cents. Its two bracketing
+        // periods suffice, regardless of scale density or number of repetitions.
+        constexpr int firstDegree = std::numeric_limits<int16_t>::min();
+        constexpr int lastDegree = std::numeric_limits<int16_t>::max();
+        const int period = static_cast<int>(formalPeriod);
+        const double referenceCents = centsForDegree(midiDegree[referenceNote]);
+        const double sourceCents = 1200.0 * (std::log2(sourceHz) - std::log2(referenceHz));
+        struct Candidate {
+            double cents = 0.0;
+            int degree = 0;
+            bool valid = false;
+        } lower, upper;
+        const auto family = [&](int firstResidue, int lastResidue, double offset) noexcept {
+            // The numerators have fixed signs, so truncation gives ceil/floor.
+            const int first = (firstDegree - lastResidue) / period;
+            const int last = (lastDegree - firstResidue) / period;
+            const double below = std::floor((sourceCents + referenceCents - offset) / periodCents);
+            for (int side = 0; side < 2; ++side)
+            {
+                const int repeat = static_cast<int>(std::clamp(below + side,
+                    static_cast<double>(first), static_cast<double>(last)));
+                const int base = repeat * period;
+                const int degree = base + std::max(firstResidue, firstDegree - base);
+                const double cents = repeat * periodCents + offset - referenceCents;
+                if (! std::isfinite(cents))
+                    continue;
+                if (cents <= sourceCents && (! lower.valid || cents > lower.cents
+                    || (cents == lower.cents && degree < lower.degree)))
+                    lower = { cents, degree, true };
+                if (cents >= sourceCents && (! upper.valid || cents < upper.cents
+                    || (cents == upper.cents && degree < upper.degree)))
+                    upper = { cents, degree, true };
+            }
+        };
+        if (quantizerCanonical)
+        {
+            // Ordered degrees permit a search of all 65536 representable degrees
+            // in at most 17 comparisons, even when the cache cannot hold them.
+            int lo = firstDegree;
+            int hi = lastDegree + 1;
+            const double target = sourceCents + referenceCents;
+            while (lo < hi)
+            {
+                const int mid = lo + (hi - lo) / 2;
+                if (centsForDegree(mid) < target) lo = mid + 1;
+                else hi = mid;
+            }
+            if (lo > firstDegree)
+                lower = { centsForDegree(lo - 1) - referenceCents, lo - 1, true };
+            if (lo <= lastDegree)
+                upper = { centsForDegree(lo) - referenceCents, lo, true };
+        }
+        else
+        {
+            family(0, 0, 0.0);
+            const int interiors = std::min(static_cast<int>(degreeCount), period - 1);
+            for (int residue = 1; residue <= interiors; ++residue)
+                family(residue, residue, degreeCents[residue - 1]);
+            // centsForDegree maps any remaining residues to the tonic. Treat that
+            // whole duplicate range as one family, keeping its lowest valid degree.
+            if (interiors + 1 < period)
+                family(interiors + 1, period - 1, 0.0);
+        }
+        const auto pitch = [&](Candidate candidate) noexcept {
+            QuantizedPitch result;
+            if (candidate.valid)
+            {
+                result.hz = hzForDegree(candidate.degree);
+                result.degree = candidate.degree;
+                result.valid = result.hz > 0.0;
+            }
+            return result;
+        };
+        const auto low = pitch(lower);
+        const auto high = pitch(upper);
+        if (! low.valid) return high;
+        if (! high.valid) return low;
+        if (low.hz == high.hz) return low.degree <= high.degree ? low : high;
+        const double sourceLog = std::log2(sourceHz);
+        const double lowDistance = std::abs(std::log2(low.hz) - sourceLog);
+        const double highDistance = std::abs(std::log2(high.hz) - sourceLog);
+        // Equal log distances can differ by a few rounding bits after pow/log.
+        const double roundoff = 16 * std::numeric_limits<double>::epsilon()
+            * std::max(1.0, std::abs(sourceLog));
+        return lowDistance <= highDistance + roundoff ? low : high;
     }
 };
 
