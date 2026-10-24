@@ -159,6 +159,15 @@ class SwaraXtEngine {
     double hzForActiveDegree(int degree) const noexcept;
     tuning::PublishedTuning::QuantizedPitch quantizeActiveHz(double sourceHz) const noexcept;
     std::vector<uint8_t> tuningBytesForState() const;
+#if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
+    enum class TuningPoint { audioObserved, audioExiting, writerSelected, queryObserved, queryValidated };
+    using TuningHook = void (*)(void*, TuningPoint, int) noexcept;
+    void setTuningHook(TuningHook hook, void* context) noexcept { tuningHook_ = hook; tuningHookContext_ = context; }
+    const tuning::PublishedTuning& stableTuningForTests() const noexcept { return *stableTuning_; }
+    bool pinTuningForTests(const tuning::PublishedTuning*& tuning, int& claim) const noexcept { return pinPublished(tuning, claim); }
+    void unpinTuningForTests(int claim) const noexcept { unpinPublished(claim); }
+    int publishedTuningForTests() const noexcept { return publishedTuning_.load(std::memory_order_seq_cst); }
+#endif
 
     SwaraXtFilter& filter() noexcept { return filter_; }
     const SwaraXtFilter& filter() const noexcept { return filter_; }
@@ -346,8 +355,12 @@ class SwaraXtEngine {
     std::array<ScheduledMidi, kMaxScheduledMidi> scheduledMidi_ {};
     int scheduledMidiCount_ = 0;
     juce::MidiBuffer* midiOutput_ = nullptr;
+    // With an observation distinct from the old latch, one successor occupies
+    // all three protected indices. A fourth slot would break this bridge.
     static constexpr int kTuningSlots = 3;
     static constexpr int kSnapshotClaims = 2;
+    static_assert(std::atomic<int>::is_always_lock_free);
+    static_assert(std::atomic<bool>::is_always_lock_free);
     // Heap slots keep the processor off a large stack frame. Allocated once
     // in the constructor and never resized. Audio reads only an immutable slot.
     std::array<std::unique_ptr<tuning::PublishedTuning>, kTuningSlots> tuningSlots_;
@@ -357,8 +370,8 @@ class SwaraXtEngine {
     std::unique_ptr<tuning::PublishedTuning> stableTuning_;
     std::atomic<int> publishedTuning_ { 0 };
     std::atomic<int> tuningSlotThisBlock_ { 0 };
-    // Previous published index. Kept immutable until the next publication
-    // replaces it. The latched index is not cleared when the callback ends.
+    // Retains the preceding publication while active. An idle writer may fold
+    // it to the current publication; the latch persists across callbacks.
     std::atomic<int> retiredTuning_ { 0 };
     // Off-audio readers pin a slot here for the duration of one copy.
     // -1 means the claim is free. The writer will not recycle a pinned slot.
@@ -372,13 +385,21 @@ class SwaraXtEngine {
     // reads the immutable slots above and never acquires this mutex.
     mutable std::mutex tuningBytesMutex_;
     std::vector<uint8_t> tuningBytes_;
-    bool publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex);
+    bool publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex, bool initializing = false);
     void latchPublishedTuning() noexcept;
     int freeTuningSlot(int published, int latched, int retired) const noexcept;
     bool snapshotClaimed(int slot) const noexcept;
     bool pinPublished(const tuning::PublishedTuning*& tuning, int& claim) const noexcept;
     void unpinPublished(int claim) const noexcept;
     void installSequencerTuning(const int16_t* degrees, const int32_t* quantizedUnits) noexcept;
+#if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
+    void tuningPoint(TuningPoint point, int slot = -1) const noexcept
+    {
+        if (tuningHook_ != nullptr) tuningHook_(tuningHookContext_, point, slot);
+    }
+    TuningHook tuningHook_ = nullptr;
+    void* tuningHookContext_ = nullptr;
+#endif
     shruthi::Storage storage_;
     static_assert(std::atomic<unsigned>::is_always_lock_free);
     std::atomic<unsigned> sequencePlayback_ { 0 };
