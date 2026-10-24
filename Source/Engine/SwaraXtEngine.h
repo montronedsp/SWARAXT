@@ -134,6 +134,9 @@ class SwaraXtEngine {
     void bindSequenceState(SequenceState& state) noexcept { sequenceState_ = &state; }
     void applyParameters();
     uint8_t appliedSequencerPitchModeForTests() const noexcept { return appliedPitchMode_; }
+#if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
+    const SequenceSnapshot& appliedSequenceForTests() const noexcept { return appliedSequence_; }
+#endif
     double boardTailSeconds() const noexcept { return boardTailSeconds_.load(std::memory_order_relaxed); }
     const board::BoardControl& boardControlsForTests() const noexcept { return activeBoard_; }
     const board::BoardProcessor& boardProcessorForTests() const noexcept { return boardProcessor_; }
@@ -383,6 +386,7 @@ class SwaraXtEngine {
     PatchBridge patchBridge_;
     SequenceState* sequenceState_ = nullptr;
     uint32_t appliedSequenceRevision_ = std::numeric_limits<uint32_t>::max();
+    SequenceSnapshot appliedSequence_;
     // Last pitch mode taken from a capture that succeeded. Audio routing uses
     // this when a later capture finds a writer in progress.
     uint8_t appliedPitchMode_ = 0;
