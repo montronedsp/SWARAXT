@@ -56,10 +56,33 @@ struct SequenceSnapshot {
     }
 };
 
-// Message-thread edits are published as atomic snapshots. The audio thread
-// either sees one complete revision or keeps its previous sequence for a block.
+// Control-thread writers serialize through the payload gate. Audio capture
+// makes one admission attempt, retaining its previous sequence on contention.
 class SequenceState {
  public:
+    static_assert(std::atomic<uint8_t>::is_always_lock_free);
+    static_assert(std::atomic<uint16_t>::is_always_lock_free);
+    static_assert(std::atomic<int16_t>::is_always_lock_free);
+    static_assert(std::atomic<int32_t>::is_always_lock_free);
+    static_assert(std::atomic<uint32_t>::is_always_lock_free);
+
+#if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
+    enum class SnapshotPoint { readerAdmitted, writerMidpoint, writerContended };
+    using SnapshotHook = void (*)(void*, SnapshotPoint) noexcept;
+    void setSnapshotHook(SnapshotHook hook, void* context) noexcept
+    {
+        snapshotHook_ = hook;
+        snapshotHookContext_ = context;
+    }
+    void setRevisionForTests(uint32_t evenRevision) noexcept
+    {
+        jassert((evenRevision & 1u) == 0u);
+        beginWrite();
+        revision_.store(evenRevision, std::memory_order_relaxed);
+        writer_.clear(std::memory_order_release);
+    }
+#endif
+
     class Listener {
      public:
         virtual ~Listener() = default;
@@ -274,14 +297,21 @@ class SequenceState {
 
     bool capture(SequenceSnapshot& snapshot, uint32_t& revision) const noexcept
     {
-        const uint32_t before = revision_.load(std::memory_order_acquire);
-        if ((before & 1u) != 0u)
+        // One non-waiting admission attempt. Owning the gate prevents every
+        // revisioned writer from overwriting payload during this fixed copy;
+        // correctness therefore does not depend on revision values being unique.
+        if (writer_.test_and_set(std::memory_order_acquire))
             return false;
+#if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
+        snapshotPoint(SnapshotPoint::readerAdmitted);
+#endif
 
         snapshot.length = length_.load(std::memory_order_relaxed);
         snapshot.rotation = rotation_.load(std::memory_order_relaxed);
         snapshot.grooveTemplate = grooveTemplate_.load(std::memory_order_relaxed);
-        snapshot.arpPattern = arpPattern_.load(std::memory_order_relaxed);
+        // Host automation publishes this independent scalar without the gate.
+        // The other fields remain stable throughout its single atomic load.
+        snapshot.arpPattern = arpPattern_.load(std::memory_order_acquire);
         snapshot.pitchMode = pitchMode_.load(std::memory_order_relaxed);
         snapshot.freePitchReady = freePitchReady_.load(std::memory_order_relaxed);
         snapshot.scaleReady = scaleReady_.load(std::memory_order_relaxed);
@@ -292,11 +322,8 @@ class SequenceState {
             snapshot.scaleDegree[i] = scaleDegree_[i].load(std::memory_order_relaxed);
         }
 
-        const uint32_t after = revision_.load(std::memory_order_acquire);
-        if (before != after || (after & 1u) != 0u)
-            return false;
-
-        revision = after;
+        revision = revision_.load(std::memory_order_relaxed);
+        writer_.clear(std::memory_order_release);
         return true;
     }
 
@@ -339,6 +366,10 @@ class SequenceState {
             const int degree = juce::jlimit(-kScaleDegreeLimit, kScaleDegreeLimit,
                                             static_cast<int>(snapshot.scaleDegree[i]));
             scaleDegree_[i].store(static_cast<int16_t>(degree), std::memory_order_relaxed);
+#if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
+            if (i == steps_.size() / 2 - 1)
+                snapshotPoint(SnapshotPoint::writerMidpoint);
+#endif
         }
         endWrite();
         if (notify)
@@ -664,7 +695,12 @@ class SequenceState {
 
     void beginWrite() noexcept
     {
-        while (writer_.test_and_set(std::memory_order_acquire)) {}
+        while (writer_.test_and_set(std::memory_order_acquire))
+        {
+#if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
+            snapshotPoint(SnapshotPoint::writerContended);
+#endif
+        }
         revision_.fetch_add(1u, std::memory_order_acq_rel);
     }
 
@@ -674,7 +710,7 @@ class SequenceState {
         writer_.clear(std::memory_order_release);
     }
 
-    std::atomic_flag writer_ = ATOMIC_FLAG_INIT;
+    mutable std::atomic_flag writer_ = ATOMIC_FLAG_INIT;
     std::atomic<uint32_t> revision_ { 0 };
     std::atomic<uint8_t> length_ { 16 };
     std::atomic<uint8_t> rotation_ { 0 };
@@ -686,6 +722,14 @@ class SequenceState {
     std::array<std::atomic<uint16_t>, SequenceSnapshot::kNumSteps> steps_ {};
     std::array<std::atomic<int32_t>, SequenceSnapshot::kNumSteps> freePitch_ {};
     std::array<std::atomic<int16_t>, SequenceSnapshot::kNumSteps> scaleDegree_ {};
+#if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
+    void snapshotPoint(SnapshotPoint point) const noexcept
+    {
+        if (snapshotHook_ != nullptr) snapshotHook_(snapshotHookContext_, point);
+    }
+    SnapshotHook snapshotHook_ = nullptr;
+    void* snapshotHookContext_ = nullptr;
+#endif
     std::shared_ptr<ListenerHub> listenerHub_ { std::make_shared<ListenerHub>() };
 };
 

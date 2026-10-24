@@ -22,6 +22,15 @@ namespace {
 
 constexpr double kLfoBeatsPerCycle[] { 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 };
 
+bool sameSequencePayload(const SequenceSnapshot& a, const SequenceSnapshot& b) noexcept
+{
+    // ARP pattern is an independent live control, applied separately below.
+    return a.length == b.length && a.rotation == b.rotation
+        && a.grooveTemplate == b.grooveTemplate && a.pitchMode == b.pitchMode
+        && a.freePitchReady == b.freePitchReady && a.scaleReady == b.scaleReady
+        && a.steps == b.steps && a.freePitch == b.freePitch && a.scaleDegree == b.scaleDegree;
+}
+
 constexpr float kMinimumPanelCutoffHz = 10.0f;
 constexpr float kMaximumPanelCutoffHz = 20000.0f;
 
@@ -161,7 +170,9 @@ void SwaraXtEngine::applyParameters()
         uint32_t revision = 0;
         if (sequenceState_->capture(sequence, revision))
         {
-            if (revision != appliedSequenceRevision_)
+            // A revision can repeat after rollover. Equal tags alone must not
+            // suppress changed notes/CV/degrees while accepting a new mode.
+            if (revision != appliedSequenceRevision_ || ! sameSequencePayload(sequence, appliedSequence_))
             {
                 auto* settings = part_.mutable_sequencer_settings();
                 settings->pattern_size = static_cast<uint8_t>(juce::jlimit(1, 16,
@@ -182,10 +193,9 @@ void SwaraXtEngine::applyParameters()
                 installSequencerTuning(sequence.scaleDegree.data(),
                                        quantizedRouteActive_ ? sequence.freePitch.data() : nullptr);
                 appliedSequenceRevision_ = revision;
+                appliedSequence_ = sequence;
+                appliedPitchMode_ = sequence.pitchMode;
             }
-            // The captured pitch mode belongs to the same revision as the steps.
-            // A failed capture keeps the last applied mode instead of retrying.
-            appliedPitchMode_ = sequence.pitchMode;
         }
         part_.mutable_sequencer_settings()->arp_pattern = sequenceState_->arpPattern();
     }
