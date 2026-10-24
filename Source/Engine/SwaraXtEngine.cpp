@@ -60,7 +60,9 @@ SwaraXtEngine::SwaraXtEngine()
     patchBridge_.bind(part_);
     identityExternal_.fill(255);
     installSequencerMidiTap();
-    loadBuiltinTuning(0);
+    // Only construction may fill the initial slot and the stable audio copy
+    // off-thread. Later imports always use normal retirement and slot selection.
+    publishTuningBytes(tuning::kBuiltin12Edo, tuning::kBuiltin12EdoSize, 0, true);
 }
 
 void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
@@ -995,9 +997,12 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         std::atomic<bool>& flag;
         explicit TuningReadScope(std::atomic<bool>& flagIn) noexcept : flag(flagIn)
         {
-            flag.store(true, std::memory_order_release);
+            // Entry participates in the same total order as publication and
+            // retirement. A release-only entry permits reclamation to miss it
+            // across successive publications before the audio latch is stored.
+            flag.store(true, std::memory_order_seq_cst);
         }
-        ~TuningReadScope() { flag.store(false, std::memory_order_release); }
+        ~TuningReadScope() { flag.store(false, std::memory_order_seq_cst); }
     } tuningRead(tuningAudioActive_);
 
     latchPublishedTuning();
@@ -1151,6 +1156,9 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     const auto playbackStep = part_.playback_step();
     sequencePlayback_.store(playbackStep < 16 ? static_cast<unsigned>(playbackStep) + 1u : 0u,
                             std::memory_order_relaxed);
+#if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
+    tuningPoint(TuningPoint::audioExiting);
+#endif
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     const auto processEnd = ProfileClock::now();
     cpuProfile_.processNanoseconds += static_cast<uint64_t>(
@@ -1368,10 +1376,13 @@ void SwaraXtEngine::flushSequencerMidi(juce::MidiBuffer& output, int numSamples)
 
 void SwaraXtEngine::latchPublishedTuning() noexcept
 {
-    // Publish the latch index before reading ordinary slot fields. The writer
-    // rechecks this latch before assignment, and the audio-active flag is
-    // already set by the process scope that calls this function.
+    // SC active-entry precedes this observation. Until the latch catches up,
+    // three slots and the retired predecessor prevent two successors from
+    // recycling an observed index. The stored latch then protects the copy.
     int slot = publishedTuning_.load(std::memory_order_seq_cst);
+#if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
+    tuningPoint(TuningPoint::audioObserved, slot);
+#endif
     if (slot < 0 || slot >= kTuningSlots || tuningSlots_[static_cast<size_t>(slot)] == nullptr)
         slot = 0;
     tuningSlotThisBlock_.store(slot, std::memory_order_seq_cst);
@@ -1419,6 +1430,9 @@ bool SwaraXtEngine::pinPublished(const tuning::PublishedTuning*& tuning, int& cl
     for (int attempt = 0; attempt < 4; ++attempt)
     {
         int slot = publishedTuning_.load(std::memory_order_seq_cst);
+#if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
+        tuningPoint(TuningPoint::queryObserved, slot);
+#endif
         if (slot < 0 || slot >= kTuningSlots || tuningSlots_[static_cast<size_t>(slot)] == nullptr)
             slot = 0;
         if (tuningSlots_[static_cast<size_t>(slot)] == nullptr)
@@ -1448,6 +1462,9 @@ bool SwaraXtEngine::pinPublished(const tuning::PublishedTuning*& tuning, int& cl
         }
         tuning = candidate;
         claim = index;
+#if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
+        tuningPoint(TuningPoint::queryValidated, slot);
+#endif
         return true;
     }
     return false;
@@ -1478,7 +1495,7 @@ bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
     return publishTuningBytes(data, size, -1);
 }
 
-bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex)
+bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex, bool initializing)
 {
     if (data == nullptr || size == 0)
         return false;
@@ -1490,25 +1507,29 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
     if (! decoded.fillFrom(snapshot))
         return false;
 
-    // Single-writer gate: GUI / preset / import share the message thread, but
-    // nested callbacks must not select the same free slot concurrently.
+    // Imports and state restoration are non-audio operations. Serialize their
+    // slot selection, including calls from different control threads.
     if (tuningWriteBusy_.exchange(true, std::memory_order_acq_rel))
         return false;
+    struct WriterRelease {
+        std::atomic<bool>& flag;
+        ~WriterRelease() { flag.store(false, std::memory_order_release); }
+    } writerRelease { tuningWriteBusy_ };
+    // Allocate serialized storage before changing the published generation.
+    // The guarded swap below cannot allocate or strand writer admission.
+    std::vector<uint8_t> nextBytes(data, data + size);
 
-    if (tuningSlots_[0] == nullptr || ! tuningSlots_[0]->valid)
+    if (initializing)
     {
+        const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
         *tuningSlots_[0] = decoded;
         publishedTuning_.store(0, std::memory_order_seq_cst);
         retiredTuning_.store(0, std::memory_order_seq_cst);
         tuningSlotThisBlock_.store(0, std::memory_order_seq_cst);
         if (stableTuning_ != nullptr)
             *stableTuning_ = *tuningSlots_[0];
-        {
-            const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
-            tuningBytes_.assign(data, data + size);
-        }
+        tuningBytes_.swap(nextBytes);
         builtinTuningIndex_.store(builtinIndex, std::memory_order_relaxed);
-        tuningWriteBusy_.store(false, std::memory_order_release);
         return true;
     }
 
@@ -1518,9 +1539,8 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
     {
         if (! tuningAudioActive_.load(std::memory_order_seq_cst))
         {
-            // The callback is not inside its read scope. Keep the latched slot,
-            // which the sequencer may still reference, and only fold the retired
-            // index so an idle engine still has a free slot.
+            // Fold only retirement. The persistent latch and SC callback entry
+            // bridge the next callback's observation-to-latch interval.
             const int current = publishedTuning_.load(std::memory_order_seq_cst);
             retiredTuning_.store(current, std::memory_order_seq_cst);
         }
@@ -1549,10 +1569,7 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
     }
 
     if (slot < 0 || slot >= kTuningSlots)
-    {
-        tuningWriteBusy_.store(false, std::memory_order_release);
         return false;
-    }
 
     // Recheck after the gap between selection and the write. The slot is still
     // unpublished, unlatched, unretired and unpinned, so no reader may use it.
@@ -1560,19 +1577,16 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
         || slot == tuningSlotThisBlock_.load(std::memory_order_seq_cst)
         || slot == retiredTuning_.load(std::memory_order_seq_cst)
         || snapshotClaimed(slot))
-    {
-        tuningWriteBusy_.store(false, std::memory_order_release);
         return false;
-    }
+#if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
+    tuningPoint(TuningPoint::writerSelected, slot);
+#endif
+    const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
     *tuningSlots_[static_cast<size_t>(slot)] = decoded;
     retiredTuning_.store(published, std::memory_order_seq_cst);
     publishedTuning_.store(slot, std::memory_order_seq_cst);
-    {
-        const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
-        tuningBytes_.assign(data, data + size);
-    }
+    tuningBytes_.swap(nextBytes);
     builtinTuningIndex_.store(builtinIndex, std::memory_order_relaxed);
-    tuningWriteBusy_.store(false, std::memory_order_release);
     return true;
 }
 
