@@ -10,6 +10,9 @@ namespace swaraxt {
 // idealized OTA/op-amp model, not calibration against a physical instrument.
 class Ir3109BoardCore {
 public:
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+    inline static bool identityForLatencyTests = false;
+#endif
 #if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS)
     friend struct Ir3109SolverAccess;
 #if SWARAXT_IR3109_SOLVER_TRACE
@@ -84,6 +87,9 @@ public:
         return 1760 * std::exp2(-(chipCv + .0352) / .0908 * 5);
     }
     float process(float input, int iterations) noexcept {
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+        if (identityForLatencyTests) return input;
+#endif
         cutoffCv_ += cutoffAlpha_ * (cutoffTarget_ - cutoffCv_);
         resonanceCv_ += resonanceAlpha_ * (resonanceTarget_ - resonanceCv_);
         vcaCv_ += vcaAlpha_ * (vcaTarget_ - vcaCv_);
