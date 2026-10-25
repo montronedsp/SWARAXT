@@ -10,6 +10,18 @@ namespace swaraxt {
 // idealized OTA/op-amp model, not calibration against a physical instrument.
 class Ir3109BoardCore {
 public:
+#if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS)
+    friend struct Ir3109SolverAccess;
+#if SWARAXT_IR3109_SOLVER_TRACE
+    struct SolverTrace {
+        double mixer = 0, compensation = 0, bias = 0, initial = 0, estimate = 0;
+        double lastResidual = 0, filtered = 0, rawOutput = 0;
+        int used = 0;
+        bool stopped = false;
+    };
+    const SolverTrace& solverTraceForTests() const noexcept { return solverTrace_; }
+#endif
+#endif
     static constexpr double kInputTau = 100000.0 * 4.7e-6; // C10/R7
     static constexpr double kInputPoleTau = 100000.0 * 68e-12; // C6/R4
     static constexpr double kOutputPoleTau = 68000.0 * 100e-12; // C7/R6
@@ -91,15 +103,27 @@ public:
             return 68000 * biasCurrent * std::tanh(differential / (2 * kOtaThermalVoltageVolts));
         };
         double estimate = poles_[3].output();
+#if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS) && SWARAXT_IR3109_SOLVER_TRACE
+        solverTrace_ = {mixer, compensation, biasCurrent, estimate, estimate, 0, 0, 0, 0, false};
+#endif
         for (int iteration = 0; iteration < iterations && biasCurrent > 0; ++iteration) {
             double predicted = .68 * mixer + feedback(estimate); // R35/R33
             for (auto& pole : poles_) predicted = pole.preview(predicted, pole.snapshot()).output;
             const double residual = predicted - estimate;
             estimate += .72 * residual;
+#if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS) && SWARAXT_IR3109_SOLVER_TRACE
+            solverTrace_.used = iteration + 1;
+            solverTrace_.lastResidual = residual;
+            solverTrace_.stopped = std::abs(residual) < 1.e-9;
+#endif
             if (std::abs(residual) < 1.e-9) break;
         }
         double filtered = .68 * mixer + feedback(estimate);
         for (auto& pole : poles_) filtered = pole.process(filtered);
+#if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS) && SWARAXT_IR3109_SOLVER_TRACE
+        solverTrace_.estimate = estimate;
+        solverTrace_.filtered = filtered;
+#endif
         const double coupled = sharedAc_.high(filtered);
         // LM13700 OTA2 followed by R22 I/V; its two inversions cancel.
         // Offset trimmer R23 is assumed calibrated for zero bias at zero CV.
@@ -107,10 +131,16 @@ public:
             * std::tanh(coupled * kVcaDivider / (2 * kOtaThermalVoltageVolts));
         const double iv = vcaIvPole_.low(vca);
         const double output = outputPole_.low(outputAc_.high(iv)) * (68000.0 / 33000);
+#if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS) && SWARAXT_IR3109_SOLVER_TRACE
+        solverTrace_.rawOutput = output;
+#endif
         lastOutput_ = clampFinite(output / kSourceVoltsPerUnit, -8.0, 8.0);
         return static_cast<float>(lastOutput_);
     }
 private:
+#if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS) && SWARAXT_IR3109_SOLVER_TRACE
+    SolverTrace solverTrace_;
+#endif
     class Pole {
     public:
         void prepare(double rate, double tau) noexcept { gain_ = 1 / (1 + 2 * rate * tau); reset(); }
