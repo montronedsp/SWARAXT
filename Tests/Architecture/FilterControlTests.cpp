@@ -199,6 +199,63 @@ void hostRatePolicy() {
     check(std::any_of(recovered.begin(), recovered.end(), [](float x) { return std::abs(x) > .001f; }),
         "supported prepare recovers after a rejected rate");
 }
+void productionQualityAtHostRates() {
+    const auto verify = [](const SwaraXtAudioProcessor& processor, FilterQuality quality) {
+        const auto& filter = processor.engineForTests().filter();
+        check(filter.quality() == quality, "requested production quality is applied");
+        check(filter.oversamplingFactor() == (quality == FilterQuality::eco ? 2 : 4),
+              "shipping filter oversampling follows native rate, independently of host rate");
+        check(filter.solverIterationLimit() == (quality == FilterQuality::high ? 8 : 4),
+              "shipping solver budget follows selected quality at every supported host rate");
+    };
+    for (double rate : {8000., 44100., 48000., 96000., 192000., 384000.})
+    for (auto quality : {FilterQuality::normal, FilterQuality::high, FilterQuality::eco}) {
+        auto processor = std::make_unique<SwaraXtAudioProcessor>();
+        processor->setFilterQuality(quality);
+        processor->prepareToPlay(rate, 128);
+        render(*processor, 60, 4);
+        verify(*processor, quality);
+    }
+    auto processor = std::make_unique<SwaraXtAudioProcessor>();
+    verify(*processor, FilterQuality::normal);
+    const auto unprepared = render(*processor, 60, 1);
+    check(std::all_of(unprepared.begin(), unprepared.end(), [](float x) { return x == 0; }),
+          "default initialization cannot render the unprepared filter");
+    const auto settle = [&](double rate, FilterQuality quality) {
+        juce::AudioBuffer<float> audio(2, 128); juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(127)), 0);
+        // Eight ms covers both two-ms native-rate quality fades, also at 384 kHz.
+        const int blocks = static_cast<int>(std::ceil(.008 * rate / 128)) + 1;
+        for (int i = 0; i < blocks; ++i) {
+            processor->processBlock(audio, midi); midi.clear();
+            check(processor->engineForTests().filter().oversamplingFactor() >= 2,
+                  "no callback boundary enters the unsupported native-rate 1x configuration");
+            check(std::all_of(audio.getReadPointer(0), audio.getReadPointer(0) + 128,
+                              [](float x) { return std::isfinite(x); }), "quality transitions remain finite");
+        }
+        verify(*processor, quality);
+    };
+    for (double rate : {384000., 48001., 96001., 8000., 123456.}) {
+        processor->prepareToPlay(rate, 128);
+        for (auto quality : {FilterQuality::eco, FilterQuality::high, FilterQuality::normal}) {
+            processor->setFilterQuality(quality); settle(rate, quality);
+            juce::MemoryBlock state; processor->getStateInformation(state);
+            const auto other = quality == FilterQuality::eco ? FilterQuality::high : FilterQuality::eco;
+            processor->setFilterQuality(other); settle(rate, other);
+            processor->setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+            settle(rate, quality);
+            processor->releaseResources(); processor->prepareToPlay(rate, 128);
+            verify(*processor, quality);
+        }
+    }
+    for (double rate : {0., -1., 7999., 384001., std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+        processor->setFilterQuality(FilterQuality::eco); processor->prepareToPlay(rate, 128);
+        const auto rejected = render(*processor, 60, 1);
+        check(std::all_of(rejected.begin(), rejected.end(), [](float x) { return x == 0; }),
+              "invalid preparation never runs an unprepared or host-rate filter");
+        processor->prepareToPlay(48000, 128); settle(48000, FilterQuality::eco);
+    }
+}
 }
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -208,5 +265,6 @@ int main() {
     std::puts("tracking"); tracking(); std::puts("internal notes"); internalNotes();
     std::puts("latency/buffers"); latencyAndBuffers();
     std::puts("host rate policy"); hostRatePolicy();
+    std::puts("production solver quality/rates"); productionQualityAtHostRates();
     std::printf("Architecture controls: %d failures\n", failures); return failures ? 1 : 0;
 }
