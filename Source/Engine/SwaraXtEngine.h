@@ -85,6 +85,9 @@ class SwaraXtEngine {
         float postVca[kAudioBlockSize] {};
         float vcaTarget[kAudioBlockSize] {};
         float vcaGain[kAudioBlockSize] {}; // reconstructed CV at final oversampled substep, before decimation
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+        float dualUndelayed[kAudioBlockSize] {}; // complete Dual output/VCA before compensation
+#endif
         int samples = 0;
         uint32_t nativeBlockIndex = 0;
         uint8_t lfo1 = 0;
@@ -416,6 +419,30 @@ class SwaraXtEngine {
     DcBlocker dcBlocker_;
     SwaraXtFilter filter_;
     ShruthiSvfDual experimentalSvf_;
+    // Audio-owned, after the complete Dual VCA and before shared effects/SRC.
+    // Read before overwriting: input sample zero emerges at sample 256.
+    struct DualOutputDelay {
+        static constexpr uint32_t kSamples = 256;
+        static_assert(kSamples == FilterRateConverter::kLatency);
+        std::array<float, kSamples> samples {};
+        uint32_t cursor = 0;
+        uint32_t pending = 0; // Zero-input ticks until the last nonzero is delivered.
+        void reset() noexcept { samples.fill(0.0f); cursor = pending = 0; }
+        float process(float input) noexcept
+        {
+            if (! std::isfinite(input)) input = 0.0f;
+            const float output = samples[cursor];
+            samples[cursor] = input;
+            cursor = (cursor + 1u) % kSamples;
+            if (input != 0.0f) pending = kSamples;
+            else if (pending != 0) --pending;
+            return output;
+        }
+        bool tailActive() const noexcept { return pending != 0; }
+    } dualOutputDelay_;
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+    friend struct DualSvfLatencyTestAccess;
+#endif
     ExperimentalSvfControl experimentalSvfControl_;
     ExperimentalSvfSelection appliedExperimentalSvfSelection_;
     bool experimentalSvfEnabled_ = false;

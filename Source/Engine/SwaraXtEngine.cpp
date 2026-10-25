@@ -79,6 +79,7 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
     // Filter always runs at the Shruthi internal rate (pre-SRC).
     filter_.prepare(kInternalSampleRate);
     experimentalSvf_.prepare(kInternalSampleRate);
+    dualOutputDelay_.reset();
     applyExperimentalSvfSelection();
     qualityRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.002 * kInternalSampleRate)));
     masterRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.004 * kInternalSampleRate)));
@@ -116,6 +117,7 @@ void SwaraXtEngine::reset()
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
     experimentalSvf_.reset();
+    dualOutputDelay_.reset();
     applyExperimentalSvfSelection();
     snapFilterQuality();
     dcBlocker_.reset();
@@ -137,6 +139,7 @@ void SwaraXtEngine::reset()
 
 void SwaraXtEngine::resetResampler() noexcept
 {
+    dualOutputDelay_.reset();
     resetBoardState();
     audioRing_.Init();
     internalQueue_.reset();
@@ -529,8 +532,13 @@ void SwaraXtEngine::applyPendingFilterQuality() noexcept
 
 void SwaraXtEngine::applyExperimentalSvfSelection() noexcept
 {
+    const bool wasEnabled = experimentalSvfEnabled_;
     appliedExperimentalSvfSelection_ = experimentalSvfControl_.applyOnAudioThread(
         experimentalSvf_, experimentalSvfEnabled_);
+    // A bank boundary discards the old Dual session. Routing/tap changes keep
+    // queued output; their transition policy is independent of fixed latency.
+    if (wasEnabled != experimentalSvfEnabled_)
+        dualOutputDelay_.reset();
 }
 
 float SwaraXtEngine::nextQualityGain() noexcept
@@ -701,7 +709,7 @@ void SwaraXtEngine::collectMidiEvents(juce::MidiBufferIterator& cursor,
 float SwaraXtEngine::processSelectedFilterSample(float mixer, float vcaTarget) noexcept
 {
     if (experimentalSvfEnabled_)
-        return experimentalSvf_.process(mixer, vcaTarget);
+        return dualOutputDelay_.process(experimentalSvf_.process(mixer, vcaTarget));
     return filter_.processInstrumentSample(mixer, vcaTarget);
 }
 
@@ -715,7 +723,7 @@ float SwaraXtEngine::selectedFilterVca() const noexcept
 bool SwaraXtEngine::selectedFilterTailActive() const noexcept
 {
     if (experimentalSvfEnabled_)
-        return experimentalSvf_.tailActive();
+        return experimentalSvf_.tailActive() || dualOutputDelay_.tailActive();
     return filter_.instrumentTailActive();
 }
 
@@ -801,6 +809,9 @@ void SwaraXtEngine::renderInternalBlock()
             capture.postVca[i] = out;
             capture.vcaTarget[i] = vcaTarget;
             capture.vcaGain[i] = vcaGain;
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+            capture.dualUndelayed[i] = dualOutputDelay_.samples[(dualOutputDelay_.cursor + 255u) % 256u];
+#endif
 #endif
             internalQueue_.push(std::isfinite(out) ? out : 0.0f);
         }
@@ -820,6 +831,9 @@ void SwaraXtEngine::renderInternalBlock()
             processed[index] = std::isfinite(filtered) ? filtered : 0.0f;
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
             capture.vcaGain[i] = vcaGain;
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+            capture.dualUndelayed[i] = dualOutputDelay_.samples[(dualOutputDelay_.cursor + 255u) % 256u];
+#endif
 #endif
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
             capture.postShruthiMixer[i] = temp[i];
@@ -922,6 +936,7 @@ void SwaraXtEngine::updateDormantWakeState()
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
     experimentalSvf_.reset();
+    dualOutputDelay_.reset();
     applyExperimentalSvfSelection();
     snapFilterQuality();
     dcBlocker_.reset();
@@ -943,6 +958,7 @@ void SwaraXtEngine::enterDormant() noexcept
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     filter_.reset();
     experimentalSvf_.reset();
+    dualOutputDelay_.reset();
     applyExperimentalSvfSelection();
     snapFilterQuality();
     dcBlocker_.reset();
