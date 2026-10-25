@@ -570,6 +570,11 @@ if(MSVC)
 endif()
 
 swaraxt_add_plugin_console_test(SwaraXTExperimentalSvfEngineTests Filter/ExperimentalSvfEngineTestsMain.cpp)
+swaraxt_add_plugin_console_test(SwaraXTDualSvfIntegrationAudit Filter/DualSvfIntegrationAuditMain.cpp)
+target_compile_definitions(SwaraXTDualSvfIntegrationAudit PRIVATE
+    SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS=1
+    SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
+swaraxt_enable_warnings_as_errors(SwaraXTDualSvfIntegrationAudit)
 
 add_executable(SwaraXTHostSrcTests Architecture/HostSrcTests.cpp)
 target_include_directories(SwaraXTHostSrcTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")

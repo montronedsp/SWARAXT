@@ -453,6 +453,9 @@ enum class ShruthiSvfDualRouting : std::uint8_t
 class ShruthiSvfDual
 {
  public:
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+    inline static bool identityForLatencyTests = false;
+#endif
     void prepare(double nativeRate) noexcept
     {
         s1_.prepare(nativeRate);
@@ -562,6 +565,9 @@ class ShruthiSvfDual
 
     float process(float mixerUnit, float vcaTarget) noexcept
     {
+#if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
+        if (identityForLatencyTests) return mixerUnit;
+#endif
         if (routing_ == ShruthiSvfDualRouting::section1)
             return s1_.process(mixerUnit, vcaTarget);
 
