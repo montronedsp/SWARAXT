@@ -537,6 +537,18 @@ target_include_directories(SwaraXTIR3109BoardTests PRIVATE "${CMAKE_SOURCE_DIR}/
 swaraxt_enable_warnings(SwaraXTIR3109BoardTests)
 add_test(NAME SwaraXTIR3109BoardTests COMMAND SwaraXTIR3109BoardTests)
 
+foreach(solver_target IN ITEMS SwaraXTIR3109SolverTests SwaraXTIR3109SolverBench)
+    add_executable(${solver_target} Filter/ProductionSolverTestsMain.cpp)
+    target_include_directories(${solver_target} PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+    target_compile_definitions(${solver_target} PRIVATE SWARAXT_ENABLE_IR3109_SOLVER_TESTS=1)
+    swaraxt_enable_warnings(${solver_target})
+    swaraxt_enable_warnings_as_errors(${solver_target})
+endforeach()
+target_compile_definitions(SwaraXTIR3109SolverTests PRIVATE SWARAXT_IR3109_SOLVER_TRACE=1)
+target_compile_definitions(SwaraXTIR3109SolverBench PRIVATE SWARAXT_IR3109_SOLVER_TRACE=0)
+add_test(NAME SwaraXTIR3109SolverTests COMMAND SwaraXTIR3109SolverTests)
+set_tests_properties(SwaraXTIR3109SolverTests PROPERTIES TIMEOUT 180)
+
 add_executable(SwaraXtShruthiSvf2pTests Filter/ShruthiSvf2pTestsMain.cpp)
 target_include_directories(SwaraXtShruthiSvf2pTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
 swaraxt_enable_warnings(SwaraXtShruthiSvf2pTests)
