@@ -3,13 +3,30 @@
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/PluginEditor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
+#include "DualSvfSection2Goldens.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <numeric>
 #include <vector>
+
+namespace swaraxt {
+struct DualSvfLatencyTestAccess {
+    using Delay = SwaraXtEngine::DualOutputDelay;
+    static Delay& delay(SwaraXtEngine& e) { return e.dualOutputDelay_; }
+    static void select(SwaraXtEngine& e) { e.applyExperimentalSvfSelection(); }
+    static bool tail(const SwaraXtEngine& e) { return e.selectedFilterTailActive(); }
+    static float process(SwaraXtEngine& e, float x) { return e.processSelectedFilterSample(x, 0); }
+    static void sleep(SwaraXtEngine& e) { e.enterDormant(); }
+    static void injectTail(SwaraXtEngine& e) {
+        e.dormant_=false; e.snapPostMixerGain(0); e.dualOutputDelay_.process(.75f);
+    }
+    static void render(SwaraXtEngine& e) { e.renderInternalBlock(); }
+};
+}
 
 namespace {
 using namespace swaraxt;
@@ -19,6 +36,7 @@ using Mode = ShruthiSvf2pMode;
 using Control = ShruthiSvfSection2Control;
 constexpr double native = SwaraXtEngine::kInternalSampleRate;
 int failures = 0;
+double worstFixedNativeError=0, worstHostReplayError=0;
 void check(bool ok, const char* message) { if (!ok) { ++failures; std::printf("FAIL: %s\n", message); } }
 void finish(std::ofstream& stream, const char* message) { stream.flush(); check(stream.good(), message); }
 // The unity probes are process-wide; audit renders are serialized.
@@ -71,18 +89,23 @@ struct Trace {
     struct Controls { double cut1=0,cut2=0,q1=0,q2=0,classicCv=0; };
     const SwaraXtEngine* engine=nullptr;
     std::vector<Controls> controlFrames;
-    std::vector<float> host, mixer, filtered, post, vca, target;
-    int latency = 0, requestNative = -1;
+    std::vector<board::BoardControl> boardFrames;
+    std::vector<float> host, mixer, filtered, post, vca, target, undelayed;
+    int latency = 0, requestNative = -1, eventAt = 0;
+    float masterGain = .5f;
     void reserve(int hostCount, double rate) {
         host.reserve(static_cast<size_t>(hostCount));
         const auto n = static_cast<size_t>(hostCount * native / rate + 1024);
         controlFrames.reserve(n/40+16);
-        for (auto* v : {&mixer, &filtered, &post, &vca, &target}) v->reserve(n);
+        boardFrames.reserve(n/40+16);
+        for (auto* v : {&mixer, &filtered, &post, &vca, &target, &undelayed}) v->reserve(n);
     }
     static void capture(void* context, const SwaraXtEngine::DebugBlockCapture& b) {
         auto& t = *static_cast<Trace*>(context);
         const auto& dual=t.engine->experimentalSvfDualForTests();
         t.controlFrames.push_back({dual.section1().cutoffHz(),dual.section2().cutoffHz(),dual.section1().q(),dual.section2().q(),t.engine->filter().boardCoreForTests().cutoffCv()});
+        t.undelayed.insert(t.undelayed.end(),b.dualUndelayed,b.dualUndelayed+b.samples);
+        t.boardFrames.push_back(t.engine->boardControlsForTests());
         const float* sources[] {b.postShruthiMixer, b.filterOutput, b.postVca, b.vcaGain, b.vcaTarget};
         std::vector<float>* destinations[] {&t.mixer, &t.filtered, &t.post, &t.vca, &t.target};
         for (size_t i = 0; i < 5; ++i) destinations[i]->insert(destinations[i]->end(), sources[i], sources[i] + b.samples);
@@ -110,6 +133,7 @@ Trace render(double rate, int block, const Sel& initial, FilterQuality quality, 
     p->setFilterQuality(quality); p->setPlayHead(&transport); p->prepareToPlay(rate, block);
     const LatencyProbeScope probe(identity);
     Trace trace; trace.reserve(count, rate); trace.latency = p->getLatencySamples();
+    trace.eventAt=noteAt;
     trace.engine=&p->engineForTests();
     p->engineForTests().setDebugTapSink(&trace, Trace::capture);
     for (int pos = 0; pos < count; pos += block) {
@@ -129,6 +153,219 @@ Trace render(double rate, int block, const Sel& initial, FilterQuality quality, 
     p->engineForTests().setDebugTapSink(nullptr, nullptr); p->setPlayHead(nullptr);
     trace.engine=nullptr;
     return trace;
+}
+void delayContracts() {
+    using Access = DualSvfLatencyTestAccess;
+    Access::Delay d;
+    check(sizeof(d) == 256 * sizeof(float) + 2 * sizeof(uint32_t), "fixed delay storage: 1032 bytes");
+    for (int i=0;i<=512;++i)
+        check(d.process(i==0 ? 1.f : 0.f)==(i==256 ? 1.f : 0.f), "impulse emerges only at native index 256");
+    check(!d.tailActive(), "zero input drains pending samples");
+    d.reset();
+    for(int i=0;i<1024;++i)
+        check(d.process(static_cast<float>(i+1))==(i>=256 ? static_cast<float>(i-255) : 0.f), "continuous input retains exact delay");
+    for(int i=0;i<256;++i) {
+        check(d.process(0)==static_cast<float>(769+i), "continuous tail delivers every queued sample");
+        check(d.tailActive()==(i<255), "continuous tail countdown ends after last delivery");
+    }
+    d.process(1); d.reset();
+    for(int i=0;i<257;++i) check(d.process(0)==0,"reset discards an immediately preceding impulse");
+    for(float x:{-0.0f,0.0f,-1.0f,1.0f,std::numeric_limits<float>::max(),std::numeric_limits<float>::lowest()}) {
+        d.reset(); d.process(x);
+        for(int i=1;i<256;++i) check(d.process(0)==0,"finite boundary cold fill remains zero");
+        const float y=d.process(0);
+        check(std::memcmp(&x,&y,sizeof(x))==0,"finite values and signed zero retain their bits");
+    }
+    d.reset();
+    std::array<float,256> oracle{};
+    for (int i=0;i<100003;++i) {
+        const auto slot=static_cast<size_t>(i)%oracle.size();
+        const float x=static_cast<float>((i*73)%509-254)/256.f;
+        check(d.process(x)==oracle[slot], "sample values preserved across repeated wraparound"); oracle[slot]=x;
+    }
+    d.reset();
+    check(d.process(std::numeric_limits<float>::infinity())==0 && !d.tailActive(), "nonfinite input does not poison delay");
+    check(d.process(std::numeric_limits<float>::quiet_NaN())==0 && !d.tailActive(), "NaN input becomes silence");
+    auto e=std::make_unique<SwaraXtEngine>();
+    check(!Access::delay(*e).tailActive(), "constructor initializes empty delay");
+    e->prepare(48000,16); e->reset(); e->setExperimentalSvfEnabledForTests(true); Access::select(*e);
+    const LatencyProbeScope probe(true);
+    check(Access::process(*e,1)==0, "selected Dual begins with zero fill");
+    // A routing reset can empty the current core while older output is queued.
+    e->setExperimentalSvfRoutingForTests(Route::serial); Access::select(*e);
+    check(!e->experimentalSvfDualForTests().tailActive() && Access::tail(*e), "pending delay protects tail independently of reset core");
+    for(int i=1;i<=256;++i) {
+        check(Access::process(*e,0)==(i==256 ? 1.f : 0.f), "last pending sample is delivered");
+        check(Access::tail(*e)==(i<256), "pending protection expires exactly after delivery");
+    }
+    Access::sleep(*e); check(e->dormantForTests(), "empty delay does not itself prevent dormancy");
+    for(int operation=0;operation<6;++operation) {
+        Access::delay(*e).process(.75f);
+        if(operation==0) e->reset();
+        if(operation==1) e->resetResampler();
+        if(operation==2) e->prepare(96000,1);
+        if(operation==3) Access::sleep(*e);
+        if(operation==4) {
+            // Host MIDI wakes the sleeping engine through its normal dispatch.
+            Access::sleep(*e); juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1,48,static_cast<juce::uint8>(100)),0);
+            juce::AudioBuffer<float> audio(2,1); e->process(midi,audio,0,1);
+            // Examine the actual wake reset separately from newly rendered audio.
+            check(!e->dormantForTests(), "MIDI wakes dormant engine");
+            e->reset();
+        }
+        if(operation==5) {
+            e->setExperimentalSvfEnabledForTests(false); Access::select(*e);
+            e->setExperimentalSvfEnabledForTests(true); Access::select(*e);
+        }
+        check(!Access::delay(*e).tailActive(), "hard reset or bank activation clears pending samples");
+        for(int i=0;i<256;++i) check(Access::delay(*e).process(0)==0, "old Dual audio cannot reappear after reset");
+    }
+    for(int i=0;i<100;++i) {
+        Access::delay(*e).process(1);
+        e->setExperimentalSvfEnabledForTests(false); Access::select(*e);
+        check(!Access::delay(*e).tailActive(), "deactivation discards old session");
+        e->setExperimentalSvfEnabledForTests(true); Access::select(*e);
+        check(Access::process(*e,0)==0, "rapid reactivation has no stale sample");
+    }
+    for(int i=0;i<256;++i) Access::process(*e,static_cast<float>(i+1));
+    check(Access::delay(*e).pending==256,"bank change can encounter 256 queued native samples");
+    e->setExperimentalSvfEnabledForTests(false); Access::select(*e);
+    e->setExperimentalSvfEnabledForTests(true); Access::select(*e);
+    for(int i=0;i<257;++i) check(Access::process(*e,0)==0,"discarded bank tail never reappears on return");
+    {
+        // Isolate the engine's real tail-drain decision from the known pre-VCA
+        // activity of a running oscillator. Only the delayed sample is audible.
+        const LatencyProbeScope realCore(false);
+        auto p=std::make_unique<SwaraXtAudioProcessor>(); neutral(*p);
+        set(*p,IDs::osc1Shape,0); set(*p,IDs::osc2Shape,0);
+        p->setExperimentalSvfEnabled(true); p->prepareToPlay(48000,16);
+        auto& engine=p->engineForTests();
+        Trace t; t.reserve(1024,48000); t.engine=&engine;
+        engine.setDebugTapSink(&t,Trace::capture); Access::injectTail(engine);
+        for(int block=0;block<6;++block) {
+            Access::render(engine);
+            check(!engine.drainingForTests(), "production drain cannot begin while delayed output is pending");
+        }
+        Access::render(engine); engine.setDebugTapSink(nullptr,nullptr);
+        check(t.filtered.size()==280 && t.filtered[255]==.75f, "production renderer delivers final pending impulse");
+        check(engine.drainingForTests(), "empty delay allows production SRC-tail drainage");
+        juce::AudioBuffer<float> audio(2,64); juce::MidiBuffer midi;
+        for(int i=0;i<4096 && !engine.dormantForTests();++i) engine.process(midi,audio,0,64);
+        check(engine.dormantForTests(), "pending-only tail eventually drains through SRC/DC into dormancy");
+    }
+    std::printf("Delay: %zu bytes; engine: %zu bytes. Exact indexing, 100003 samples, pending tail, reset/prepare/wake and rapid bank boundaries checked.\n",sizeof(d),sizeof(SwaraXtEngine));
+}
+
+// Replay the complete fixed pipeline without using an onset or a fitted lag.
+// The unity core remains INSIDE Classic's interpolation/decimation FIRs.
+void fixedPipeline(const Trace& t, double rate, bool dual, int fx, int factor=4, bool nonlinearDual=false) {
+    std::vector<float> expected; expected.reserve(t.mixer.size());
+    FilterRateConverter converter; converter.prepare(factor);
+    for(size_t i=0;i<t.mixer.size();++i) {
+        float y;
+        const auto& source=nonlinearDual ? t.undelayed : t.mixer;
+        // An indexed offline shift, independent of the engine's circular delay.
+        if(dual) y=i>=256 ? source[i-256] : 0.0f;
+        else y=converter.process(source[i],[](float v){return v;});
+        expected.push_back(y);
+    }
+    board::BoardProcessor effect; board::BoardPostDacFilter postDac;
+    effect.reset(static_cast<board::Effect>(fx));
+    double maxNativeError=0;
+    if(fx!=0) for(size_t at=0;at+40<=expected.size();at+=40) {
+        board::FloatBlock b{}; std::copy_n(expected.begin()+static_cast<std::ptrdiff_t>(at),40,b.begin());
+        effect.processClassicFx(b,t.boardFrames[at/40]); postDac.process(b,40);
+        std::copy(b.begin(),b.end(),expected.begin()+static_cast<std::ptrdiff_t>(at));
+    }
+    for(size_t i=0;i<expected.size();++i) {
+        check(std::isfinite(expected[i]),"independent native reference is finite");
+        maxNativeError=std::max(maxNativeError,std::abs(static_cast<double>(expected[i])-t.filtered[i]));
+    }
+    check(maxNativeError==0, "processor native output matches exact FIR/delay then unchanged FX reference");
+    worstFixedNativeError=std::max(worstFixedNativeError,maxNativeError);
+    HostRateConverter src; src.setStep(native,rate); src.reset(); DcBlocker dc; dc.prepare(rate);
+    size_t at=0; double maxHostError=0;
+    for(size_t i=0;i<t.host.size();++i) {
+        const float actual=t.host[i];
+        if(fx==0 && static_cast<int>(i)<t.eventAt) { check(actual==0,"dormant pre-event output is zero"); continue; }
+        while(src.size()<src.queueTargetSize() && at<expected.size()) src.push(expected[at++]*t.masterGain);
+        const float y=dc.process(src.readInterpolated());
+        maxHostError=std::max(maxHostError,std::abs(static_cast<double>(y)-actual));
+    }
+    check(maxHostError==0, "actual host output matches independent sample-at-a-time SRC/DC replay");
+    worstHostReplayError=std::max(worstHostReplayError,maxHostError);
+    check(t.latency==static_cast<int>(std::ceil(384*rate/native)), "reported latency retains 384 native sample contract");
+}
+
+uint64_t q20Hash(const std::vector<float>& signal) {
+    uint64_t hash=1469598103934665603ull;
+    for(float y:signal) {
+        check(std::isfinite(y),"reference fingerprint input is finite");
+        const auto q=static_cast<int32_t>(std::llround(std::clamp(static_cast<double>(y),-32.0,32.0)*1048576.0));
+        hash^=static_cast<uint32_t>(q); hash*=1099511628211ull;
+    }
+    return hash;
+}
+
+Trace renderSection2Reference(const Sel& selection,int fx) {
+    // Exact Section 2 reference stimulus: factory 0, no transport or neutral
+    // patch substitution, 48 kHz/256, note48 at block0 and note60 at block40.
+    auto p=std::make_unique<SwaraXtAudioProcessor>(); select(*p,selection);
+    if(fx!=0) set(*p,IDs::dspFxProgram,static_cast<float>(fx));
+    p->prepareToPlay(48000,256);
+    const LatencyProbeScope realCore(false);
+    Trace t; t.reserve(25600,48000); t.engine=&p->engineForTests(); t.latency=p->getLatencySamples();
+    t.masterGain=p->getApvts().getRawParameterValue(IDs::master)->load();
+    p->engineForTests().setDebugTapSink(&t,Trace::capture);
+    juce::AudioBuffer<float> audio(2,256); juce::MidiBuffer midi;
+    for(int block=0;block<100;++block) {
+        midi.clear();
+        if(block==0) midi.addEvent(juce::MidiMessage::noteOn(1,48,static_cast<juce::uint8>(110)),0);
+        if(block==40) midi.addEvent(juce::MidiMessage::noteOn(1,60,static_cast<juce::uint8>(96)),0);
+        p->processBlock(audio,midi);
+        t.host.insert(t.host.end(),audio.getReadPointer(0),audio.getReadPointer(0)+256);
+    }
+    auto& e=p->engineForTests(); e.setDebugTapSink(nullptr,nullptr);
+    const auto& d=DualSvfLatencyTestAccess::delay(e);
+    check(t.undelayed.size()==20960,"reference native extent includes unchanged SRC lookahead");
+    uint32_t expectedPending=0;
+    for(uint32_t i=0;i<256;++i) {
+        const float expected=t.undelayed[t.undelayed.size()-256+i];
+        const float actual=d.samples[(d.cursor+i)%256];
+        check(std::memcmp(&actual,&expected,sizeof(actual))==0,"end-of-render queue retains the final 256 source samples");
+        if(expected!=0) expectedPending=i+1;
+    }
+    check(d.pending==expectedPending,"pending countdown describes the final nonzero source sample");
+    t.engine=nullptr;
+    return t;
+}
+
+void section2TimingContracts() {
+    const auto verify=[](const Sel& s,int fx,uint64_t nativeGolden,uint64_t hostGolden=0) {
+        const auto t=renderSection2Reference(s,fx);
+        // The frozen pre-F2.1 native fingerprint prevents candidate synthesis
+        // from supplying its own unverified reference to the downstream replay.
+        check(q20Hash(t.undelayed)==nativeGolden,"pre-delay synthesis matches the published baseline fingerprint");
+        fixedPipeline(t,48000,true,fx,4,true);
+        if(hostGolden!=0) check(q20Hash(t.host)==hostGolden,"migrated Section 2 host reference matches exact timing contract");
+    };
+    for(int cal=0;cal<2;++cal) {
+        Sel s; s.enabled=true; s.calibration=static_cast<ShruthiSvfCalibration>(cal); s.routing=Route::serial;
+        for(int i=0;i<3;++i) {
+            s.control2=Control::relative; s.cutoff2=static_cast<uint8_t>(52+12*i); s.resonance2=0; s.mode2=Mode::lowPass;
+            verify(s,0,dualRelativeNativeGoldens[cal][i],dualRelativeGoldens[cal][i]);
+            s.control2=Control::independent; s.cutoff2=static_cast<uint8_t>(i==0 ? 40 : 90);
+            s.resonance2=static_cast<uint8_t>(i==2 ? 63 : 32); s.mode2=Mode::bandPass;
+            verify(s,0,dualIndependentNativeGoldens[cal][i],dualIndependentGoldens[cal][i]);
+        }
+        for(int route=0;route<3;++route) for(int control=0;control<3;++control) for(int fx:{0,8}) {
+            s.routing=static_cast<Route>(route); s.control2=static_cast<Control>(control);
+            s.cutoff2=static_cast<uint8_t>(control==2 ? 76 : 40); s.resonance2=32; s.mode2=Mode::bandPass;
+            verify(s,fx,dualTimingNativeGoldens[cal][route][control]);
+        }
+    }
+    std::puts("Section 2 timing: 12 migrated references + 36 route/calibration/control/FX cases; frozen baseline synthesis and independent indexed delay/FX/gain/SRC/DC replay.");
 }
 void latency(const std::filesystem::path& out) {
     const auto centre = [](const std::vector<float>& x) {
@@ -150,18 +387,21 @@ void latency(const std::filesystem::path& out) {
         const auto max=std::max_element(y.begin(),y.end());
         impulse << "host_src," << rate << ",1," << centre(y) << ',' << (max-y.begin()) << '\n';
     }
-    std::ofstream csv(out / "latency.csv"); csv << "rate,block,quality,path,probe,reported,event,onset_host,onset_native,onset_mixer,onset_vca,peak,rms,file\n";
+    std::ofstream csv(out / "latency.csv"); csv << "rate,block,quality,path,probe,fx,reported,event,onset_host,onset_native,onset_mixer,onset_vca,peak,rms,file\n";
     for (double rate : {44100., 48000., 96000., 192000.}) for (int block : {1, 16, 32, 64})
-    for (auto quality : {FilterQuality::eco, FilterQuality::normal, FilterQuality::high}) for (int path = -1; path < 3; ++path) for (bool probe : {false, true}) {
+    for (auto quality : {FilterQuality::eco, FilterQuality::normal, FilterQuality::high}) for (int path = -1; path < 3; ++path) for (bool probe : {false, true}) for(int fx:{0,8}) {
         Sel s; s.enabled = path >= 0; s.routing = static_cast<Route>(std::max(0, path));
-        const auto t = render(rate, block, s, quality, probe, static_cast<int>(rate * .08), 113, -1, -1, nullptr, false, 0);
-        const std::string name = "lat-" + std::to_string(static_cast<int>(rate)) + "-" + std::to_string(block) + "-" + std::to_string(static_cast<int>(quality)) + "-" + std::to_string(path) + "-" + std::to_string(probe) + ".f32";
+        const auto t = render(rate, block, s, quality, probe, static_cast<int>(rate * .08), 113, -1, -1, nullptr, false, 0, fx);
+        if(probe) fixedPipeline(t,rate,path>=0,fx,quality==FilterQuality::eco ? 2 : 4);
+        else if(path>=0) fixedPipeline(t,rate,true,fx,4,true);
+        const std::string name = "lat-" + std::to_string(static_cast<int>(rate)) + "-" + std::to_string(block) + "-" + std::to_string(static_cast<int>(quality)) + "-" + std::to_string(path) + "-" + std::to_string(probe) + "-" + std::to_string(fx) + ".f32";
         binary(out / name, t.host);
-        if(probe && block==32 && quality==FilterQuality::normal) binary(out/(name+".native"),t.mixer);
-        csv << rate << ',' << block << ',' << static_cast<int>(quality) << ',' << path << ',' << probe << ',' << t.latency << ",113," << onset(t.host) << ',' << onset(t.filtered) << ',' << onset(t.mixer) << ',' << onset(t.vca) << ',' << peak(t.host) << ',' << rms(t.host) << ',' << name << '\n';
+        if(fx==0) binary(out/(name+".native"),t.filtered);
+        csv << rate << ',' << block << ',' << static_cast<int>(quality) << ',' << path << ',' << probe << ',' << fx << ',' << t.latency << ",113," << onset(t.host) << ',' << onset(t.filtered) << ',' << onset(t.mixer) << ',' << onset(t.vca) << ',' << peak(t.host) << ',' << rms(t.host) << ',' << name << '\n';
     }
     finish(impulse,"delay calibration CSV written"); finish(csv,"latency CSV written");
-    std::puts("Latency: 384 processor renders; unity probe is separate from actual nonlinear response.");
+    std::puts("Latency: 768 processor renders with FX Off/Delay; exact fixed-pipeline and host replay checks are separate from nonlinear phase.");
+    std::printf("Worst native fixed-pipeline error %.17g; host SRC/DC replay error %.17g.\n",worstFixedNativeError,worstHostReplayError);
 }
 struct Change { const char* name; Sel before, after; };
 std::vector<Change> changes() {
@@ -273,6 +513,13 @@ void controls(const std::filesystem::path& out) {
     std::puts("Controls: 54 actual-processor steady target observations.");
 }
 void contracts(const std::filesystem::path& out) {
+    delayContracts();
+    section2TimingContracts();
+    for(int path=-1;path<3;++path) for(int fx:{0,8}) {
+        Sel selected; selected.enabled=path>=0; selected.routing=static_cast<Route>(std::max(0,path));
+        const auto t=render(48000,16,selected,FilterQuality::normal,true,4096,113,-1,-1,nullptr,false,0,fx);
+        fixedPipeline(t,48000,path>=0,fx);
+    }
     auto p=std::make_unique<SwaraXtAudioProcessor>(); neutral(*p); p->prepareToPlay(48000,64);
     juce::MemoryBlock before,after; p->getStateInformation(before);
     Sel s; s.enabled=true; s.routing=Route::serial; s.calibration=ShruthiSvfCalibration::eagleHardware; s.control2=Control::relative; s.cutoff2=76;
