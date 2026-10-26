@@ -275,6 +275,9 @@ class SwaraXtEngine {
 #endif
 
  private:
+#if defined(SWARAXT_ENABLE_FILTER_QUALITY_TESTS)
+    friend struct FilterQualityTestAccess;
+#endif
     struct PendingMidi {
         int sampleOffset = 0;
         uint8_t status = 0;
@@ -299,8 +302,9 @@ class SwaraXtEngine {
     void collectMidiEvents(juce::MidiBufferIterator& cursor, const juce::MidiBufferIterator& end,
                            int startSample, int numSamples);
     void updateFilterFromShruthi();
-    void applyPendingFilterQuality() noexcept;
+    void applyPendingFilterQuality(bool bankChangeRequested) noexcept;
     void applyExperimentalSvfSelection() noexcept;
+    void applyExperimentalSvfSelection(const ExperimentalSvfSelection& next) noexcept;
     void snapFilterQuality() noexcept;
     void startQualityFadeOut() noexcept;
     void setMasterTarget(float value) noexcept;
@@ -465,6 +469,9 @@ class SwaraXtEngine {
     FilterQuality pendingFilterQuality_ { FilterQuality::normal };
     enum class QualityFadePhase : uint8_t { stable, fadeOut, fadeIn };
     QualityFadePhase qualityFadePhase_ { QualityFadePhase::stable };
+    // A bank request freezes the current cycle until a unity-gain boundary,
+    // including when the request reverses before that boundary is reached.
+    bool qualityBankAdmission_ = false;
     float qualityGain_ = 1.0f;
     float qualityGainIncrement_ = 0.0f;
     int qualityRampSamples_ = 1;
