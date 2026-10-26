@@ -580,6 +580,11 @@ target_compile_definitions(SwaraXTFilterQualityOwnershipTests PRIVATE
     SWARAXT_ENABLE_FILTER_QUALITY_TESTS=1
     SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
 swaraxt_enable_warnings_as_errors(SwaraXTFilterQualityOwnershipTests)
+swaraxt_add_plugin_console_test(SwaraXTManualFilterSwitchTests Filter/ManualFilterSwitchTestsMain.cpp)
+target_compile_definitions(SwaraXTManualFilterSwitchTests PRIVATE
+    SWARAXT_ENABLE_MANUAL_SWITCH_TESTS=1 SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1
+    SWARAXT_ENABLE_IDLE_CPU_TESTS=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+swaraxt_enable_warnings_as_errors(SwaraXTManualFilterSwitchTests)
 
 add_executable(SwaraXTHostSrcTests Architecture/HostSrcTests.cpp)
 target_include_directories(SwaraXTHostSrcTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")

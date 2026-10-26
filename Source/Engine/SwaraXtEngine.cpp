@@ -139,6 +139,13 @@ void SwaraXtEngine::reset()
 
 void SwaraXtEngine::resetResampler() noexcept
 {
+    if (manualSwitchPhase_ != ManualSwitchPhase::stable)
+    {
+        filter_.reset();
+        experimentalSvf_.reset();
+        snapFilterQuality();
+        applyExperimentalSvfSelection();
+    }
     dualOutputDelay_.reset();
     resetBoardState();
     audioRing_.Init();
@@ -558,10 +565,19 @@ void SwaraXtEngine::applyExperimentalSvfSelection(const ExperimentalSvfSelection
         // Configure the inactive Classic bank before it can become audible;
         // this operation never fades the outgoing Dual signal.
         if (! next.enabled)
+        {
+            const auto previousQuality = filter_.quality();
             snapFilterQuality();
+            // A changed quality already resets the complete Classic path.
+            if (filter_.quality() == previousQuality)
+                filter_.reset();
+        }
     }
     if (qualityFadePhase_ == QualityFadePhase::stable)
         qualityBankAdmission_ = false;
+
+    manualSwitchPhase_ = ManualSwitchPhase::stable;
+    manualSwitchRemaining_ = 0;
 
     const bool wasEnabled = experimentalSvfEnabled_;
     appliedExperimentalSvfSelection_ = experimentalSvfControl_.applyOnAudioThread(
@@ -570,6 +586,50 @@ void SwaraXtEngine::applyExperimentalSvfSelection(const ExperimentalSvfSelection
     // queued output; their transition policy is independent of fixed latency.
     if (wasEnabled != experimentalSvfEnabled_)
         dualOutputDelay_.reset();
+}
+
+void SwaraXtEngine::updateManualFilterSelection(const ExperimentalSvfSelection& next) noexcept
+{
+    if (dormant_)
+    {
+        applyExperimentalSvfSelection(next);
+        return;
+    }
+    if (manualSwitchPhase_ == ManualSwitchPhase::mutedPreparation
+        && manualSwitchRemaining_ == 0)
+    {
+        if (next.enabled != experimentalSvfEnabled_)
+        {
+            // Exact zero was emitted before this boundary. The captured tuple
+            // configures the incoming path once; later requests stay pending.
+            applyExperimentalSvfSelection(next);
+            manualSwitchPhase_ = ManualSwitchPhase::mutedPreparation;
+            manualSwitchRemaining_ = kManualSwitchPreparationSamples;
+        }
+        else
+        {
+            // Reversal before reset preserves the original filter and FIFO.
+            manualSwitchPhase_ = ManualSwitchPhase::fadeIn;
+            manualSwitchRemaining_ = kManualSwitchFadeSamples;
+        }
+        return;
+    }
+    if (manualSwitchPhase_ != ManualSwitchPhase::stable)
+        return;
+
+    const bool bankChange = next.enabled != experimentalSvfEnabled_;
+    applyPendingFilterQuality(bankChange);
+    if (bankChange)
+    {
+        if (qualityFadePhase_ == QualityFadePhase::stable)
+        {
+            qualityBankAdmission_ = false;
+            manualSwitchPhase_ = ManualSwitchPhase::fadeOut;
+            manualSwitchRemaining_ = kManualSwitchFadeSamples;
+        }
+        return;
+    }
+    applyExperimentalSvfSelection(next);
 }
 
 float SwaraXtEngine::nextQualityGain() noexcept
@@ -739,9 +799,52 @@ void SwaraXtEngine::collectMidiEvents(juce::MidiBufferIterator& cursor,
 
 float SwaraXtEngine::processSelectedFilterSample(float mixer, float vcaTarget) noexcept
 {
-    if (experimentalSvfEnabled_)
-        return dualOutputDelay_.process(experimentalSvf_.process(mixer, vcaTarget));
-    return filter_.processInstrumentSample(mixer, vcaTarget);
+    if (manualSwitchPhase_ == ManualSwitchPhase::mutedPreparation
+        && manualSwitchRemaining_ == 0)
+    {
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+        manualSwitchSample_ = {0, 0, 0, 2, experimentalSvfEnabled_, false};
+#endif
+        return 0;
+    }
+    const float raw = experimentalSvfEnabled_
+        ? dualOutputDelay_.process(experimentalSvf_.process(mixer, vcaTarget))
+        : filter_.processInstrumentSample(mixer, vcaTarget);
+    const auto phase = manualSwitchPhase_;
+    if (phase == ManualSwitchPhase::stable)
+    {
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+        manualSwitchSample_ = {raw, 1, raw, 0, experimentalSvfEnabled_, true};
+#endif
+        return raw;
+    }
+    float gain = 1;
+    if (phase == ManualSwitchPhase::fadeOut)
+        gain = static_cast<float>(manualSwitchRemaining_ - 1)
+            / static_cast<float>(kManualSwitchFadeSamples - 1);
+    else if (phase == ManualSwitchPhase::mutedPreparation)
+        gain = 0;
+    else if (phase == ManualSwitchPhase::fadeIn)
+        gain = static_cast<float>(kManualSwitchFadeSamples - manualSwitchRemaining_)
+            / static_cast<float>(kManualSwitchFadeSamples - 1);
+
+    const float output = gain == 1 ? raw : (gain == 0 ? 0 : raw * gain);
+    if (--manualSwitchRemaining_ == 0)
+    {
+        if (phase == ManualSwitchPhase::fadeOut)
+            manualSwitchPhase_ = ManualSwitchPhase::mutedPreparation;
+        else if (phase == ManualSwitchPhase::mutedPreparation)
+        {
+            manualSwitchPhase_ = ManualSwitchPhase::fadeIn;
+            manualSwitchRemaining_ = kManualSwitchFadeSamples;
+        }
+        else
+            manualSwitchPhase_ = ManualSwitchPhase::stable;
+    }
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+    manualSwitchSample_ = {raw, gain, output, static_cast<int>(phase), experimentalSvfEnabled_, true};
+#endif
+    return output;
 }
 
 float SwaraXtEngine::selectedFilterVca() const noexcept
@@ -753,6 +856,8 @@ float SwaraXtEngine::selectedFilterVca() const noexcept
 
 bool SwaraXtEngine::selectedFilterTailActive() const noexcept
 {
+    if (manualSwitchPhase_ != ManualSwitchPhase::stable)
+        return true;
     if (experimentalSvfEnabled_)
         return experimentalSvf_.tailActive() || dualOutputDelay_.tailActive();
     return filter_.instrumentTailActive();
@@ -783,8 +888,7 @@ void SwaraXtEngine::renderInternalBlock()
 #endif
     updateBoardAtBlockBoundary();
     const auto filterSelection = experimentalSvfControl_.selection();
-    applyPendingFilterQuality(filterSelection.enabled != experimentalSvfEnabled_);
-    applyExperimentalSvfSelection(filterSelection);
+    updateManualFilterSelection(filterSelection);
     updateFilterFromShruthi();
 
     const uint8_t vca = part_.voice().vca();
@@ -834,6 +938,9 @@ void SwaraXtEngine::renderInternalBlock()
                 filtered = 0.0f;
             const float vcaGain = selectedFilterVca();
             vcaCvState_ = vcaGain;
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+            capture.manualSwitch[i] = manualSwitchSample_;
+#endif
             const float out = filtered * nextMasterGain() * nextQualityGain();
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
             capture.postShruthiMixer[i] = temp[i];
@@ -861,6 +968,9 @@ void SwaraXtEngine::renderInternalBlock()
             const float vcaGain = selectedFilterVca();
             vcaCvState_ = vcaGain;
             processed[index] = std::isfinite(filtered) ? filtered : 0.0f;
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+            capture.manualSwitch[i] = manualSwitchSample_;
+#endif
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
             capture.vcaGain[i] = vcaGain;
 #if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
@@ -953,7 +1063,13 @@ void SwaraXtEngine::updateDormantWakeState()
         return;
     }
 #endif
-    if (! voiceRequiresAudio())
+    // A manual request during SRC/DC drainage needs native transactions again.
+    // Wait until native input is needed, so a request reversed while queued
+    // output drains cannot advance otherwise idle firmware/filter history.
+    if (! voiceRequiresAudio()
+        && (! drainingToDormant_
+            || experimentalSvfControl_.selection().enabled == experimentalSvfEnabled_
+            || internalQueue_.size() >= internalQueue_.queueTargetSize()))
         return;
 
     drainingToDormant_ = false;
@@ -1007,7 +1123,7 @@ void SwaraXtEngine::advanceDormantControl()
         dormantNativeSamples_ -= static_cast<double>(kAudioBlockSize);
         part_.ProcessControlBlock();
         // The physical board reconstructs CV even when its VCA is closed.
-        applyExperimentalSvfSelection();
+        updateManualFilterSelection(experimentalSvfControl_.selection());
         updateFilterFromShruthi();
         filter_.advanceDormantControls(kAudioBlockSize);
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
