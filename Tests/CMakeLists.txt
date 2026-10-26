@@ -575,6 +575,11 @@ target_compile_definitions(SwaraXTDualSvfIntegrationAudit PRIVATE
     SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS=1
     SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
 swaraxt_enable_warnings_as_errors(SwaraXTDualSvfIntegrationAudit)
+swaraxt_add_plugin_console_test(SwaraXTFilterQualityOwnershipTests Filter/FilterQualityOwnershipTestsMain.cpp)
+target_compile_definitions(SwaraXTFilterQualityOwnershipTests PRIVATE
+    SWARAXT_ENABLE_FILTER_QUALITY_TESTS=1
+    SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 SWARAXT_ENABLE_IDLE_CPU_TESTS=1)
+swaraxt_enable_warnings_as_errors(SwaraXTFilterQualityOwnershipTests)
 
 add_executable(SwaraXTHostSrcTests Architecture/HostSrcTests.cpp)
 target_include_directories(SwaraXTHostSrcTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
