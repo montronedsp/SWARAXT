@@ -717,7 +717,13 @@ class ExperimentalSvfControl
     // Enable-on and routing changes keep the previous Dual reset semantics.
     ExperimentalSvfSelection applyOnAudioThread(ShruthiSvfDual& dual, bool& enabledOut) noexcept
     {
-        const auto next = selection();
+        return applyOnAudioThread(dual, enabledOut, selection());
+    }
+
+    // Apply the same coherent request that passed bank admission.
+    ExperimentalSvfSelection applyOnAudioThread(ShruthiSvfDual& dual, bool& enabledOut,
+                                               const ExperimentalSvfSelection& next) noexcept
+    {
         if (next.enabled != applied_.enabled && next.enabled)
             dual.reset();
         if (next.routing != applied_.routing)

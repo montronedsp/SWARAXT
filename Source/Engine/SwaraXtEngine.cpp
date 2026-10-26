@@ -80,11 +80,11 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
     filter_.prepare(kInternalSampleRate);
     experimentalSvf_.prepare(kInternalSampleRate);
     dualOutputDelay_.reset();
-    applyExperimentalSvfSelection();
     qualityRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.002 * kInternalSampleRate)));
     masterRampSamples_ = juce::jmax(1, static_cast<int>(std::lround(0.004 * kInternalSampleRate)));
     postMixerRampSamples_ = masterRampSamples_;
     snapFilterQuality();
+    applyExperimentalSvfSelection();
     snapMasterOnApply_ = true;
     prepared_ = true;
 }
@@ -118,8 +118,8 @@ void SwaraXtEngine::reset()
     filter_.reset();
     experimentalSvf_.reset();
     dualOutputDelay_.reset();
-    applyExperimentalSvfSelection();
     snapFilterQuality();
+    applyExperimentalSvfSelection();
     dcBlocker_.reset();
     snapMasterOnApply_ = true;
     resetVcaReconstruction();
@@ -507,6 +507,7 @@ void SwaraXtEngine::snapFilterQuality() noexcept
     qualityGainIncrement_ = 0.0f;
     qualitySamplesRemaining_ = 0;
     qualityFadePhase_ = QualityFadePhase::stable;
+    qualityBankAdmission_ = false;
 }
 
 void SwaraXtEngine::startQualityFadeOut() noexcept
@@ -517,8 +518,21 @@ void SwaraXtEngine::startQualityFadeOut() noexcept
         / static_cast<float>(qualitySamplesRemaining_);
 }
 
-void SwaraXtEngine::applyPendingFilterQuality() noexcept
+void SwaraXtEngine::applyPendingFilterQuality(bool bankChangeRequested) noexcept
 {
+    // Preserve Classic-only retargeting. Once a bank request owns an active
+    // cycle, complete that captured cycle before considering another quality.
+    if (qualityBankAdmission_
+        || (bankChangeRequested && qualityFadePhase_ != QualityFadePhase::stable))
+    {
+        qualityBankAdmission_ = true;
+        return;
+    }
+    // Inactive Classic requests remain in the atomic mailbox. They cannot
+    // start a shared gain fade, or delay a bank request at a unity boundary.
+    if (experimentalSvfEnabled_ || bankChangeRequested)
+        return;
+
     pendingFilterQuality_ = static_cast<FilterQuality>(
         requestedFilterQuality_.load(std::memory_order_relaxed));
     if (pendingFilterQuality_ == appliedFilterQuality_
@@ -532,9 +546,26 @@ void SwaraXtEngine::applyPendingFilterQuality() noexcept
 
 void SwaraXtEngine::applyExperimentalSvfSelection() noexcept
 {
+    applyExperimentalSvfSelection(experimentalSvfControl_.selection());
+}
+
+void SwaraXtEngine::applyExperimentalSvfSelection(const ExperimentalSvfSelection& next) noexcept
+{
+    if (next.enabled != experimentalSvfEnabled_)
+    {
+        if (qualityFadePhase_ != QualityFadePhase::stable)
+            return;
+        // Configure the inactive Classic bank before it can become audible;
+        // this operation never fades the outgoing Dual signal.
+        if (! next.enabled)
+            snapFilterQuality();
+    }
+    if (qualityFadePhase_ == QualityFadePhase::stable)
+        qualityBankAdmission_ = false;
+
     const bool wasEnabled = experimentalSvfEnabled_;
     appliedExperimentalSvfSelection_ = experimentalSvfControl_.applyOnAudioThread(
-        experimentalSvf_, experimentalSvfEnabled_);
+        experimentalSvf_, experimentalSvfEnabled_, next);
     // A bank boundary discards the old Dual session. Routing/tap changes keep
     // queued output; their transition policy is independent of fixed latency.
     if (wasEnabled != experimentalSvfEnabled_)
@@ -751,8 +782,9 @@ void SwaraXtEngine::renderInternalBlock()
         std::chrono::duration_cast<std::chrono::nanoseconds>(ProfileClock::now() - voiceStart).count());
 #endif
     updateBoardAtBlockBoundary();
-    applyPendingFilterQuality();
-    applyExperimentalSvfSelection();
+    const auto filterSelection = experimentalSvfControl_.selection();
+    applyPendingFilterQuality(filterSelection.enabled != experimentalSvfEnabled_);
+    applyExperimentalSvfSelection(filterSelection);
     updateFilterFromShruthi();
 
     const uint8_t vca = part_.voice().vca();
@@ -937,8 +969,8 @@ void SwaraXtEngine::updateDormantWakeState()
     filter_.reset();
     experimentalSvf_.reset();
     dualOutputDelay_.reset();
-    applyExperimentalSvfSelection();
     snapFilterQuality();
+    applyExperimentalSvfSelection();
     dcBlocker_.reset();
     resetVcaReconstruction();
     snapMasterOnApply_ = true;
@@ -959,8 +991,8 @@ void SwaraXtEngine::enterDormant() noexcept
     filter_.reset();
     experimentalSvf_.reset();
     dualOutputDelay_.reset();
-    applyExperimentalSvfSelection();
     snapFilterQuality();
+    applyExperimentalSvfSelection();
     dcBlocker_.reset();
     resetVcaReconstruction();
     snapMasterOnApply_ = true;
