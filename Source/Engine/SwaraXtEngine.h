@@ -77,6 +77,14 @@ class SwaraXtEngine {
     static constexpr int kMaxPendingMidi = 512;
 
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+    struct ManualSwitchSample {
+        float raw = 0, gain = 1, output = 0;
+        int phase = 0;
+        bool dual = false;
+        bool processed = false;
+    };
+#endif
     struct DebugBlockCapture {
         float rawOsc1[kAudioBlockSize] {};
         float rawOsc2[kAudioBlockSize] {};
@@ -85,6 +93,9 @@ class SwaraXtEngine {
         float postVca[kAudioBlockSize] {};
         float vcaTarget[kAudioBlockSize] {};
         float vcaGain[kAudioBlockSize] {}; // reconstructed CV at final oversampled substep, before decimation
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+        ManualSwitchSample manualSwitch[kAudioBlockSize] {};
+#endif
 #if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
         float dualUndelayed[kAudioBlockSize] {}; // complete Dual output/VCA before compensation
 #endif
@@ -275,6 +286,10 @@ class SwaraXtEngine {
 #endif
 
  private:
+#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+    friend struct ManualSwitchTestAccess;
+    ManualSwitchSample manualSwitchSample_;
+#endif
 #if defined(SWARAXT_ENABLE_FILTER_QUALITY_TESTS)
     friend struct FilterQualityTestAccess;
 #endif
@@ -305,6 +320,7 @@ class SwaraXtEngine {
     void applyPendingFilterQuality(bool bankChangeRequested) noexcept;
     void applyExperimentalSvfSelection() noexcept;
     void applyExperimentalSvfSelection(const ExperimentalSvfSelection& next) noexcept;
+    void updateManualFilterSelection(const ExperimentalSvfSelection& next) noexcept;
     void snapFilterQuality() noexcept;
     void startQualityFadeOut() noexcept;
     void setMasterTarget(float value) noexcept;
@@ -450,6 +466,13 @@ class SwaraXtEngine {
     ExperimentalSvfControl experimentalSvfControl_;
     ExperimentalSvfSelection appliedExperimentalSvfSelection_;
     bool experimentalSvfEnabled_ = false;
+    // One selected processing path. MutedPreparation with zero remaining
+    // waits for the next native boundary before changing/resetting that path.
+    enum class ManualSwitchPhase : uint8_t { stable, fadeOut, mutedPreparation, fadeIn };
+    ManualSwitchPhase manualSwitchPhase_ = ManualSwitchPhase::stable;
+    int manualSwitchRemaining_ = 0;
+    static constexpr int kManualSwitchFadeSamples = 157;
+    static constexpr int kManualSwitchPreparationSamples = 512;
     board::BoardProcessor boardProcessor_;
     // Native-rate v03 post-DAC coloration. Runs only while a DSP effect is active.
     board::BoardPostDacFilter postDacFilter_;
