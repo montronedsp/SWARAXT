@@ -24,7 +24,7 @@ struct MidiInputPitch {
 };
 
 // TUNED: MIDI key -> SWT1 keyboard degree -> frequency.
-// Unmapped KBM keys (midiDegree == -1) are silent. They stay in the physical
+// Unmapped KBM keys (midiMapped == false) are silent. They stay in the physical
 // key list for sequencer transposition (chromatic note-60, not a scale-degree
 // pass) and for sustain bookkeeping, but they never enter the mono allocator.
 // QUANTIZED: MIDI key -> 12-TET Hz (69 = 440) -> nearest scale candidate.
@@ -41,7 +41,7 @@ inline MidiInputPitch resolveMidiInputPitch(MidiInputTuningMode mode,
     if (mode == MidiInputTuningMode::tuned)
     {
         const int degree = tuning->midiDegree[note];
-        if (degree < 0)
+        if (! tuning->midiMapped[note])
             return result;
         hz = tuning->hzForDegree(degree);
     }

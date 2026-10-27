@@ -12,6 +12,71 @@
 
 #include <cmath>
 #include <algorithm>
+#include <cstring>
+
+bool SwaraXtAudioProcessor::importTuningFile(const juce::File& file, const juce::File& keyboard,
+                                            juce::String& error)
+{
+    error.clear();
+    const auto fail = [&error](const juce::String& message) { error = message; return false; };
+    constexpr int limit = 256 * 1024;
+    const auto read = [&](const juce::File& input, juce::MemoryBlock& bytes) {
+        auto stream = input.createInputStream();
+        if (stream == nullptr || stream->getStatus().failed())
+            return fail("Cannot open " + input.getFileName());
+        if (stream->getTotalLength() > limit)
+            return fail(input.getFileName() + " exceeds the 256 KiB import limit");
+        stream->readIntoMemoryBlock(bytes, limit + 1);
+        if (stream->getStatus().failed() || bytes.getSize() == 0 || bytes.getSize() > limit)
+            return fail("Empty, oversized or unreadable file: " + input.getFileName());
+        return true;
+    };
+    const bool scala = file.hasFileExtension("scl");
+    if (! scala && ! file.hasFileExtension("swt"))
+        return fail("Select one .scl or .swt file, with an optional .kbm for Scala");
+    if (keyboard != juce::File() && (! scala || ! keyboard.hasFileExtension("kbm")))
+        return fail("A .kbm mapping can only accompany a .scl scale");
+    juce::MemoryBlock bytes;
+    if (! read(file, bytes))
+        return false;
+    swaraxt::tuning::ParseError parseError;
+    swaraxt::tuning::TuningSnapshot snapshot;
+    std::vector<uint8_t> converted;
+    if (scala)
+    {
+        juce::MemoryBlock mapping;
+        if (keyboard != juce::File() && ! read(keyboard, mapping))
+            return false;
+        const auto text = [&](const juce::MemoryBlock& data, juce::String& result) {
+            if (std::memchr(data.getData(), 0, data.getSize()) != nullptr)
+                return fail("Scala text contains a NUL byte; use ASCII, Latin-1 or UTF-8 text");
+            result = juce::String::createStringFromData(data.getData(), static_cast<int>(data.getSize()));
+            return true;
+        };
+        juce::String scaleText, mapText;
+        if (! text(bytes, scaleText) || (mapping.getSize() != 0 && ! text(mapping, mapText)))
+            return false;
+        if (! swaraxt::tuning::parseScalaAndKeyboard(scaleText.toRawUTF8(),
+                keyboard == juce::File() ? nullptr : mapText.toRawUTF8(), snapshot, parseError,
+                swaraxt::tuning::ScalaSyntax::standard))
+            return fail(parseError.message);
+        // Copy a complete UTF-8 prefix into the existing fixed-size name field.
+        const auto description = juce::String::fromUTF8(snapshot.name);
+        const auto name = description.isEmpty() ? file.getFileNameWithoutExtension() : description;
+        name.copyToUTF8(snapshot.name, sizeof(snapshot.name));
+        if (! swaraxt::tuning::writeTuningTable(snapshot, converted, parseError))
+            return fail(parseError.message);
+    }
+    else if (! swaraxt::tuning::readTuningTable(static_cast<const uint8_t*>(bytes.getData()),
+                                               bytes.getSize(), snapshot, parseError))
+        return fail(parseError.message);
+    if (snapshot.degreeCount > swaraxt::tuning::PublishedTuning::kMaxInterior)
+        return fail("This engine supports at most 256 interior pitches plus the repeating period");
+    if (! loadTuningBytes(scala ? converted.data() : bytes.getData(),
+                          scala ? converted.size() : bytes.getSize()))
+        return fail("Tuning publication is busy or unavailable; the current tuning is unchanged. Please retry");
+    return true;
+}
 
 namespace {
 

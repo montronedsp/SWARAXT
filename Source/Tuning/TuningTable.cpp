@@ -252,7 +252,7 @@ bool rebuildFrequencies(TuningSnapshot& snapshot, ParseError& error)
         return false;
     }
     const int ref = snapshot.referenceNote;
-    if (ref < 0 || ref >= kMidiNotes || snapshot.midiDegree[ref] < 0)
+    if (ref < 0 || ref >= kMidiNotes || ! snapshot.assigned(ref))
     {
         setError(error, "reference note is unmapped");
         return false;
@@ -260,8 +260,9 @@ bool rebuildFrequencies(TuningSnapshot& snapshot, ParseError& error)
     const double refCents = centsForDegree(snapshot, snapshot.midiDegree[ref]);
     for (int note = 0; note < kMidiNotes; ++note)
     {
+        const bool assigned = snapshot.assigned(note);
         snapshot.midiHz[note] = 0.0;
-        if (snapshot.midiDegree[note] < 0)
+        if (! assigned)
             continue;
         const double cents = centsForDegree(snapshot, snapshot.midiDegree[note]) - refCents;
         const double hz = snapshot.referenceHz * std::pow(2.0, cents / 1200.0);
@@ -275,13 +276,198 @@ bool rebuildFrequencies(TuningSnapshot& snapshot, ParseError& error)
     return true;
 }
 
+
+// Standard imports preserve the first non-comment line even when the description
+// is blank. Numeric lines ignore surrounding whitespace and comment-only lines.
+std::vector<std::string> standardLines(const char* text, bool description)
+{
+    std::vector<std::string> result;
+    if (text == nullptr)
+        return result;
+    std::string_view rest(text);
+    if (rest.substr(0, 3) == "\xef\xbb\xbf")
+        rest.remove_prefix(3);
+    while (! rest.empty())
+    {
+        const auto end = rest.find_first_of("\r\n");
+        auto line = rest.substr(0, end);
+        while (! line.empty() && (line.front() == ' ' || line.front() == '\t'))
+            line.remove_prefix(1);
+        const bool comment = ! line.empty() && line.front() == '!';
+        if (! comment)
+        {
+            if (description && result.empty())
+            {
+                while (! line.empty() && (line.back() == ' ' || line.back() == '\t'))
+                    line.remove_suffix(1);
+            }
+            else
+                line = stripScalaComment(line);
+            if ((description && result.empty()) || ! line.empty())
+                result.emplace_back(line);
+        }
+        if (end == std::string_view::npos)
+            break;
+        const char delimiter = rest[end];
+        rest.remove_prefix(end + 1);
+        if (delimiter == '\r' && ! rest.empty() && rest.front() == '\n')
+            rest.remove_prefix(1);
+    }
+    return result;
+}
+
+bool standardPitch(std::string_view line, double& cents)
+{
+    line = stripScalaComment(line);
+    if (line.empty())
+        return false;
+    if (line.front() == '+')
+        line.remove_prefix(1);
+    if (line.empty() || (line.front() != '-' && (line.front() < '0' || line.front() > '9')))
+        return false;
+    double value = 0.0;
+    const auto parsed = std::from_chars(line.data(), line.data() + line.size(), value);
+    if (parsed.ec != std::errc() || ! std::isfinite(value))
+        return false;
+    const auto numeric = line.substr(0, static_cast<size_t>(parsed.ptr - line.data()));
+    if (numeric.find_first_of("eE") != std::string_view::npos)
+        return false;
+    auto suffix = line.substr(numeric.size());
+    if (! suffix.empty() && suffix.front() == ',')
+        return false;
+    while (! suffix.empty() && (suffix.front() == ' ' || suffix.front() == '\t'))
+        suffix.remove_prefix(1);
+    if (numeric.find('.') != std::string_view::npos)
+    {
+        if (! suffix.empty() && suffix.front() == '/')
+            return false;
+        cents = value;
+        return true;
+    }
+    long long numerator = 0;
+    if (! parseFullInteger(numeric, numerator) || numerator <= 0)
+        return false;
+    long long denominator = 1;
+    if (! suffix.empty() && suffix.front() == '/')
+    {
+        suffix.remove_prefix(1);
+        while (! suffix.empty() && (suffix.front() == ' ' || suffix.front() == '\t'))
+            suffix.remove_prefix(1);
+        const auto den = std::from_chars(suffix.data(), suffix.data() + suffix.size(), denominator);
+        if (den.ec != std::errc() || denominator <= 0)
+            return false;
+        const auto tail = suffix.substr(static_cast<size_t>(den.ptr - suffix.data()));
+        if (! tail.empty() && (tail.front() == '/' || tail.front() == '.' || tail.front() == ','))
+            return false;
+    }
+    cents = 1200.0 * std::log2(static_cast<double>(numerator) / static_cast<double>(denominator));
+    return std::isfinite(cents);
+}
+
+bool parseStandardScala(const char* sclText, const char* kbmText, TuningSnapshot& out, ParseError& error)
+{
+    out = {};
+    const auto fail = [&error](const char* message) { setError(error, message); return false; };
+    const auto scl = standardLines(sclText, true);
+    long long count = 0;
+    if (scl.size() < 2 || ! parseFullInteger(scl[1], count))
+        return fail("Scala description or degree count is missing or malformed");
+    if (count < 2 || count > kMaxDegrees)
+        return fail("Supported Scala scales contain 2..2048 pitches including a positive period");
+    if (scl.size() != static_cast<size_t>(count) + 2)
+        return fail("Scala pitch count does not match the declared count");
+    size_t nameBytes = std::min(scl[0].size(), sizeof(out.name) - 1);
+    while (nameBytes > 0 && nameBytes < scl[0].size()
+           && (static_cast<unsigned char>(scl[0][nameBytes]) & 0xc0u) == 0x80u)
+        --nameBytes;
+    std::memcpy(out.name, scl[0].data(), nameBytes);
+    for (long long i = 0; i < count; ++i)
+    {
+        double cents = 0.0;
+        if (! standardPitch(scl[static_cast<size_t>(i + 2)], cents))
+            return fail("Malformed Scala pitch: use decimal cents or positive integer ratios");
+        if (i == count - 1)
+            out.periodCents = cents;
+        else
+            out.degreeCents.push_back(cents);
+    }
+    if (! finitePositive(out.periodCents))
+        return fail("The repeating Scala period must be positive");
+    out.degreeCount = static_cast<uint16_t>(count - 1);
+    out.formalPeriod = static_cast<uint16_t>(count);
+    out.signedKeyboardMapping = true;
+    for (int note = 0; note < kMidiNotes; ++note)
+    {
+        out.midiDegree[note] = static_cast<int16_t>(note - 60);
+        out.midiHz[note] = 1.0; // Assignment marker until frequencies are rebuilt.
+    }
+    if (kbmText != nullptr)
+    {
+        const auto kbm = standardLines(kbmText, false);
+        long long size = 0, first = 0, last = 0, middle = 0, reference = 0, advance = 0;
+        double frequency = 0.0;
+        if (kbm.size() < 7 || ! parseFullInteger(kbm[0], size) || ! parseFullInteger(kbm[1], first)
+            || ! parseFullInteger(kbm[2], last) || ! parseFullInteger(kbm[3], middle)
+            || ! parseFullInteger(kbm[4], reference) || ! parseFullReal(kbm[5], frequency)
+            || kbm[5].find(',') != std::string::npos || ! parseFullInteger(kbm[6], advance))
+            return fail("KBM requires seven valid header fields");
+        if (size < 0 || size > std::numeric_limits<int32_t>::max())
+            return fail("KBM map size must be a nonnegative 32-bit integer");
+        if (first < 0 || last > 127 || first > last || middle < 0 || middle > 127)
+            return fail("KBM keyboard range and middle note must lie within MIDI 0..127");
+        if (reference < first || reference > last)
+            return fail("The KBM reference note must lie within its mapped keyboard range");
+        if (advance < std::numeric_limits<int32_t>::min() || advance > std::numeric_limits<int32_t>::max())
+            return fail("KBM formal period exceeds the supported signed 32-bit range");
+        if (! finitePositive(frequency))
+            return fail("KBM reference frequency must be positive and finite");
+        if (kbm.size() - 7 > static_cast<size_t>(size))
+            return fail("KBM has more pattern entries than its map size");
+        std::vector<long long> pattern;
+        constexpr auto unmapped = std::numeric_limits<long long>::min();
+        for (size_t i = 7; i < kbm.size(); ++i)
+        {
+            long long degree = unmapped;
+            if (kbm[i] != "x" && kbm[i] != "X"
+                && (! parseFullInteger(kbm[i], degree) || degree < std::numeric_limits<int32_t>::min()
+                    || degree > std::numeric_limits<int32_t>::max()))
+                return fail("KBM entries must be signed integer degrees or x");
+            pattern.push_back(degree);
+        }
+        out.referenceNote = static_cast<uint16_t>(reference);
+        out.referenceHz = frequency;
+        for (int note = 0; note < kMidiNotes; ++note)
+        {
+            out.midiDegree[note] = -1;
+            out.midiHz[note] = 0.0;
+            if (note < first || note > last)
+                continue;
+            const long long delta = note - middle;
+            long long degree = delta;
+            if (size != 0)
+            {
+                const long long cycle = delta >= 0 ? delta / size : -((-delta + size - 1) / size);
+                const auto index = static_cast<size_t>(delta - cycle * size);
+                if (index >= pattern.size() || pattern[index] == unmapped)
+                    continue;
+                degree = cycle * advance + pattern[index];
+            }
+            if (degree < std::numeric_limits<int16_t>::min() || degree > std::numeric_limits<int16_t>::max())
+                return fail("KBM produces a degree outside the supported signed 16-bit range");
+            out.midiDegree[note] = static_cast<int16_t>(degree);
+            out.midiHz[note] = 1.0;
+        }
+    }
+    return rebuildFrequencies(out, error);
+}
+
 }  // namespace
 
 double TuningSnapshot::hzForDegree(int degree) const noexcept
 {
     if (formalPeriod == 0 || referenceHz <= 0.0 || periodCents <= 0.0)
         return 0.0;
-    if (referenceNote < 0 || referenceNote >= kMidiNotes || midiDegree[referenceNote] < 0)
+    if (referenceNote < 0 || referenceNote >= kMidiNotes || ! assigned(referenceNote))
         return 0.0;
     const double cents = centsForDegree(*this, degree) - centsForDegree(*this, midiDegree[referenceNote]);
     return referenceHz * std::pow(2.0, cents / 1200.0);
@@ -315,8 +501,10 @@ int TuningSnapshot::nearestMappedMidi(double hz) const noexcept
     return best;
 }
 
-bool parseScalaAndKeyboard(const char* sclText, const char* kbmText, TuningSnapshot& out, ParseError& error)
+bool parseScalaAndKeyboard(const char* sclText, const char* kbmText, TuningSnapshot& out, ParseError& error, ScalaSyntax syntax)
 {
+    if (syntax == ScalaSyntax::standard)
+        return parseStandardScala(sclText, kbmText, out, error);
     out = {};
     const auto scl = contentLines(sclText);
     if (scl.size() < 2)
@@ -556,12 +744,15 @@ bool readTuningTable(const uint8_t* data, size_t size, TuningSnapshot& out, Pars
         setError(error, "tuning table has trailing bytes");
         return false;
     }
+    for (int note = 0; note < kMidiNotes; ++note)
+        if (out.midiDegree[note] < 0 && out.midiHz[note] > 0.0)
+            out.signedKeyboardMapping = true;
     TuningSnapshot recomputed = out;
     if (! rebuildFrequencies(recomputed, error))
         return false;
     for (int note = 0; note < kMidiNotes; ++note)
     {
-        if (out.midiDegree[note] < 0)
+        if (! out.assigned(note))
         {
             if (out.midiHz[note] != 0.0)
             {

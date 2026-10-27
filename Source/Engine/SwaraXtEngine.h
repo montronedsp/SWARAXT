@@ -168,7 +168,7 @@ class SwaraXtEngine {
     const char* builtinTuningName(int index) const noexcept;
     int activeBuiltinTuning() const noexcept { return builtinTuningIndex_.load(std::memory_order_relaxed); }
     juce::String activeTuningName() const;
-    void copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept;
+    void copyActiveTuningDegrees(int16_t* midiDegree, int count, bool* midiMapped = nullptr) const noexcept;
     SequenceState::ScaleRandomView scaleRandomView() const noexcept;
     double hzForActiveDegree(int degree) const noexcept;
     tuning::PublishedTuning::QuantizedPitch quantizeActiveHz(double sourceHz) const noexcept;
