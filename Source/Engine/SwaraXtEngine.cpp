@@ -859,7 +859,32 @@ bool SwaraXtEngine::selectedFilterTailActive() const noexcept
     if (manualSwitchPhase_ != ManualSwitchPhase::stable)
         return true;
     if (experimentalSvfEnabled_)
-        return experimentalSvf_.tailActive() || dualOutputDelay_.tailActive();
+    {
+        // Resonator state cannot sound behind an exactly closed VCA. Keep
+        // rendering until the selected VCA and all delayed output are empty;
+        // a running internal clock must also advance between sequencer gates.
+        if (experimentalSvf_.vcaControl() != 0.0f || dualOutputDelay_.tailActive()
+            || (part_.running() && part_.sequencer_settings().seq_tempo >= 40))
+            return true;
+        const auto& patch = part_.patch();
+        if (patch.lfo[1].retrigger_mode == shruthi::LFO_MODE_MASTER)
+            return true;
+        bool envelopeGatesVca = false;
+        for (int i = 0; i < shruthi::kModulationMatrixSize; ++i)
+        {
+            const auto& row = patch.modulation_matrix.modulation[i];
+            if (row.amount == 0)
+                continue;
+            if (row.source == shruthi::MOD_SRC_AUDIO || row.destination == shruthi::MOD_DST_TRIGGER_ENV_2)
+                return true;
+            // Firmware VCA rows multiply. A full, unscaled dead-envelope row
+            // forces exact zero despite other factors; the last row is wheel-scaled.
+            envelopeGatesVca |= i != shruthi::kModulationMatrixSize - 1
+                && row.destination == shruthi::MOD_DST_VCA
+                && row.source == shruthi::MOD_SRC_ENV_2 && row.amount == 63;
+        }
+        return !envelopeGatesVca;
+    }
     return filter_.instrumentTailActive();
 }
 
@@ -925,6 +950,7 @@ void SwaraXtEngine::renderInternalBlock()
 #endif
     const bool effectsBypassed = activeBoard_.effect == board::Effect::off
         && boardFadePhase_ == BoardFadePhase::stable;
+    bool selectedOutputSilent = true;
     if (effectsBypassed)
     {
         postDacFilter_.reset();
@@ -989,6 +1015,14 @@ void SwaraXtEngine::renderInternalBlock()
             postDacFilter_.process(processed, static_cast<std::size_t>(read));
         else
             postDacFilter_.reset();
+        if (experimentalSvfEnabled_ && vcaTarget == 0.0f
+            && experimentalSvf_.vcaControl() == 0.0f && !dualOutputDelay_.tailActive())
+        {
+            // A quiet FX flag can still leave a constant quantized output.
+            // Replacing that level with drain zeros would excite the DC path.
+            selectedOutputSilent = std::all_of(processed.begin(), processed.begin() + read,
+                [](float sample) noexcept { return sample == 0.0f; });
+        }
         for (int i = 0; i < read; ++i)
         {
             const auto index = static_cast<std::size_t>(i);
@@ -1009,7 +1043,7 @@ void SwaraXtEngine::renderInternalBlock()
     cpuProfile_.filterSamplesProcessed += static_cast<uint64_t>(read);
 #endif
     if (read > 0 && vcaTarget == 0.0f && vcaCvState_ < (1.0f / 512.0f)
-        && !selectedFilterTailActive()
+        && !selectedFilterTailActive() && selectedOutputSilent
         && part_.voice().amplitude_envelope_dead() && !boardRequiresAudio())
     {
         vcaCvState_ = 0.0f;
@@ -1063,10 +1097,12 @@ void SwaraXtEngine::updateDormantWakeState()
         return;
     }
 #endif
+    // Dual control edits can invalidate silence during downstream drainage.
     // A manual request during SRC/DC drainage needs native transactions again.
     // Wait until native input is needed, so a request reversed while queued
     // output drains cannot advance otherwise idle firmware/filter history.
     if (! voiceRequiresAudio()
+        && !(experimentalSvfEnabled_ && drainingToDormant_ && selectedFilterTailActive())
         && (! drainingToDormant_
             || experimentalSvfControl_.selection().enabled == experimentalSvfEnabled_
             || internalQueue_.size() >= internalQueue_.queueTargetSize()))
