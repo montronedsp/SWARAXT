@@ -56,6 +56,14 @@ set(SWARAXT_HOST_SOURCES
     "${CMAKE_SOURCE_DIR}/Source/Engine/ShruthiPort/host/storage.cc"
 )
 
+include(BuiltinTunings)
+set(SWARAXT_BUILTIN_TUNING_SOURCES)
+foreach(entry IN LISTS SWARAXT_BUILTIN_TUNINGS)
+    string(REPLACE "|" ";" fields "${entry}")
+    list(GET fields 0 stem)
+    list(APPEND SWARAXT_BUILTIN_TUNING_SOURCES "${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/${stem}.scl")
+endforeach()
+
 set(SWARAXT_GENERATED_TUNING_HEADER
     "${CMAKE_BINARY_DIR}/generated/BuiltinTunings.h")
 add_custom_command(
@@ -66,12 +74,8 @@ add_custom_command(
         -DOUTPUT=${SWARAXT_GENERATED_TUNING_HEADER}
         -P ${CMAKE_SOURCE_DIR}/cmake/EmbedBuiltinTunings.cmake
     DEPENDS SwaraXtTuningConverter
-        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/12-edo.scl
-        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/19-edo.scl
-        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/24-edo.scl
-        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/31-edo.scl
-        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/just-major.scl
-        ${CMAKE_SOURCE_DIR}/Source/Tuning/builtin/tritave.scl
+        ${SWARAXT_BUILTIN_TUNING_SOURCES}
+        ${CMAKE_SOURCE_DIR}/cmake/BuiltinTunings.cmake
         ${CMAKE_SOURCE_DIR}/cmake/EmbedBuiltinTunings.cmake
     VERBATIM
 )

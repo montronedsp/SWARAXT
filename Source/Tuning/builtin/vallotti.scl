@@ -1,0 +1,18 @@
+! vallotti.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Circle C-G-D-A-E-B-F#-C#-G#-Eb-Bb-F-C; see README.md for exact fifth corrections.
+! Independently authored; definition and references: README.md
+Vallotti (1/6 Pyth. comma)
+12
+94.134997403838
+196.089998269225
+298.044999134613
+392.179996538450
+501.955000865389
+592.179996538450
+698.044999134612
+796.089998269225
+894.134997403838
+1000.000000000001
+1090.224995673062
+2/1
