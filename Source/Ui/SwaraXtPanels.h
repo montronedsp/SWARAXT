@@ -468,7 +468,7 @@ class SeqPanel : public juce::Component,
     juce::TextButton lockButton_ { "LOCK" };
     juce::ComboBox pitchModeBox_;
     juce::ComboBox tuningBox_;
-    juce::TextButton importTuning_ { "SWT" };
+    juce::TextButton importTuning_ { "LOAD" };
     std::unique_ptr<juce::FileChooser> tuningChooser_;
     juce::TextButton midiOutButton_ { "MIDI OUT" };
     std::unique_ptr<juce::ButtonParameterAttachment> midiOutAttachment_;

@@ -1824,7 +1824,7 @@ juce::String SwaraXtEngine::activeTuningName() const
     return juce::String(name);
 }
 
-void SwaraXtEngine::copyActiveTuningDegrees(int16_t* midiDegree, int count) const noexcept
+void SwaraXtEngine::copyActiveTuningDegrees(int16_t* midiDegree, int count, bool* midiMapped) const noexcept
 {
     if (midiDegree == nullptr || count <= 0)
         return;
@@ -1833,10 +1833,18 @@ void SwaraXtEngine::copyActiveTuningDegrees(int16_t* midiDegree, int count) cons
     const bool pinned = pinPublished(tuning, claim) && tuning != nullptr && tuning->valid;
     const int limit = juce::jmin(count, tuning::kMidiNotes);
     for (int note = 0; note < limit; ++note)
+    {
         midiDegree[note] = pinned ? tuning->midiDegree[note] : static_cast<int16_t>(note - 60);
+        if (midiMapped != nullptr)
+            midiMapped[note] = pinned ? tuning->midiMapped[note] : note >= 60;
+    }
     unpinPublished(claim);
     for (int note = limit; note < count; ++note)
+    {
         midiDegree[note] = -1;
+        if (midiMapped != nullptr)
+            midiMapped[note] = false;
+    }
 }
 
 double SwaraXtEngine::hzForActiveDegree(int degree) const noexcept
