@@ -1,0 +1,18 @@
+! meantone-4.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Fifth = 1200 log2(3/2) - (1200 log2(81/80))/4; chain Eb through G#.
+! Independently authored; definition and references: README.md
+1/4-comma meantone
+12
+76.048999263461
+193.156856932417
+310.264714601374
+386.313713864835
+503.421571533791
+579.470570797253
+696.578428466209
+772.627427729670
+889.735285398626
+1006.843143067583
+1082.892142331043
+2/1

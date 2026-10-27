@@ -1,0 +1,11 @@
+! hirajoshi-ellis.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Helmholtz/Ellis, On the Sensations of Tone, 1895 third English edition, p.519, table row 110: theoretical Hiradioshi (rounded cents 204,316,702,814). Not the observed rows 111-112.
+! Independently authored; definition and references: README.md
+Hirajoshi (Ellis theoretical)
+5
+9/8
+6/5
+3/2
+8/5
+2/1
