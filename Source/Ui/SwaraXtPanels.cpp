@@ -1236,30 +1236,47 @@ SeqPanel::SeqPanel()
         if (refreshingSequenceControls_ || sequenceState_ == nullptr)
             return;
         int16_t midiDegree[128];
+        bool midiMapped[128] {};
         for (int note = 0; note < 128; ++note)
             midiDegree[note] = -1;
         if (processor_ != nullptr)
-            processor_->copyTuningDegrees(midiDegree, 128);
+            processor_->copyTuningDegrees(midiDegree, 128, midiMapped);
         sequenceState_->setPitchMode(static_cast<uint8_t>(juce::jlimit(0, 3, pitchModeBox_.getSelectedId() - 1)),
-                                     midiDegree);
+                                     midiDegree, midiMapped);
     };
     addAndMakeVisible(tuningBox_);
     tuningBox_.setTooltip("Built-in tuning table shared by SCALE, QUANTIZED CV and INPUT TUNE.");
-    importTuning_.setTooltip("Import a validated SWT1 tuning table. Scala files are converted offline.");
+    importTuning_.setTooltip("Load .swt or .scl. Select the .scl and optional .kbm together to use a keyboard mapping.");
     importTuning_.onClick = [this] {
         if (processor_ == nullptr)
             return;
-        tuningChooser_ = std::make_unique<juce::FileChooser>("Import SWT1 tuning", juce::File(), "*.swt");
-        tuningChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        tuningChooser_ = std::make_unique<juce::FileChooser>(
+            "Select one SWT or SCL (optionally select its KBM too)", juce::File(), "*.swt;*.scl;*.kbm");
+        tuningChooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                                        | juce::FileBrowserComponent::canSelectMultipleItems,
                                     [this](const juce::FileChooser& chooser) {
-            const auto file = chooser.getResult();
-            if (file == juce::File() || processor_ == nullptr)
+            const auto files = chooser.getResults();
+            if (files.isEmpty() || processor_ == nullptr)
                 return;
-            juce::MemoryBlock bytes;
-            if (! file.loadFileAsData(bytes))
-                return;
-            if (processor_->loadTuningBytes(bytes.getData(), bytes.getSize()))
+            juce::File scale, keyboard;
+            bool valid = true;
+            for (const auto& file : files)
+            {
+                if (file.hasFileExtension("kbm") && keyboard == juce::File())
+                    keyboard = file;
+                else if (file.hasFileExtension("scl;swt") && scale == juce::File())
+                    scale = file;
+                else
+                    valid = false;
+            }
+            juce::String error;
+            if (! valid || scale == juce::File())
+                error = "Select exactly one .scl or .swt file and, for Scala, at most one .kbm";
+            else if (processor_->importTuningFile(scale, keyboard, error))
                 refreshSequenceControls();
+            if (error.isNotEmpty())
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                                       "Tuning import failed", error);
         });
     };
     lockButton_.setClickingTogglesState(true);

@@ -463,7 +463,7 @@ class SequenceState {
 
     // midiDegree is optional and used only the first time SCALE is entered.
     // Unmapped notes fall back to degree 0. Packed notes are not rewritten.
-    void setPitchMode(uint8_t mode, const int16_t* midiDegree = nullptr)
+    void setPitchMode(uint8_t mode, const int16_t* midiDegree = nullptr, const bool* midiMapped = nullptr)
     {
         auto pattern = snapshot();
         if (mode > 3)
@@ -484,7 +484,8 @@ class SequenceState {
             {
                 const int note = SequenceSnapshot::dataA(pattern.steps[static_cast<size_t>(i)]) & 0x7f;
                 int degree = 0;
-                if (midiDegree != nullptr && note < 128 && midiDegree[note] >= 0)
+                if (midiDegree != nullptr && note < 128
+                    && (midiMapped != nullptr ? midiMapped[note] : midiDegree[note] >= 0))
                     degree = midiDegree[note];
                 pattern.scaleDegree[static_cast<size_t>(i)] = static_cast<int16_t>(
                     juce::jlimit(-kScaleDegreeLimit, kScaleDegreeLimit, degree));

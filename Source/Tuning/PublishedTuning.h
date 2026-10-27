@@ -24,6 +24,7 @@ struct PublishedTuning {
     double periodCents = 1200.0;
     double degreeCents[kMaxInterior] {};
     int16_t midiDegree[kMidiNotes] {};
+    bool midiMapped[kMidiNotes] {};
     char name[kNameBytes] {};
     bool valid = false;
 
@@ -36,7 +37,7 @@ struct PublishedTuning {
             || ! std::isfinite(snapshot.referenceHz) || snapshot.referenceHz <= 0.0
             || ! std::isfinite(snapshot.periodCents) || snapshot.periodCents <= 0.0
             || snapshot.referenceNote >= kMidiNotes
-            || snapshot.midiDegree[snapshot.referenceNote] < 0)
+            || ! snapshot.assigned(snapshot.referenceNote))
             return false;
         for (double cents : snapshot.degreeCents)
             if (! std::isfinite(cents))
@@ -50,7 +51,10 @@ struct PublishedTuning {
         for (uint16_t i = 0; i < degreeCount; ++i)
             degreeCents[i] = snapshot.degreeCents[i];
         for (int note = 0; note < kMidiNotes; ++note)
+        {
             midiDegree[note] = snapshot.midiDegree[note];
+            midiMapped[note] = snapshot.assigned(note);
+        }
         std::memcpy(name, snapshot.name, kNameBytes);
         name[kNameBytes - 1] = '\0';
         valid = true;
@@ -88,7 +92,7 @@ struct PublishedTuning {
     {
         if (! valid || referenceHz <= 0.0 || periodCents <= 0.0 || formalPeriod == 0)
             return 0.0;
-        if (referenceNote >= kMidiNotes || midiDegree[referenceNote] < 0)
+        if (referenceNote >= kMidiNotes || ! midiMapped[referenceNote])
             return 0.0;
         const double cents = centsForDegree(degree) - centsForDegree(midiDegree[referenceNote]);
         const double hz = referenceHz * std::pow(2.0, cents / 1200.0);
@@ -102,7 +106,7 @@ struct PublishedTuning {
         if (! valid || heldNote < 0 || heldNote >= kMidiNotes)
             return 0;
         constexpr int tonicKey = 60;
-        if (midiDegree[heldNote] < 0 || midiDegree[tonicKey] < 0)
+        if (! midiMapped[heldNote] || ! midiMapped[tonicKey])
             return 0;
         return static_cast<int>(midiDegree[heldNote]) - static_cast<int>(midiDegree[tonicKey]);
     }
