@@ -1792,32 +1792,22 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
 
 bool SwaraXtEngine::loadBuiltinTuning(int index)
 {
-    struct Item { const char* name; const uint8_t* data; size_t size; };
-    const Item items[] = {
-        { "12-EDO", tuning::kBuiltin12Edo, tuning::kBuiltin12EdoSize },
-        { "19-EDO", tuning::kBuiltin19Edo, tuning::kBuiltin19EdoSize },
-        { "24-EDO", tuning::kBuiltin24Edo, tuning::kBuiltin24EdoSize },
-        { "31-EDO", tuning::kBuiltin31Edo, tuning::kBuiltin31EdoSize },
-        { "5-limit major", tuning::kBuiltinJustMajor, tuning::kBuiltinJustMajorSize },
-        { "tritave", tuning::kBuiltinTritave, tuning::kBuiltinTritaveSize }
-    };
-    if (index < 0 || index >= static_cast<int>(std::size(items)))
+    if (index < 0 || index >= builtinTuningCount())
         return false;
-    return publishTuningBytes(items[static_cast<size_t>(index)].data,
-                              items[static_cast<size_t>(index)].size, index);
+    const auto& item = tuning::kBuiltinTunings[static_cast<size_t>(index)];
+    return publishTuningBytes(item.data, item.size, index);
 }
 
 int SwaraXtEngine::builtinTuningCount() const noexcept
 {
-    return 6;
+    return static_cast<int>(std::size(tuning::kBuiltinTunings));
 }
 
 const char* SwaraXtEngine::builtinTuningName(int index) const noexcept
 {
-    static const char* names[] = { "12-EDO", "19-EDO", "24-EDO", "31-EDO", "5-limit major", "tritave" };
-    if (index < 0 || index >= 6)
+    if (index < 0 || index >= builtinTuningCount())
         return "12-EDO";
-    return names[index];
+    return tuning::kBuiltinTunings[static_cast<size_t>(index)].name;
 }
 
 juce::String SwaraXtEngine::activeTuningName() const

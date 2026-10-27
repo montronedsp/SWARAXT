@@ -1,0 +1,18 @@
+! werckmeister-iii.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Circle C-G-D-A-E-B-F#-C#-G#-Eb-Bb-F-C; see README.md for exact fifth corrections.
+! Independently authored; definition and references: README.md
+Werckmeister III
+12
+90.224995673063
+192.179996538450
+294.134997403838
+390.224995673062
+498.044999134614
+588.269994807675
+696.089998269225
+792.179996538451
+888.269994807675
+996.089998269226
+1092.179996538450
+2/1

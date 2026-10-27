@@ -1,0 +1,19 @@
+! bohlen-pierce-just.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Original Bohlen-Pierce just-ratio sequence; Huygens-Fokker BP site, scales.html.
+! Independently authored; definition and references: README.md
+Bohlen-Pierce just
+13
+27/25
+25/21
+9/7
+7/5
+75/49
+5/3
+9/5
+49/25
+15/7
+7/3
+63/25
+25/9
+3/1
