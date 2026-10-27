@@ -83,6 +83,22 @@ class SequenceState {
     }
 #endif
 
+#if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
+    enum class NotificationPoint { published, delivered, disarmed };
+    using NotificationHook = void (*)(void*, NotificationPoint) noexcept;
+    void setNotificationHook(NotificationHook hook, void* context) noexcept
+    {
+        listenerHub_->hook = hook;
+        listenerHub_->hookContext = context;
+    }
+    void rejectNotificationPostsForTests(bool reject) noexcept
+    {
+        listenerHub_->rejectPosts.store(reject);
+    }
+    bool notificationArmedForTests() const noexcept { return listenerHub_->armed.load(); }
+    bool notificationPendingForTests() const noexcept { return listenerHub_->pending.load(); }
+#endif
+
     class Listener {
      public:
         virtual ~Listener() = default;
@@ -612,7 +628,19 @@ class SequenceState {
         std::atomic<uint32_t> asyncSchedules { 0 };
         std::atomic<uint32_t> asyncDeliveries { 0 };
         juce::ListenerList<Listener> listeners;
+#if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
+        NotificationHook hook = nullptr;
+        void* hookContext = nullptr;
+        std::atomic<bool> rejectPosts { false };
+#endif
     };
+
+#if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
+    static void notificationPoint(const std::shared_ptr<ListenerHub>& hub, NotificationPoint point) noexcept
+    {
+        if (hub->hook != nullptr) hub->hook(hub->hookContext, point);
+    }
+#endif
 
     template <typename Atomic, typename Value>
     void updateAtomic(Atomic& target, Value value, bool notify = true)
@@ -637,10 +665,15 @@ class SequenceState {
             return;
         }
 
-        hub->pending.store(true, std::memory_order_release);
+        // The two-flag handoff needs one total order: a producer that observes
+        // an armed drain must publish before that drain's final pending check.
+        hub->pending.store(true, std::memory_order_seq_cst);
+#if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
+        notificationPoint(hub, NotificationPoint::published);
+#endif
         bool expected = false;
         if (! hub->armed.compare_exchange_strong(
-                expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+                expected, true, std::memory_order_seq_cst, std::memory_order_seq_cst))
         {
             // A drain is already armed. pending ensures it observes this update.
             return;
@@ -649,10 +682,14 @@ class SequenceState {
         if (! manager->isThisTheMessageThread())
         {
             hub->asyncSchedules.fetch_add(1, std::memory_order_relaxed);
-            if (! juce::MessageManager::callAsync(
+            if (
+#if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
+                hub->rejectPosts.load() ||
+#endif
+                ! juce::MessageManager::callAsync(
                     [hub] { SequenceState::drainListeners(hub); }))
             {
-                hub->armed.store(false, std::memory_order_release);
+                hub->armed.store(false, std::memory_order_seq_cst);
             }
             return;
         }
@@ -663,7 +700,7 @@ class SequenceState {
     {
         for (;;)
         {
-            hub->pending.store(false, std::memory_order_release);
+            hub->pending.store(false, std::memory_order_seq_cst);
             {
                 const juce::ScopedLock lock(hub->lock);
                 if (hub->alive.load(std::memory_order_acquire))
@@ -677,13 +714,19 @@ class SequenceState {
                 }
             }
             hub->asyncDeliveries.fetch_add(1, std::memory_order_relaxed);
-            hub->armed.store(false, std::memory_order_release);
-            if (! hub->pending.load(std::memory_order_acquire))
+#if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
+            notificationPoint(hub, NotificationPoint::delivered);
+#endif
+            hub->armed.store(false, std::memory_order_seq_cst);
+#if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
+            notificationPoint(hub, NotificationPoint::disarmed);
+#endif
+            if (! hub->pending.load(std::memory_order_seq_cst))
                 return;
             // Update arrived during deliver. Re-arm on this thread if we win.
             bool expected = false;
             if (! hub->armed.compare_exchange_strong(
-                    expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+                    expected, true, std::memory_order_seq_cst, std::memory_order_seq_cst))
                 return;
         }
     }
