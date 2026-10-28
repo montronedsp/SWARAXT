@@ -350,13 +350,10 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     backgroundMenu.addItem(182, "Load PNG or SVG...");
     backgroundMenu.addItem(183, "Clear custom", backgroundFile, false);
 
-    auto filterModelMenu = createExperimentalFilterMenu();
-
     juce::PopupMenu menu;
     menu.setLookAndFeel(&lookAndFeel_);
     menu.addSubMenu("MIDI Channel", midiMenu);
     menu.addSubMenu("Filter Quality", qualityMenu);
-    menu.addSubMenu("Filter Model (Experimental)", filterModelMenu);
     menu.addSeparator();
     menu.addSubMenu("Manufacturer Mark", markMenu);
     menu.addSubMenu("Background", backgroundMenu);
@@ -377,60 +374,6 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     menu.addSubMenu("GUI Size", sizeMenu);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withDeletionCheck(*this),
                        contextMenuCallback());
-}
-
-juce::PopupMenu SwaraXtAudioProcessorEditor::createExperimentalFilterMenu() const
-{
-    // Prototype listening only: not a preset/state parameter. Default remains Classic.
-    // Menu reads the packed published selection, never Dual DSP state.
-    const auto svfSel = processor_.experimentalSvfSelection();
-    const bool experimentalSvf = svfSel.enabled;
-    const auto routing = svfSel.routing;
-    const auto calibration = svfSel.calibration;
-    const auto svfMode1 = svfSel.mode1;
-    const auto svfMode2 = svfSel.mode2;
-    juce::PopupMenu filterModelMenu;
-    filterModelMenu.addItem(600, "Classic IR3109", true, ! experimentalSvf);
-    filterModelMenu.addItem(601, "Experimental Dual SVF", true, experimentalSvf);
-    juce::PopupMenu routingMenu;
-    routingMenu.addItem(630, "Section 1 (reference)", experimentalSvf,
-                        experimentalSvf && routing == swaraxt::ShruthiSvfDualRouting::section1);
-    routingMenu.addItem(631, "Serial (MIX > F1 > F2)", experimentalSvf,
-                        experimentalSvf && routing == swaraxt::ShruthiSvfDualRouting::serial);
-    routingMenu.addItem(632, "Parallel (MIX > F1 + F2 > VCA)", experimentalSvf,
-                        experimentalSvf && routing == swaraxt::ShruthiSvfDualRouting::parallel);
-    juce::PopupMenu svfMode1Menu;
-    svfMode1Menu.addItem(610, "Low Pass", experimentalSvf,
-                         experimentalSvf && svfMode1 == swaraxt::ShruthiSvf2pMode::lowPass);
-    svfMode1Menu.addItem(611, "Band Pass", experimentalSvf,
-                         experimentalSvf && svfMode1 == swaraxt::ShruthiSvf2pMode::bandPass);
-    svfMode1Menu.addItem(612, "High Pass", experimentalSvf,
-                         experimentalSvf && svfMode1 == swaraxt::ShruthiSvf2pMode::highPass);
-    juce::PopupMenu svfMode2Menu;
-    svfMode2Menu.addItem(620, "Low Pass", experimentalSvf,
-                         experimentalSvf && svfMode2 == swaraxt::ShruthiSvf2pMode::lowPass);
-    svfMode2Menu.addItem(621, "Band Pass", experimentalSvf,
-                         experimentalSvf && svfMode2 == swaraxt::ShruthiSvf2pMode::bandPass);
-    svfMode2Menu.addItem(622, "High Pass", experimentalSvf,
-                         experimentalSvf && svfMode2 == swaraxt::ShruthiSvf2pMode::highPass);
-    juce::PopupMenu calibrationMenu;
-    calibrationMenu.addItem(640, "Approved / Paper", experimentalSvf,
-                            experimentalSvf && calibration == swaraxt::ShruthiSvfCalibration::paperApproved);
-    calibrationMenu.addItem(641, "Eagle v03 Hardware", experimentalSvf,
-                            experimentalSvf && calibration == swaraxt::ShruthiSvfCalibration::eagleHardware);
-    filterModelMenu.addSeparator();
-    filterModelMenu.addSubMenu("Routing / topology", routingMenu, experimentalSvf);
-    filterModelMenu.addSubMenu("SVF Calibration", calibrationMenu, experimentalSvf);
-    juce::PopupMenu control2Menu;
-    const char* names[] = { "Legacy Follow", "Independent", "Relative cutoff (64 = zero)" };
-    for (int i = 0; i < 3; ++i)
-        control2Menu.addItem(650 + i, names[i], experimentalSvf,
-            experimentalSvf && static_cast<int>(svfSel.control2) == i);
-    filterModelMenu.addSubMenu("Filter 2 Control", control2Menu, experimentalSvf);
-    filterModelMenu.addSubMenu("Section 1 mode", svfMode1Menu, experimentalSvf);
-    filterModelMenu.addSubMenu("Section 2 mode", svfMode2Menu, experimentalSvf);
-
-    return filterModelMenu;
 }
 
 std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
@@ -469,37 +412,6 @@ std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
         if (result == 301) safeThis->applyFilterQuality(swaraxt::FilterQuality::high, true);
         if (result == 302) safeThis->applyFilterQuality(swaraxt::FilterQuality::normal, true);
         if (result == 303) safeThis->applyFilterQuality(swaraxt::FilterQuality::eco, true);
-        if (result == 600)
-            safeThis->processor_.setExperimentalSvfEnabled(false);
-        if (result == 601)
-            safeThis->processor_.setExperimentalSvfEnabled(true);
-        if (result == 610)
-            safeThis->processor_.setExperimentalSvfMode1(swaraxt::ShruthiSvf2pMode::lowPass);
-        if (result == 611)
-            safeThis->processor_.setExperimentalSvfMode1(swaraxt::ShruthiSvf2pMode::bandPass);
-        if (result == 612)
-            safeThis->processor_.setExperimentalSvfMode1(swaraxt::ShruthiSvf2pMode::highPass);
-        if (result == 620)
-            safeThis->processor_.setExperimentalSvfMode2(swaraxt::ShruthiSvf2pMode::lowPass);
-        if (result == 621)
-            safeThis->processor_.setExperimentalSvfMode2(swaraxt::ShruthiSvf2pMode::bandPass);
-        if (result == 622)
-            safeThis->processor_.setExperimentalSvfMode2(swaraxt::ShruthiSvf2pMode::highPass);
-        if (result == 630)
-            safeThis->processor_.setExperimentalSvfRouting(swaraxt::ShruthiSvfDualRouting::section1);
-        if (result == 631)
-            safeThis->processor_.setExperimentalSvfRouting(swaraxt::ShruthiSvfDualRouting::serial);
-        if (result == 632)
-            safeThis->processor_.setExperimentalSvfRouting(swaraxt::ShruthiSvfDualRouting::parallel);
-        if (result == 640)
-            safeThis->processor_.setExperimentalSvfCalibration(
-                swaraxt::ShruthiSvfCalibration::paperApproved);
-        if (result == 641)
-            safeThis->processor_.setExperimentalSvfCalibration(
-                swaraxt::ShruthiSvfCalibration::eagleHardware);
-        if (result >= 650 && result <= 652)
-            safeThis->processor_.setExperimentalSvfControl2(
-                static_cast<swaraxt::ShruthiSvfSection2Control>(result - 650));
         safeThis->mainPanel_.refreshExperimentalSvf();
     };
 }
