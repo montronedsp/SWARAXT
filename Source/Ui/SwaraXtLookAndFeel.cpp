@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "Ui/SwaraXtLookAndFeel.h"
+#include "Ui/SwaraXtPanels.h"
 #include "Ui/SwaraXtText.h"
 
 #include "BinaryData.h"
@@ -236,8 +237,12 @@ void SwaraXtLookAndFeel::drawLinearSlider(juce::Graphics& g,
     g.setColour(sliderPos < centre ? Palette::skin().matrixAmountNegative
                                    : Palette::skin().matrixAmountPositive);
     g.fillRoundedRectangle(left, trackY - 2.0f, right - left, 4.0f, 2.0f);
+    const bool modulationDepth = dynamic_cast<SwaraXtDepthSlider*>(slider.getParentComponent()) != nullptr;
+    if (modulationDepth && slider.getValue() == 0.0)
+        g.setColour(Palette::skin().matrixText);
     g.fillEllipse(sliderPos - 4.0f, trackY - 4.0f, 8.0f, 8.0f);
-    g.setColour(Palette::skin().matrixText.withAlpha(0.8f));
+    g.setColour(modulationDepth ? Palette::skin().matrixText
+                               : Palette::skin().matrixText.withAlpha(0.8f));
     g.drawVerticalLine(static_cast<int>(std::round(centre)), trackY - 6.0f, trackY + 6.0f);
 }
 
