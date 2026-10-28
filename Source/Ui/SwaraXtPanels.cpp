@@ -1062,9 +1062,9 @@ void MainPanel::reflow()
 
 ModPanel::ModPanel()
 {
-    setTextRole(pageLabel_, TextRole::smallIndex);
+    setTextRole(pageLabel_, TextRole::numericValue);
     pageLabel_.setJustificationType(juce::Justification::centred);
-    pageLabel_.setColour(juce::Label::textColourId, Palette::mutedText());
+    pageLabel_.setColour(juce::Label::textColourId, Palette::skin().matrixText);
     addAndMakeVisible(pageLabel_);
     addAndMakeVisible(previousPage_);
     addAndMakeVisible(nextPage_);
@@ -1105,7 +1105,7 @@ ModPanel::ModPanel()
 
 void ModPanel::lookAndFeelChanged()
 {
-    pageLabel_.setColour(juce::Label::textColourId, Palette::mutedText());
+    pageLabel_.setColour(juce::Label::textColourId, Palette::skin().matrixText);
     for (auto& row : rows_)
         row->indexLabel.setColour(juce::Label::textColourId, Palette::mutedText());
 }
@@ -1134,7 +1134,7 @@ void ModPanel::attach(SwaraXtAudioProcessor& processor)
 void ModPanel::reflow()
 {
     auto area = getLocalBounds().reduced(2);
-    auto paging = area.removeFromTop(24);
+    auto paging = area.removeFromTop(24).reduced(2, 0);
     previousPage_.setBounds(paging.removeFromLeft(28));
     nextPage_.setBounds(paging.removeFromRight(28));
     pageLabel_.setBounds(paging);
@@ -1146,14 +1146,14 @@ void ModPanel::reflow()
         if (row / 3 != page_)
             continue;
         auto rowArea = area.removeFromTop(rowH).reduced(2, 2);
-        r.indexLabel.setBounds(rowArea.removeFromLeft(20));
+        r.indexLabel.setBounds(rowArea.removeFromLeft(18));
         rowArea.removeFromLeft(4);
-        const int amountW = 88;
-        const int sourceW = 82;
+        const int amountW = 102;
+        const int sourceW = 90;
         r.source.setBounds(rowArea.removeFromLeft(sourceW));
-        rowArea.removeFromLeft(3);
+        rowArea.removeFromLeft(4);
         r.amount->setBounds(rowArea.removeFromLeft(amountW));
-        rowArea.removeFromLeft(3);
+        rowArea.removeFromLeft(4);
         r.destination.setBounds(rowArea);
     }
 }
