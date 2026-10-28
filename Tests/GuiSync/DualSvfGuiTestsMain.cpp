@@ -81,13 +81,6 @@ void checkApplied(SwaraXtAudioProcessor& processor, const Selection& wanted)
         "requested configuration applied by audio processing");
 }
 
-bool menuChecked(const juce::PopupMenu& menu, int id)
-{
-    for (juce::PopupMenu::MenuItemIterator it(menu, true); it.next();)
-        if (it.getItem().itemID == id) return it.getItem().isTicked;
-    return false;
-}
-
 void selectionMatrix()
 {
     SwaraXtAudioProcessor processor;
@@ -150,12 +143,6 @@ void selectionMatrix()
                                "display identifies requested model");
                         expect(panel.section2TextForTests().contains(route == 0 ? "outside" : "Shared"),
                                "reference routing identifies unused section2");
-                        const auto menu = editor.experimentalFilterMenuForTests();
-                        expect(menuChecked(menu, enabled ? 601 : 600), "visible selector updates menu model checkmark");
-                        if (enabled)
-                            expect(menuChecked(menu, 630 + route) && menuChecked(menu, 610 + m1)
-                                && menuChecked(menu, 620 + m2) && menuChecked(menu, 640 + calibration),
-                                "visible controls update all menu checkmarks");
                         const auto beforeRefresh = Selection::pack(requested);
                         editor.refreshExperimentalSvfForTests();
                         editor.refreshExperimentalSvfForTests();
@@ -169,17 +156,29 @@ void selectionMatrix()
     for (size_t i = 0; i < common.size(); ++i)
         expect(common[i] == processor.getApvts().getRawParameterValue(ids[i])->load(), "common filter values preserved");
     const auto menuAction = editor.contextMenuCallbackForTests();
-    for (int id : { 601, 631, 611, 622, 641, 640, 632, 630, 610, 612, 620, 621, 600 })
+    const auto beforeObsoleteActions = processor.experimentalSvfSelection();
+    for (int id : { 600, 601, 610, 611, 612, 620, 621, 622, 630, 631, 632, 640, 641, 650, 651, 652 })
     {
         menuAction(id);
-        const auto s = processor.experimentalSvfSelection();
-        expect(main.filterModelForTests().getSelectedId() == (s.enabled ? 2 : 1)
-            && panel.routingForTests().selectedIndex() == static_cast<int>(s.routing)
-            && panel.mode1ForTests().selectedIndex() == static_cast<int>(s.mode1)
-            && panel.mode2ForTests().selectedIndex() == static_cast<int>(s.mode2)
-            && panel.calibrationForTests().selectedIndex() == static_cast<int>(s.calibration),
-            "actual context-menu callback synchronizes visible controls");
+        expect(equal(beforeObsoleteActions, processor.experimentalSvfSelection()),
+               "obsolete filter menu IDs cannot change the selection");
     }
+    auto* midiChannel = processor.getApvts().getRawParameterValue(swaraxt::IDs::midiChannel);
+    const float originalChannel = midiChannel->load();
+    menuAction(416);
+    expect(midiChannel->load() == 16.0f, "retained MIDI Channel menu action works");
+    menuAction(400 + static_cast<int>(originalChannel));
+    const auto originalQuality = processor.filterQuality();
+    for (const auto& item : { std::pair<int, swaraxt::FilterQuality>{ 301, swaraxt::FilterQuality::high },
+                             { 302, swaraxt::FilterQuality::normal }, { 303, swaraxt::FilterQuality::eco } })
+    {
+        menuAction(item.first);
+        expect(processor.filterQuality() == item.second, "retained Filter Quality menu action works");
+        expect(equal(beforeObsoleteActions, processor.experimentalSvfSelection()),
+               "Filter Quality does not change the Dual selection");
+    }
+    menuAction(originalQuality == swaraxt::FilterQuality::high ? 301
+        : originalQuality == swaraxt::FilterQuality::normal ? 302 : 303);
     processor.setExperimentalSvfEnabled(true);
     processor.setExperimentalSvfCalibration(ShruthiSvfCalibration::eagleHardware);
     // The editor's 4 Hz timer is asynchronous. Observe its actual publication;
@@ -448,16 +447,19 @@ void layoutAndLifetime()
         }
         editor.reset();
         const auto before = processor->experimentalSvfSelection();
-        pending(641);
+        const auto midiBefore = processor->getApvts().getRawParameterValue(swaraxt::IDs::midiChannel)->load();
+        pending(midiBefore == 16.0f ? 400 : 416);
         pump(20);
-        expect(equal(before, processor->experimentalSvfSelection()), "destroyed editor cancels pending menu and button callbacks");
+        expect(equal(before, processor->experimentalSvfSelection()), "destroyed editor cancels pending child callbacks");
+        expect(processor->getApvts().getRawParameterValue(swaraxt::IDs::midiChannel)->load() == midiBefore,
+               "destroyed editor cancels retained MIDI menu callback");
     }
     stopAudio.store(true, std::memory_order_release);
     audio.join();
     expect(rendered.load() > 0 && invalid.load() == 0, "editor and popup destruction while actual audio processing continues");
     std::printf("Audio during editor lifecycle: blocks=%d, invalid=%d\n", rendered.load(), invalid.load());
     processor.reset();
-    pending(601);
+    pending(416);
     pump(20);
 
     SwaraXtAudioProcessor displayProcessor;
