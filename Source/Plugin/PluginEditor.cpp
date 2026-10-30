@@ -8,6 +8,16 @@
 
 namespace {
 
+// Explicit popup activation also reloads the current preset. ComboBox's normal
+// value-change notification deliberately omits an unchanged item ID.
+class PresetActivation final : public juce::PopupMenu::CustomCallback {
+public:
+    explicit PresetActivation(std::function<void()> action) : action_(std::move(action)) {}
+    bool menuItemTriggered() override { action_(); return false; }
+private:
+    std::function<void()> action_;
+};
+
 const juce::Rectangle<float> companyWordmarkBounds { 489.5f, 24.0f, 134.0f, 21.0f };
 const juce::Rectangle<float> stoneWordmarkBounds { 492.5f, 19.5f, 128.0f, 30.0f };
 const juce::Rectangle<float> presetFrameBounds { 391.0f, 58.0f, 330.0f, 37.0f };
@@ -658,6 +668,23 @@ void SwaraXtAudioProcessorEditor::refreshPresetList()
         }
         presetSelector_.addItem(presetEntries_[index].name, static_cast<int>(index) + 1);
     }
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    for (juce::PopupMenu::MenuItemIterator it(*presetSelector_.getRootMenu(), false); it.next();)
+    {
+        auto& item = it.getItem();
+        if (item.itemID > 0)
+        {
+            const auto entry = presetEntries_[static_cast<size_t>(item.itemID - 1)];
+            item.customCallback = new PresetActivation([safeThis, entry] {
+                if (safeThis == nullptr) return;
+                juce::String error;
+                const bool loaded = safeThis->processor_.loadPresetEntry(entry, error);
+                if (safeThis == nullptr) return;
+                safeThis->refreshPresetList();
+                if (!loaded) safeThis->showPresetError(error);
+            });
+        }
+    }
 
     int selected = 0;
     for (size_t index = 0; index < presetEntries_.size(); ++index)
@@ -683,12 +710,12 @@ void SwaraXtAudioProcessorEditor::comboBoxChanged(juce::ComboBox* combo)
         return;
 
     const auto& entry = presetEntries_[static_cast<size_t>(index)];
-    if (entry.name == processor_.currentPresetName()
-        && entry.isFactory == ! processor_.currentPresetIsUser())
-        return;
-
     juce::String error;
-    if (! processor_.loadPresetEntry(entry, error))
+    const juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    const bool loaded = processor_.loadPresetEntry(entry, error);
+    if (safeThis == nullptr) return;
+    refreshPresetList();
+    if (! loaded)
         showPresetError(error);
 }
 
@@ -765,7 +792,12 @@ void SwaraXtAudioProcessorEditor::showPresetError(const juce::String& message)
 void SwaraXtAudioProcessorEditor::timerCallback()
 {
     mainPanel_.refreshExperimentalSvf();
-    if (presetSelector_.getText() != processor_.currentPresetName())
+    const int index = presetSelector_.getSelectedId() - 1;
+    const bool identityMatches = index >= 0 && index < static_cast<int>(presetEntries_.size())
+        && presetEntries_[static_cast<size_t>(index)].name == processor_.currentPresetName()
+        && presetEntries_[static_cast<size_t>(index)].isFactory != processor_.currentPresetIsUser();
+    if (presetSelector_.getText() != processor_.currentPresetName()
+        || (index >= 0 && !identityMatches))
         refreshPresetList();
 }
 

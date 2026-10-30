@@ -13,6 +13,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 
 bool SwaraXtAudioProcessor::importTuningFile(const juce::File& file, const juce::File& keyboard,
                                             juce::String& error)
@@ -82,6 +83,38 @@ namespace {
 
 constexpr const char* kFilterQualityProperty = "filterQuality";
 
+bool decodeStoredTuning(const juce::String& encoded, juce::MemoryBlock& decoded)
+{
+    // SWT1 has a 32-byte header, name, degrees and fixed MIDI degree/Hz maps.
+    constexpr size_t maxBytes = 32 + swaraxt::tuning::kNameBytes
+        + 8 * swaraxt::tuning::kMaxDegrees + 10 * swaraxt::tuning::kMidiNotes;
+    if (encoded.length() > static_cast<int>((maxBytes * 8 + 5) / 6 + 12))
+        return false;
+    const int dot = encoded.indexOfChar('.');
+    if (dot <= 0)
+        return false;
+    size_t length = 0;
+    for (int i = 0; i < dot; ++i)
+    {
+        const auto c = encoded[i];
+        if (c < '0' || c > '9' || length > maxBytes / 10)
+            return false;
+        length = length * 10 + static_cast<size_t>(c - '0');
+        if (length > maxBytes)
+            return false;
+    }
+    if (static_cast<size_t>(encoded.length() - dot - 1) != (length * 8 + 5) / 6)
+        return false;
+    for (int i = dot + 1; i < encoded.length(); ++i)
+    {
+        const auto c = encoded[i];
+        if (c != '.' && c != '+' && ! (c >= 'A' && c <= 'Z')
+            && ! (c >= 'a' && c <= 'z') && ! (c >= '0' && c <= '9'))
+            return false;
+    }
+    return decoded.fromBase64Encoding(encoded);
+}
+
 class StateUpdateScope {
 public:
     StateUpdateScope(std::atomic_flag& gate, bool wait) noexcept : gate_(gate)
@@ -130,7 +163,12 @@ SwaraXtAudioProcessor::StateWriterScope::StateWriterScope(SwaraXtAudioProcessor&
     if (processor_.stateWriterActive_)
         return;
     while (processor_.stateUpdateGate_.test_and_set(std::memory_order_acquire))
+    {
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+        processor_.statePublicationPoint(StatePublicationPoint::writerContended);
+#endif
         juce::Thread::yield();
+    }
     processor_.stateWriterActive_ = true;
     acquired_ = true;
 }
@@ -169,6 +207,8 @@ void SwaraXtAudioProcessor::parameterChanged(const juce::String& parameterID, fl
 
 void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    const StateWriterScope writer(*this);
+    if (!writer) return;
     if (! swaraxt::SwaraXtEngine::supportsHostSampleRate(sampleRate)) {
         isPrepared_ = false;
         setLatencySamples(0);
@@ -186,7 +226,8 @@ void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     setLatencySamples(static_cast<int>(std::ceil(
         swaraxt::SwaraXtEngine::kOutputLatencyNativeSamples * rate / swaraxt::SwaraXtEngine::kInternalSampleRate)));
 
-    if (! engineInitialized_)
+    const bool resetRequested = requestEngineReset_.exchange(false, std::memory_order_acq_rel);
+    if (! engineInitialized_ || resetRequested)
     {
         engine_.reset();
         engineInitialized_ = true;
@@ -199,7 +240,6 @@ void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
 
     engine_.applyParameters();
     engine_.touchModulationRates();
-    requestEngineReset_.store(false, std::memory_order_release);
     isPrepared_ = true;
 }
 
@@ -218,28 +258,24 @@ void SwaraXtAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     if (! isPrepared_)
         return;
 
-    {
-        // A bulk preset publishes many independent APVTS atomics plus sequence
-        // state. Never ingest that transaction halfway through. Audio attempts
-        // once and continues with its existing engine state while a writer owns
-        // publication; only non-audio writers may wait.
-        const StateUpdateScope publication(stateUpdateGate_, false);
-        if (publication)
-        {
-            if (requestEngineReset_.exchange(false, std::memory_order_acq_rel))
-            {
-                engine_.reset();
-                engine_.touchModulationRates();
-            }
-            engine_.applyParameters();
-        }
-    }
+    const auto transport = captureHostTransport();
+    // Keep restoration excluded through this render. Audio never waits; a failed
+    // admission retains the complete preceding working cohort, including tuning.
+    const StateUpdateScope publication(stateUpdateGate_, false);
+    swaraxt::SequenceSnapshot sequence;
+    uint32_t revision = 0;
+    const bool captured = publication && engine_.captureSequence(sequence, revision);
+    // Independent sequence edits retain the previous payload while live ARP
+    // controls update. A restore's reset intent requires a complete capture.
+    const bool admitted = publication && (captured || !requestEngineReset_.load(std::memory_order_acquire));
     const int numSamples = buffer.getNumSamples();
     if (numSamples <= 0)
         return;
 
     // The engine snapshots input before replacing this host-owned MIDI buffer.
-    engine_.process(midi, buffer, 0, numSamples, captureHostTransport(), &midi);
+    const bool reset = admitted && requestEngineReset_.exchange(false, std::memory_order_acq_rel);
+    engine_.process(midi, buffer, 0, numSamples, transport, &midi, admitted,
+                    admitted ? &sequence : nullptr, revision, reset);
 }
 
 swaraxt::HostTransportSnapshot SwaraXtAudioProcessor::captureHostTransport() noexcept
@@ -634,10 +670,7 @@ bool SwaraXtAudioProcessor::loadPresetEntry(const PresetEntry& entry, juce::Stri
         return false;
     }
 
-    if (restoreState(decoded, true, entry.name))
-        return true;
-    error = "A preset cannot be loaded from inside another state update.";
-    return false;
+    return restoreState(decoded, true, entry.name, &error);
 }
 
 bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
@@ -691,11 +724,33 @@ bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
     statePublicationPoint(StatePublicationPoint::userPresetFileReady);
 #endif
     juce::TemporaryFile temporary(target);
-    if (! temporary.getFile().replaceWithData(data.getData(), data.getSize())
-        || ! temporary.overwriteTargetFileWithTemporary())
+    if (! temporary.getFile().replaceWithData(data.getData(), data.getSize()))
     {
         error = "Could not write the preset safely.";
         return false;
+    }
+    if (overwrite)
+    {
+        if (! temporary.overwriteTargetFileWithTemporary())
+        {
+            error = "Could not write the preset safely.";
+            return false;
+        }
+    }
+    else
+    {
+        // Same-directory hard-link publication is atomic and cannot replace an
+        // existing name, including a competing writer in another instance.
+        std::error_code ec;
+        std::filesystem::create_hard_link(
+            std::filesystem::u8path(temporary.getFile().getFullPathName().toRawUTF8()),
+            std::filesystem::u8path(target.getFullPathName().toRawUTF8()), ec);
+        if (ec)
+        {
+            error = target.exists() ? "A user preset with this name already exists."
+                                    : "Could not create the preset safely on this filesystem.";
+            return false;
+        }
     }
     {
         const StateWriterScope writer(*this);
@@ -797,114 +852,162 @@ void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInByte
 {
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
         restoreState(juce::ValueTree::fromXml(*xml), false);
+    else
+        lastRestoreResult_.store(RestoreResult::invalid, std::memory_order_relaxed);
 }
 
-bool SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset, const juce::String& presetName)
+bool SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset,
+                                       const juce::String& presetName, juce::String* error)
 {
-    if (!tree.isValid() || !tree.hasType(kStateRoot)) return false;
-    const int version = static_cast<int>(tree.getProperty("stateVersion", 1));
-    if (version > kStateVersion || version < 1) return false;
-    const StateWriterScope writer(*this);
-    if (! writer)
+    const auto reject = [&](RestoreResult reason, const char* message) {
+        lastRestoreResult_.store(reason, std::memory_order_relaxed);
+        if (error != nullptr) *error = message;
         return false;
+    };
+    bool mutationStarted = false;
+    try
+    {
+        if (!tree.isValid() || !tree.hasType(kStateRoot))
+            return reject(RestoreResult::invalid, "Invalid state root.");
+        const int version = static_cast<int>(tree.getProperty("stateVersion", 1));
+        if (version > kStateVersion || version < 1)
+            return reject(RestoreResult::invalid, "Unsupported state version.");
+        const StateWriterScope writer(*this);
+        if (! writer)
+            return reject(RestoreResult::reentrant, "A preset cannot be loaded from inside another state update.");
+    #if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+        statePublicationPoint(StatePublicationPoint::restoreGateLocked);
+    #endif
+        const bool preserveSequence = fromPreset && sequenceLocked();
+        if (preserveSequence)
+        {
+            // Merge the protected snapshot before APVTS publication, avoiding
+            // intermediate sequence/arp changes in the engine and attachments.
+            for (const auto* id : swaraxt::sequenceParameterIds)
+            {
+                auto child = tree.getChildWithProperty("id", id);
+                if (!child.isValid())
+                {
+                    child = juce::ValueTree("PARAM");
+                    child.setProperty("id", id, nullptr);
+                    tree.addChild(child, -1, nullptr);
+                }
+                child.setProperty("value", apvts_.getRawParameterValue(id)->load(), nullptr);
+            }
+            if (const auto existing = tree.getChildWithName("SEQUENCE"); existing.isValid())
+                tree.removeChild(existing, nullptr);
+            tree.addChild(sequenceState_.toValueTree(), -1, nullptr);
+        }
+        const bool locked = fromPreset ? sequenceLocked() : static_cast<bool>(tree.getProperty("sequenceLocked", false));
+        const auto range = fromPreset ? randomNoteRange() : swaraxt::SequenceState::NoteRange {
+            juce::jlimit(-48, 0, static_cast<int>(tree.getProperty("randomNoteLower", -12))),
+            juce::jlimit(0, 48, static_cast<int>(tree.getProperty("randomNoteUpper", 12))) };
+        tree.setProperty("randomNoteLower", range.lower, nullptr);
+        tree.setProperty("randomNoteUpper", range.upper, nullptr);
+        tree.setProperty("sequenceLocked", locked, nullptr);
+        // JUCE defaults absent ordinary parameter children during replacement.
+        // Legacy states must not inherit an active Board/FX configuration.
+        for (const auto* id : { swaraxt::IDs::filterModel, swaraxt::IDs::dspFxProgram,
+                               swaraxt::IDs::dspFxParam1, swaraxt::IDs::dspFxParam2,
+                               swaraxt::IDs::dspBoardRouting, swaraxt::IDs::postMixer,
+                               swaraxt::IDs::inputConditioning, swaraxt::IDs::midiInputTuning })
+        {
+            if (!tree.getChildWithProperty("id", id).isValid())
+            {
+                const auto* parameter = apvts_.getParameter(id);
+                juce::ValueTree value("PARAM");
+                value.setProperty("id", id, nullptr);
+                value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
+                tree.addChild(value, -1, nullptr);
+            }
+        }
+        // Parameter records outside the active schema are not retained in state.
+        for (int index = tree.getNumChildren(); --index >= 0;)
+        {
+            const auto child = tree.getChild(index);
+            if (child.hasType("PARAM") && apvts_.getParameter(child["id"].toString()) == nullptr)
+                tree.removeChild(index, nullptr);
+        }
+        canonicaliseLegacyModes(tree);
+        swaraxt::SwaraXtEngine::TuningReservation tuning;
+        bool defaultTuning = false;
+        if (! preserveSequence)
+        {
+            const auto encoded = tree.getProperty("tuningTable").toString();
+            juce::MemoryBlock decoded;
+            // Missing/old undecodable strings retain the existing legacy behavior.
+            if (encoded.isNotEmpty() && encoded.containsChar('.'))
+            {
+                if (! decodeStoredTuning(encoded, decoded))
+                    return reject(RestoreResult::invalid, "Malformed or oversized tuning encoding.");
+                using Result = swaraxt::SwaraXtEngine::TuningResult;
+                auto result = engine_.reserveTuning(static_cast<const uint8_t*>(decoded.getData()), decoded.getSize(), tuning);
+                if (result == Result::invalid || result == Result::unsupported)
+                {
+                    defaultTuning = true;
+                    result = engine_.reserveBuiltinTuning(0, tuning); // Existing invalid-SWT fallback, now checked.
+                }
+                if (result != Result::success)
+                    return reject(result == Result::busy ? RestoreResult::tuningBusy : RestoreResult::tuningUnavailable,
+                                  "Tuning publication is temporarily unavailable; the preset is unchanged. Please retry.");
+            }
+        }
+        swaraxt::SequenceSnapshot sequence;
+        if (!preserveSequence && !swaraxt::SequenceState::decodeValueTree(tree.getChildWithName("SEQUENCE"), sequence))
+        {
+            sequence = swaraxt::SequenceState::defaultSnapshot();
+            const auto* pattern = apvts_.getParameter(swaraxt::IDs::arpPattern);
+            juce::var value = pattern->convertFrom0to1(pattern->getDefaultValue());
+            for (const auto child : tree)
+                if (child.getProperty("id") == swaraxt::IDs::arpPattern)
+                    value = child.getProperty("value", value); // JUCE's last duplicate wins.
+            sequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 7, static_cast<int>(std::lround(static_cast<float>(value)))));
+        }
+        const auto quality = decodeFilterQuality(
+            tree.getProperty(kFilterQualityProperty,
+                             static_cast<int>(swaraxt::FilterQuality::normal)));
+        int programIndex = juce::jlimit(0,
+                                       getNumPrograms() - 1,
+                                       static_cast<int>(tree.getProperty("currentProgram", 0)));
+        // Saved parameter state stays authoritative when factory numbering changes.
+        // Names remap retained programs without substituting the current bank sound.
+        if (tree.getProperty("presetKind") == "factory")
+            for (int program = 0; program < getNumPrograms(); ++program)
+                if (getProgramName(program) == tree.getProperty("presetName").toString())
+                {
+                    programIndex = program;
+                    break;
+                }
+        const auto userName = fromPreset ? presetName
+            : (tree.getProperty("presetKind") == "user" ? tree.getProperty("presetName").toString().trim()
+                                                      : juce::String {});
+        // Recoverable validation, allocation and admission failures precede mutation.
+        // JUCE replacement/listeners must obey the supported nonthrowing mutation
+        // contract. A mutation-time exception propagates; it is never reported as a
+        // coherent rejection or disguised by a rollback.
+        const BulkPublicationScope bulk(*this);
+        mutationStarted = true;
+        apvts_.replaceState(tree);
+        if (!preserveSequence) sequenceState_.store(sequence, true);
+        if (!fromPreset) { setSequenceLocked(locked); setRandomNoteRange(range); }
+        setFilterQuality(quality);
+        currentProgram_ = programIndex;
+        currentUserPresetName_ = userName;
 #if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
-    statePublicationPoint(StatePublicationPoint::restoreGateLocked);
+        statePublicationPoint(StatePublicationPoint::restoreBeforeTuningPublish);
 #endif
-    const BulkPublicationScope bulk(*this);
-    const bool preserveSequence = fromPreset && sequenceLocked();
-    if (preserveSequence)
-    {
-        // Merge the protected snapshot before APVTS publication, avoiding
-        // intermediate sequence/arp changes in the engine and attachments.
-        for (const auto* id : swaraxt::sequenceParameterIds)
-        {
-            auto child = tree.getChildWithProperty("id", id);
-            if (!child.isValid())
-            {
-                child = juce::ValueTree("PARAM");
-                child.setProperty("id", id, nullptr);
-                tree.addChild(child, -1, nullptr);
-            }
-            child.setProperty("value", apvts_.getRawParameterValue(id)->load(), nullptr);
-        }
-        if (const auto existing = tree.getChildWithName("SEQUENCE"); existing.isValid())
-            tree.removeChild(existing, nullptr);
-        tree.addChild(sequenceState_.toValueTree(), -1, nullptr);
+        tuning.publish();
+        hostSessionStateRestored_.store(! fromPreset, std::memory_order_release);
+        if (!preserveSequence) requestEngineReset_.store(true, std::memory_order_release);
+        lastRestoreResult_.store(defaultTuning ? RestoreResult::defaultTuning : RestoreResult::success,
+                                 std::memory_order_relaxed);
+        return true;
     }
-    if (!fromPreset)
+    catch (const std::bad_alloc&)
     {
-        setSequenceLocked(static_cast<bool>(tree.getProperty("sequenceLocked", false)));
-        setRandomNoteRange({ static_cast<int>(tree.getProperty("randomNoteLower", -12)),
-                             static_cast<int>(tree.getProperty("randomNoteUpper", 12)) });
+        if (mutationStarted) throw;
+        return reject(RestoreResult::preparationFailed, "Insufficient memory to prepare the state; the preset is unchanged.");
     }
-    const auto range = randomNoteRange();
-    tree.setProperty("randomNoteLower", range.lower, nullptr);
-    tree.setProperty("randomNoteUpper", range.upper, nullptr);
-    tree.setProperty("sequenceLocked", sequenceLocked(), nullptr);
-    // APVTS otherwise retains current values for absent parameters.
-    // Legacy states must not inherit an active Board/FX configuration.
-    for (const auto* id : { swaraxt::IDs::filterModel, swaraxt::IDs::dspFxProgram,
-                           swaraxt::IDs::dspFxParam1, swaraxt::IDs::dspFxParam2,
-                           swaraxt::IDs::dspBoardRouting, swaraxt::IDs::postMixer,
-                           swaraxt::IDs::inputConditioning, swaraxt::IDs::midiInputTuning })
-    {
-        if (!tree.getChildWithProperty("id", id).isValid())
-        {
-            const auto* parameter = apvts_.getParameter(id);
-            juce::ValueTree value("PARAM");
-            value.setProperty("id", id, nullptr);
-            value.setProperty("value", parameter->convertFrom0to1(parameter->getDefaultValue()), nullptr);
-            tree.addChild(value, -1, nullptr);
-        }
-    }
-    // Parameter records outside the active schema are not retained in state.
-    for (int index = tree.getNumChildren(); --index >= 0;)
-    {
-        const auto child = tree.getChild(index);
-        if (child.hasType("PARAM") && apvts_.getParameter(child["id"].toString()) == nullptr)
-            tree.removeChild(index, nullptr);
-    }
-    canonicaliseLegacyModes(tree);
-    apvts_.replaceState(tree);
-    if (! preserveSequence)
-    {
-        const auto encoded = tree.getProperty("tuningTable").toString();
-        juce::MemoryBlock decoded;
-        if (encoded.isNotEmpty() && decoded.fromBase64Encoding(encoded))
-        {
-            if (! engine_.loadTuningBytes(static_cast<const uint8_t*>(decoded.getData()), decoded.getSize()))
-                engine_.loadBuiltinTuning(0);
-        }
-    }
-    if (!preserveSequence && !sequenceState_.restoreFromValueTree(tree.getChildWithName("SEQUENCE")))
-    {
-        auto legacySequence = swaraxt::SequenceState::defaultSnapshot();
-        if (const auto* pattern = apvts_.getRawParameterValue(swaraxt::IDs::arpPattern))
-            legacySequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 7,
-                static_cast<int>(std::lround(pattern->load()))));
-        sequenceState_.store(legacySequence);
-    }
-    setFilterQuality(decodeFilterQuality(
-        tree.getProperty(kFilterQualityProperty,
-                         static_cast<int>(swaraxt::FilterQuality::normal))));
-    currentProgram_ = juce::jlimit(0,
-                                   getNumPrograms() - 1,
-                                   static_cast<int>(tree.getProperty("currentProgram", 0)));
-    // Saved parameter state stays authoritative when factory numbering changes.
-    // Names remap retained programs without substituting the current bank sound.
-    if (tree.getProperty("presetKind") == "factory")
-        for (int program = 0; program < getNumPrograms(); ++program)
-            if (getProgramName(program) == tree.getProperty("presetName").toString())
-            {
-                currentProgram_ = program;
-                break;
-            }
-    currentUserPresetName_ = fromPreset ? presetName
-        : (tree.getProperty("presetKind") == "user" ? tree.getProperty("presetName").toString().trim()
-                                                  : juce::String {});
-    hostSessionStateRestored_.store(! fromPreset, std::memory_order_release);
-    if (!preserveSequence) requestEngineReset_.store(true, std::memory_order_release);
-    return true;
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

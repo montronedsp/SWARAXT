@@ -147,6 +147,8 @@ class SwaraXtEngine {
     void bindParameters(ParameterCache& cache) noexcept { parameterCache_ = &cache; }
     void bindSequenceState(SequenceState& state) noexcept { sequenceState_ = &state; }
     void applyParameters();
+    bool captureSequence(SequenceSnapshot& sequence, uint32_t& revision) const noexcept;
+    void applyParameters(const SequenceSnapshot& sequence, uint32_t revision);
     uint8_t appliedSequencerPitchModeForTests() const noexcept { return appliedPitchMode_; }
 #if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
     const SequenceSnapshot& appliedSequenceForTests() const noexcept { return appliedSequence_; }
@@ -160,10 +162,32 @@ class SwaraXtEngine {
                  int startSample,
                  int numSamples,
                  const HostTransportSnapshot& transport = HostTransportSnapshot {},
-                 juce::MidiBuffer* midiOut = nullptr);
+                 juce::MidiBuffer* midiOut = nullptr,
+                 bool adoptControls = true,
+                 const SequenceSnapshot* sequence = nullptr,
+                 uint32_t revision = 0, bool resetRequested = false);
     void clearSequencerMidiOutput() noexcept;
     bool loadTuningBytes(const uint8_t* data, size_t size);
     bool loadBuiltinTuning(int index);
+    enum class TuningResult { success, invalid, unsupported, busy, unavailable };
+    // Control-thread reservation. Destruction aborts an unpublished reservation.
+    class TuningReservation {
+    public:
+        TuningReservation() = default;
+        ~TuningReservation();
+        TuningReservation(const TuningReservation&) = delete;
+        TuningReservation& operator=(const TuningReservation&) = delete;
+        void publish();
+    private:
+        friend class SwaraXtEngine;
+        SwaraXtEngine* owner_ = nullptr;
+        int slot_ = -1, builtin_ = -1;
+        tuning::PublishedTuning decoded_;
+        std::vector<uint8_t> bytes_;
+    };
+    TuningResult reserveTuning(const uint8_t* data, size_t size, TuningReservation& reservation,
+                              int builtin = -1);
+    TuningResult reserveBuiltinTuning(int index, TuningReservation& reservation);
     int builtinTuningCount() const noexcept;
     const char* builtinTuningName(int index) const noexcept;
     int activeBuiltinTuning() const noexcept { return builtinTuningIndex_.load(std::memory_order_relaxed); }
@@ -286,6 +310,14 @@ class SwaraXtEngine {
 #endif
 
  private:
+    FilterQuality renderFilterQuality() noexcept
+    {
+        if (adoptControls_)
+            admittedFilterQuality_ = filterQuality();
+        return admittedFilterQuality_;
+    }
+    bool adoptControls_ = true;
+    FilterQuality admittedFilterQuality_ = FilterQuality::normal;
 #if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
     friend struct ManualSwitchTestAccess;
     ManualSwitchSample manualSwitchSample_;
