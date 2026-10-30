@@ -553,10 +553,19 @@ class SequenceState {
 
     bool restoreFromValueTree(const juce::ValueTree& tree)
     {
+        SequenceSnapshot restored;
+        if (! decodeValueTree(tree, restored))
+            return false;
+        store(restored, true);
+        return true;
+    }
+
+    static bool decodeValueTree(const juce::ValueTree& tree, SequenceSnapshot& restored)
+    {
         if (! tree.isValid() || ! tree.hasType("SEQUENCE"))
             return false;
 
-        auto restored = defaultSnapshot();
+        restored = defaultSnapshot();
         restored.length = static_cast<uint8_t>(juce::jlimit(1, 16,
             static_cast<int>(tree.getProperty("length", 16))));
         restored.rotation = static_cast<uint8_t>(juce::jlimit(0, 15,
@@ -611,7 +620,6 @@ class SequenceState {
         if (restored.pitchMode == 2 && restored.scaleReady == 0)
             restored.scaleReady = 1;
 
-        store(restored, true);
         return true;
     }
 

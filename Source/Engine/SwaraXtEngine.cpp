@@ -172,42 +172,52 @@ void SwaraXtEngine::touchModulationRates() noexcept
 
 void SwaraXtEngine::applyParameters()
 {
+    auto sequence = appliedSequence_;
+    auto revision = appliedSequenceRevision_;
+    captureSequence(sequence, revision);
+    applyParameters(sequence, revision);
+}
+
+bool SwaraXtEngine::captureSequence(SequenceSnapshot& sequence, uint32_t& revision) const noexcept
+{
+    sequence = appliedSequence_;
+    revision = appliedSequenceRevision_;
+    return sequenceState_ == nullptr || sequenceState_->capture(sequence, revision);
+}
+
+void SwaraXtEngine::applyParameters(const SequenceSnapshot& sequence, uint32_t revision)
+{
     if (parameterCache_ == nullptr || ! parameterCache_->bound)
         return;
 
     patchBridge_.applyCacheToEngine(*parameterCache_);
     if (sequenceState_ != nullptr)
     {
-        SequenceSnapshot sequence;
-        uint32_t revision = 0;
-        if (sequenceState_->capture(sequence, revision))
+        // A revision can repeat after rollover. Equal tags alone must not
+        // suppress changed notes/CV/degrees while accepting a new mode.
+        if (revision != appliedSequenceRevision_ || ! sameSequencePayload(sequence, appliedSequence_))
         {
-            // A revision can repeat after rollover. Equal tags alone must not
-            // suppress changed notes/CV/degrees while accepting a new mode.
-            if (revision != appliedSequenceRevision_ || ! sameSequencePayload(sequence, appliedSequence_))
+            auto* settings = part_.mutable_sequencer_settings();
+            settings->pattern_size = static_cast<uint8_t>(juce::jlimit(1, 16,
+                static_cast<int>(sequence.length)));
+            settings->pattern_rotation = static_cast<uint8_t>(sequence.rotation & 0x0f);
+            settings->seq_groove_template = static_cast<uint8_t>(juce::jlimit(0, 5,
+                static_cast<int>(sequence.grooveTemplate)));
+            for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
             {
-                auto* settings = part_.mutable_sequencer_settings();
-                settings->pattern_size = static_cast<uint8_t>(juce::jlimit(1, 16,
-                    static_cast<int>(sequence.length)));
-                settings->pattern_rotation = static_cast<uint8_t>(sequence.rotation & 0x0f);
-                settings->seq_groove_template = static_cast<uint8_t>(juce::jlimit(0, 5,
-                    static_cast<int>(sequence.grooveTemplate)));
-                for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
-                {
-                    const auto packed = sequence.steps[static_cast<size_t>(i)];
-                    settings->steps[i].set_raw(SequenceSnapshot::dataA(packed),
-                                               SequenceSnapshot::dataB(packed));
-                }
-                part_.setSequencerFreeCv(sequence.pitchMode == 1,
-                                         sequence.freePitch.data());
-                scaleRouteActive_ = sequence.pitchMode == 2;
-                quantizedRouteActive_ = sequence.pitchMode == 3;
-                installSequencerTuning(sequence.scaleDegree.data(),
-                                       quantizedRouteActive_ ? sequence.freePitch.data() : nullptr);
-                appliedSequenceRevision_ = revision;
-                appliedSequence_ = sequence;
-                appliedPitchMode_ = sequence.pitchMode;
+                const auto packed = sequence.steps[static_cast<size_t>(i)];
+                settings->steps[i].set_raw(SequenceSnapshot::dataA(packed),
+                                           SequenceSnapshot::dataB(packed));
             }
+            part_.setSequencerFreeCv(sequence.pitchMode == 1,
+                                     sequence.freePitch.data());
+            scaleRouteActive_ = sequence.pitchMode == 2;
+            quantizedRouteActive_ = sequence.pitchMode == 3;
+            installSequencerTuning(sequence.scaleDegree.data(),
+                                   quantizedRouteActive_ ? sequence.freePitch.data() : nullptr);
+            appliedSequenceRevision_ = revision;
+            appliedSequence_ = sequence;
+            appliedPitchMode_ = sequence.pitchMode;
         }
         part_.mutable_sequencer_settings()->arp_pattern = sequenceState_->arpPattern();
     }
@@ -505,8 +515,7 @@ float SwaraXtEngine::nextPostMixerGain() noexcept
 
 void SwaraXtEngine::snapFilterQuality() noexcept
 {
-    const auto quality = static_cast<FilterQuality>(
-        requestedFilterQuality_.load(std::memory_order_relaxed));
+    const auto quality = renderFilterQuality();
     filter_.setQuality(quality);
     appliedFilterQuality_ = quality;
     pendingFilterQuality_ = quality;
@@ -540,8 +549,7 @@ void SwaraXtEngine::applyPendingFilterQuality(bool bankChangeRequested) noexcept
     if (experimentalSvfEnabled_ || bankChangeRequested)
         return;
 
-    pendingFilterQuality_ = static_cast<FilterQuality>(
-        requestedFilterQuality_.load(std::memory_order_relaxed));
+    pendingFilterQuality_ = renderFilterQuality();
     if (pendingFilterQuality_ == appliedFilterQuality_
         && qualityFadePhase_ == QualityFadePhase::stable)
         return;
@@ -1176,8 +1184,12 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
                            int startSample,
                            int numSamples,
                            const HostTransportSnapshot& transport,
-                           juce::MidiBuffer* midiOut)
+                           juce::MidiBuffer* midiOut, bool adoptControls,
+                           const SequenceSnapshot* sequence, uint32_t revision, bool resetRequested)
 {
+    const juce::ScopedValueSetter<bool> controlScope(adoptControls_, adoptControls);
+    if (adoptControls)
+        admittedFilterQuality_ = filterQuality();
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     using ProfileClock = std::chrono::steady_clock;
     const auto processStart = ProfileClock::now();
@@ -1205,7 +1217,17 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         ~TuningReadScope() { flag.store(false, std::memory_order_seq_cst); }
     } tuningRead(tuningAudioActive_);
 
-    latchPublishedTuning();
+    if (adoptControls)
+        latchPublishedTuning();
+    if (sequence != nullptr)
+    {
+        if (resetRequested)
+        {
+            reset();
+            touchModulationRates();
+        }
+        applyParameters(*sequence, revision);
+    }
     midiOutput_ = midiOut;
     if (releaseSequencerMidi_)
     {
@@ -1695,46 +1717,54 @@ bool SwaraXtEngine::loadTuningBytes(const uint8_t* data, size_t size)
     return publishTuningBytes(data, size, -1);
 }
 
-bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex, bool initializing)
+SwaraXtEngine::TuningReservation::~TuningReservation()
 {
-    if (data == nullptr || size == 0)
-        return false;
+    if (owner_ != nullptr)
+        owner_->tuningWriteBusy_.store(false, std::memory_order_release);
+}
+
+void SwaraXtEngine::TuningReservation::publish()
+{
+    if (owner_ == nullptr || slot_ < 0)
+        return;
+    // All decoding/allocation happened before musical state mutation. Never hold
+    // this bytes mutex across APVTS callbacks or reentrant state serialization.
+    const std::lock_guard<std::mutex> lock(owner_->tuningBytesMutex_);
+    *owner_->tuningSlots_[static_cast<size_t>(slot_)] = decoded_;
+    owner_->retiredTuning_.store(owner_->publishedTuning_.load(std::memory_order_seq_cst),
+                                std::memory_order_seq_cst);
+    owner_->publishedTuning_.store(slot_, std::memory_order_seq_cst);
+    owner_->tuningBytes_.swap(bytes_);
+    owner_->builtinTuningIndex_.store(builtin_, std::memory_order_relaxed);
+    slot_ = -1; // Publication is single-use; writer admission lasts through destruction.
+}
+
+SwaraXtEngine::TuningResult SwaraXtEngine::reserveBuiltinTuning(int index, TuningReservation& reservation)
+{
+    if (index < 0 || index >= builtinTuningCount())
+        return TuningResult::invalid;
+    const auto& item = tuning::kBuiltinTunings[static_cast<size_t>(index)];
+    return reserveTuning(item.data, item.size, reservation, index);
+}
+
+SwaraXtEngine::TuningResult SwaraXtEngine::reserveTuning(const uint8_t* data, size_t size,
+                                                       TuningReservation& reservation, int builtin)
+{
+    jassert(reservation.owner_ == nullptr);
+    if (reservation.owner_ != nullptr)
+        return TuningResult::busy;
     tuning::TuningSnapshot snapshot;
     tuning::ParseError error;
     if (! tuning::readTuningTable(data, size, snapshot, error))
-        return false;
-    tuning::PublishedTuning decoded;
-    if (! decoded.fillFrom(snapshot))
-        return false;
-
-    // Imports and state restoration are non-audio operations. Serialize their
-    // slot selection, including calls from different control threads.
+        return TuningResult::invalid;
+    if (! reservation.decoded_.fillFrom(snapshot))
+        return TuningResult::unsupported;
+    reservation.bytes_.assign(data, data + size);
     if (tuningWriteBusy_.exchange(true, std::memory_order_acq_rel))
-        return false;
-    struct WriterRelease {
-        std::atomic<bool>& flag;
-        ~WriterRelease() { flag.store(false, std::memory_order_release); }
-    } writerRelease { tuningWriteBusy_ };
-    // Allocate serialized storage before changing the published generation.
-    // The guarded swap below cannot allocate or strand writer admission.
-    std::vector<uint8_t> nextBytes(data, data + size);
-
-    if (initializing)
-    {
-        const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
-        *tuningSlots_[0] = decoded;
-        publishedTuning_.store(0, std::memory_order_seq_cst);
-        retiredTuning_.store(0, std::memory_order_seq_cst);
-        tuningSlotThisBlock_.store(0, std::memory_order_seq_cst);
-        if (stableTuning_ != nullptr)
-            *stableTuning_ = *tuningSlots_[0];
-        tuningBytes_.swap(nextBytes);
-        builtinTuningIndex_.store(builtinIndex, std::memory_order_relaxed);
-        return true;
-    }
-
+        return TuningResult::busy;
+    reservation.owner_ = this;
+    reservation.builtin_ = builtin;
     int slot = -1;
-    int published = 0;
     for (int attempt = 0; attempt < 8 && slot < 0; ++attempt)
     {
         if (! tuningAudioActive_.load(std::memory_order_seq_cst))
@@ -1744,7 +1774,7 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
             const int current = publishedTuning_.load(std::memory_order_seq_cst);
             retiredTuning_.store(current, std::memory_order_seq_cst);
         }
-        published = publishedTuning_.load(std::memory_order_seq_cst);
+        const int published = publishedTuning_.load(std::memory_order_seq_cst);
         const int latched = tuningSlotThisBlock_.load(std::memory_order_seq_cst);
         const int retired = retiredTuning_.load(std::memory_order_seq_cst);
         const int candidate = freeTuningSlot(published, latched, retired);
@@ -1765,11 +1795,10 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
             continue;
         }
         slot = candidate;
-        published = publishedNow;
     }
 
     if (slot < 0 || slot >= kTuningSlots)
-        return false;
+        return TuningResult::unavailable;
 
     // Recheck after the gap between selection and the write. The slot is still
     // unpublished, unlatched, unretired and unpinned, so no reader may use it.
@@ -1777,15 +1806,37 @@ bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int bui
         || slot == tuningSlotThisBlock_.load(std::memory_order_seq_cst)
         || slot == retiredTuning_.load(std::memory_order_seq_cst)
         || snapshotClaimed(slot))
-        return false;
+        return TuningResult::unavailable;
 #if defined(SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS)
     tuningPoint(TuningPoint::writerSelected, slot);
 #endif
-    const std::lock_guard<std::mutex> lock(tuningBytesMutex_);
-    *tuningSlots_[static_cast<size_t>(slot)] = decoded;
-    retiredTuning_.store(published, std::memory_order_seq_cst);
-    publishedTuning_.store(slot, std::memory_order_seq_cst);
-    tuningBytes_.swap(nextBytes);
+    reservation.slot_ = slot;
+    return TuningResult::success;
+}
+
+bool SwaraXtEngine::publishTuningBytes(const uint8_t* data, size_t size, int builtinIndex, bool initializing)
+{
+    if (! initializing)
+    {
+        TuningReservation reservation;
+        if (reserveTuning(data, size, reservation, builtinIndex) != TuningResult::success)
+            return false;
+        reservation.publish();
+        return true;
+    }
+    // Construction only, before any reader can exist.
+    tuning::TuningSnapshot snapshot;
+    tuning::ParseError error;
+    tuning::PublishedTuning decoded;
+    if (! tuning::readTuningTable(data, size, snapshot, error) || ! decoded.fillFrom(snapshot))
+        return false;
+    std::vector<uint8_t> bytes(data, data + size);
+    *tuningSlots_[0] = decoded;
+    *stableTuning_ = decoded;
+    publishedTuning_.store(0, std::memory_order_seq_cst);
+    retiredTuning_.store(0, std::memory_order_seq_cst);
+    tuningSlotThisBlock_.store(0, std::memory_order_seq_cst);
+    tuningBytes_.swap(bytes);
     builtinTuningIndex_.store(builtinIndex, std::memory_order_relaxed);
     return true;
 }

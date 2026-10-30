@@ -55,6 +55,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
 
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
+    enum class RestoreResult { success, defaultTuning, invalid, reentrant, tuningBusy, tuningUnavailable, preparationFailed };
+    RestoreResult lastRestoreResult() const noexcept { return lastRestoreResult_.load(std::memory_order_relaxed); }
 
     juce::AudioProcessorValueTreeState& getApvts() { return apvts_; }
     const juce::AudioProcessorValueTreeState& getApvts() const { return apvts_; }
@@ -139,7 +141,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
 #if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
     enum class StatePublicationPoint {
         programPublicationLocked, restoreGateLocked, bulkEpochPublished, userPresetFileReady,
-        stateReadBeforeLock
+        stateReadBeforeLock, writerContended, restoreBeforeTuningPublish
     };
     using StatePublicationHook = void (*)(void*, StatePublicationPoint);
     void setStatePublicationHook(StatePublicationHook hook, void* context) noexcept
@@ -152,7 +154,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
  private:
     bool loadFactoryPreset(int index);
     void applyFactoryPreset(int index);
-    bool restoreState(juce::ValueTree tree, bool fromPreset, const juce::String& presetName = {});
+    bool restoreState(juce::ValueTree tree, bool fromPreset, const juce::String& presetName = {},
+                      juce::String* error = nullptr);
     void beginBulkPublication();
     void endBulkPublication() noexcept;
     void writeStateInformation(juce::MemoryBlock& destData);
@@ -214,6 +217,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     // or stale file completions, which must not invalidate a newer save ticket.
     uint64_t stateWriterGeneration_ = 0;   // protected by publicationLock_
     std::atomic<bool> requestEngineReset_ { false };
+    // Diagnostic only: the last completed restore outcome is not state authority.
+    std::atomic<RestoreResult> lastRestoreResult_ { RestoreResult::success };
     std::atomic<bool> sequenceLocked_ { false };
     std::atomic<unsigned> randomNoteRange_ { 36u | (12u << 8) };
     bool isPrepared_ = false;
