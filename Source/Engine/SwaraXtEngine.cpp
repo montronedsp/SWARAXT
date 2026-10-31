@@ -249,6 +249,9 @@ void SwaraXtEngine::applyParameters(const SequenceSnapshot& sequence, uint32_t r
         static_cast<int>(std::lround(filterResonance_ * 63.0f))));
     midiChannel_ = juce::jlimit(0, 16, ParameterCache::loadInt(parameterCache_->midiChannel));
     midiInputMode_ = juce::jlimit(0, 2, ParameterCache::loadInt(parameterCache_->midiInputTuning));
+    // The tuning latch precedes parameter adoption; install this admitted mode
+    // before clocks or MIDI can generate a note in the current callback.
+    part_.setMidiInputTuning(static_cast<uint8_t>(midiInputMode_), stableTuning_.get());
     lfoSync_[0] = ParameterCache::loadInt(parameterCache_->lfo1Sync) != 0;
     lfoSync_[1] = ParameterCache::loadInt(parameterCache_->lfo2Sync) != 0;
     lfoDivision_[0] = juce::jlimit(0, 7, ParameterCache::loadInt(parameterCache_->lfo1Division));
