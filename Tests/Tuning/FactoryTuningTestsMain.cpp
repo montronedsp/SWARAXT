@@ -192,7 +192,22 @@ void testFactory(int index)
     expect(file.existsAsFile(),"source file exists");
     expect(swaraxt::tuning::parseScalaAndKeyboard(file.loadFileAsString().toRawUTF8(),nullptr,table,error),"SCL parses");
     auto pitches=expectedPitches(index);
-    if(index<6) { pitches=table.degreeCents; pitches.push_back(table.periodCents); }
+    if(index < 6)
+    {
+        const int edoDivs[] = {12, 19, 24, 31, 12, 12};
+        if (index == 0 || index == 1 || index == 2 || index == 3)
+        {
+            const int n = edoDivs[index];
+            pitches.clear();
+            for (int i = 1; i <= n; ++i)
+                pitches.push_back(1200.0 * static_cast<double>(i) / static_cast<double>(n));
+        }
+        else
+        {
+            pitches = table.degreeCents;
+            pitches.push_back(table.periodCents);
+        }
+    }
     expect(table.formalPeriod==pitches.size() && table.degreeCount+1==pitches.size(),"period degree count");
     for(size_t d=0;d<table.degreeCents.size();++d)
         expect(near(table.degreeCents[d],pitches[d]),"independent interval formula");

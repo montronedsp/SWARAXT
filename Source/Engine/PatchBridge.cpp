@@ -53,8 +53,12 @@ void PatchBridge::applyCacheToEngine(const ParameterCache& cache)
     // SWARA keeps the public 0..127 automation domain; Shruthi's mixer is 0..63.
     patch->mix_balance = static_cast<uint8_t>(
         juce::jlimit(0, 127, ParameterCache::loadInt(cache.mixBalance)) >> 1);
-    patch->mix_sub_osc = static_cast<uint8_t>(ParameterCache::loadInt(cache.mixSub));
-    patch->mix_noise = static_cast<uint8_t>(ParameterCache::loadInt(cache.mixNoise));
+    // Firmware mixer range is 0..63; map the public 0..127 domain consistently
+    // with mix_balance; modulation destinations are limited to 14 bits.
+    patch->mix_sub_osc = static_cast<uint8_t>(
+        juce::jlimit(0, 63, ParameterCache::loadInt(cache.mixSub) >> 1));
+    patch->mix_noise = static_cast<uint8_t>(
+        juce::jlimit(0, 63, ParameterCache::loadInt(cache.mixNoise) >> 1));
     patch->mix_sub_osc_shape = static_cast<uint8_t>(juce::jlimit(0, 10, ParameterCache::loadInt(cache.mixSubShape)));
 
     patch->filter_env = static_cast<int8_t>(juce::jlimit(0, 63, ParameterCache::loadInt(cache.filterEnvDepth)));

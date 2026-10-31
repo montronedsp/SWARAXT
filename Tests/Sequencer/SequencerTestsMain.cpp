@@ -304,8 +304,8 @@ void testEditorRecreationAndViewIsolation()
                            == shruthi::kNumArpeggiatorPatterns,
                        "Sequence pattern code 15 is editable through the GUI");
                 const int hostPattern = getInt(processor, swaraxt::IDs::arpPattern);
-                expect(hostPattern == 4,
-                       "extended pattern selection preserves the public parameter domain");
+                expect(hostPattern == shruthi::kNumArpeggiatorPatterns,
+                       "extended pattern selection reaches the full public parameter domain");
             }
             else
             {

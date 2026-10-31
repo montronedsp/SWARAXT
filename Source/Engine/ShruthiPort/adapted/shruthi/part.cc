@@ -437,7 +437,7 @@ void Part::Clock(bool internal) {
 
   for (uint8_t i = 0; i < kNumLfos; ++i) {
     uint8_t rate = patch_.lfo[i].rate;
-    if (rate < 16) {
+    if (rate < 16 && !host_lfo_sync_[i]) {
       uint16_t limit = U8U8Mul(step_duration(), rate + 1);
       while (lfo_step_[i] >= limit) {
         lfo_step_[i] -= limit;

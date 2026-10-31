@@ -441,7 +441,7 @@ class SequenceState {
 
     void setArpPatternFromParameter(int arpPattern) noexcept
     {
-        arpPattern_.store(static_cast<uint8_t>(juce::jlimit(0, 7, arpPattern)),
+        arpPattern_.store(static_cast<uint8_t>(juce::jlimit(0, 15, arpPattern)),
                           std::memory_order_release);
     }
 
