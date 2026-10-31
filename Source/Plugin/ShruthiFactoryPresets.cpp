@@ -92,8 +92,9 @@ void ShruthiFactoryPresets::applyPatchToApvts(const shruthi::Patch& patch,
     setIntParam(apvts, IDs::osc2Option, patch.osc[1].option);
 
     setIntParam(apvts, IDs::mixBalance, pluginMixBalanceFromPatch(patch));
-    setIntParam(apvts, IDs::mixSub, patch.mix_sub_osc);
-    setIntParam(apvts, IDs::mixNoise, patch.mix_noise);
+    // Inverse of PatchBridge: only raw Shruthi patch bytes use the 0..63 domain.
+    setIntParam(apvts, IDs::mixSub, static_cast<int>(patch.mix_sub_osc) * 2);
+    setIntParam(apvts, IDs::mixNoise, static_cast<int>(patch.mix_noise) * 2);
     setIntParam(apvts, IDs::mixSubShape, patch.mix_sub_osc_shape);
 
     setFloatParam(apvts, IDs::filterCutoff, cutoffHzFromShruthiCode(patch.filter_cutoff));

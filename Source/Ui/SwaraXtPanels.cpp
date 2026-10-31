@@ -1206,7 +1206,7 @@ SeqPanel::SeqPanel()
             return;
         const int pattern = selectors_[kPattern]->combo().getSelectedItemIndex();
         sequenceState_->setArpPattern(pattern);
-        if (pattern <= 7 && arpPatternAttachment_ != nullptr)
+        if (pattern <= 15 && arpPatternAttachment_ != nullptr)
             arpPatternAttachment_->setValueAsCompleteGesture(static_cast<float>(pattern));
     };
 
@@ -1496,7 +1496,7 @@ void SeqPanel::attach(SwaraXtAudioProcessor& processor)
             [this](float value) {
                 refreshingSequenceControls_ = true;
                 selectors_[kPattern]->combo().setSelectedItemIndex(
-                    juce::jlimit(0, 7, static_cast<int>(std::lround(value))),
+                    juce::jlimit(0, 15, static_cast<int>(std::lround(value))),
                     juce::dontSendNotification);
                 selectors_[kPattern]->refreshDescription();
                 refreshingSequenceControls_ = false;

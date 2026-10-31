@@ -62,6 +62,12 @@ echo
 tmp="$(mktemp -d)"
 cleanup() {
     rm -rf "${tmp}"
+    if [[ "${own_stages:-false}" == true ]]; then
+        rm -rf "${vst3_stage}" "${standalone_stage}"
+    fi
+    if [[ -n "${install_lock:-}" ]]; then
+        rmdir "${install_lock}" || true
+    fi
 }
 trap cleanup EXIT
 
@@ -143,15 +149,81 @@ fi
 vst3_dest="${HOME}/.vst3/Swara XT.vst3"
 standalone_dest="${HOME}/.local/bin/swara-xt"
 
-echo "Installing VST3..."
-mkdir -p "${HOME}/.vst3"
-rm -rf "${vst3_dest}"
-cp -a "${vst3_src}" "${vst3_dest}"
+vst3_stage="${vst3_dest}.stage"
+vst3_backup="${vst3_dest}.backup"
+standalone_stage="${standalone_dest}.stage"
+standalone_backup="${standalone_dest}.backup"
 
-echo "Installing standalone..."
-mkdir -p "${HOME}/.local/bin"
-cp -f "${standalone_src}" "${standalone_dest}"
-chmod +x "${standalone_dest}"
+# Refuse stale recovery data rather than deleting a previous valid install.
+if [[ -z "${HOME:-}" || "${HOME}" != /* || "${HOME}" == / ]]; then
+    echo "HOME must name an absolute user directory." >&2
+    exit 1
+fi
+lock_path="${HOME}/.swara-xt-install.lock"
+if ! mkdir "${lock_path}"; then
+    echo "An installation is active or interrupted. Inspect ${lock_path} before retrying." >&2
+    exit 1
+fi
+install_lock="${lock_path}"
+for recovery_path in "${vst3_stage}" "${vst3_backup}" "${standalone_stage}" "${standalone_backup}"; do
+    if [[ -e "${recovery_path}" || -L "${recovery_path}" ]]; then
+        echo "Interrupted installation data retained at ${recovery_path}; recover it before retrying." >&2
+        exit 1
+    fi
+done
+own_stages=true
+mkdir -p "${HOME}/.vst3" "${HOME}/.local/bin"
+if ! cp -a "${vst3_src}" "${vst3_stage}" \
+    || ! cp -f "${standalone_src}" "${standalone_stage}" \
+    || ! chmod +x "${standalone_stage}"; then
+    echo "Could not stage the installation; existing files are unchanged." >&2
+    exit 1
+fi
+
+vst3_backed=false
+standalone_backed=false
+vst3_published=false
+standalone_published=false
+rollback() {
+    # Renames are per destination, not a globally atomic two-file transaction.
+    if [[ "${standalone_published}" == true ]]; then rm -f "${standalone_dest}"; fi
+    if [[ "${vst3_published}" == true ]]; then rm -rf "${vst3_dest}"; fi
+    if [[ "${standalone_backed}" == true ]]; then
+        mv "${standalone_backup}" "${standalone_dest}" \
+            || echo "Restore failed; previous standalone retained at ${standalone_backup}." >&2
+    fi
+    if [[ "${vst3_backed}" == true ]]; then
+        mv "${vst3_backup}" "${vst3_dest}" \
+            || echo "Restore failed; previous VST3 retained at ${vst3_backup}." >&2
+    fi
+}
+if [[ -e "${vst3_dest}" || -L "${vst3_dest}" ]]; then
+    if ! mv "${vst3_dest}" "${vst3_backup}"; then
+        echo "Could not back up VST3; publication cancelled." >&2
+        exit 1
+    fi
+    vst3_backed=true
+fi
+if [[ -e "${standalone_dest}" || -L "${standalone_dest}" ]]; then
+    if ! mv "${standalone_dest}" "${standalone_backup}"; then
+        rollback
+        exit 1
+    fi
+    standalone_backed=true
+fi
+if ! mv "${vst3_stage}" "${vst3_dest}"; then
+    rollback
+    echo "VST3 publication failed; inspect any retained backup if recovery failed." >&2
+    exit 1
+fi
+vst3_published=true
+if ! mv "${standalone_stage}" "${standalone_dest}"; then
+    rollback
+    echo "Standalone publication failed; inspect any retained backup if recovery failed." >&2
+    exit 1
+fi
+standalone_published=true
+rm -rf "${vst3_backup}" "${standalone_backup}"
 
 echo
 echo "SWARA XT ${version} installed successfully."

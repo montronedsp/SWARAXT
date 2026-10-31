@@ -569,9 +569,29 @@ void SwaraXtAudioProcessor::setUserPresetDirectoryForTests(const juce::File& dir
 bool SwaraXtAudioProcessor::validatePresetName(const juce::String& name, juce::String& cleanName)
 {
     cleanName = name.trim();
-    if (cleanName.isEmpty() || cleanName == "." || cleanName == ".."
-        || cleanName.contains("/") || cleanName.contains("\\"))
+    if (cleanName.isEmpty() || cleanName == "." || cleanName == "..")
         return false;
+    if (cleanName.contains("/") || cleanName.contains("\\"))
+        return false;
+    if (cleanName.endsWith(".") || cleanName.endsWith(" "))
+        return false;
+    if (cleanName.getNumBytesAsUTF8() + sizeof(".swaraxtpreset") - 1 > 255)
+        return false;
+    {
+        juce::String base = cleanName;
+        const int dot = base.indexOfChar('.');
+        if (dot >= 0)
+            base = base.substring(0, dot);
+        base = base.trim();
+        static const char* const reserved[] = {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        };
+        for (const char* r : reserved)
+            if (base.equalsIgnoreCase(r))
+                return false;
+    }
     return juce::File::createLegalFileName(cleanName) == cleanName;
 }
 
@@ -723,12 +743,31 @@ bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
 #if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
     statePublicationPoint(StatePublicationPoint::userPresetFileReady);
 #endif
-    juce::TemporaryFile temporary(target);
-    if (! temporary.getFile().replaceWithData(data.getData(), data.getSize()))
+    const auto temporaryPath = target.getParentDirectory().getNonexistentChildFile(
+        "swaraxt-" + juce::Uuid().toString(), ".tmp");
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+    statePublicationPoint(StatePublicationPoint::userPresetTemporaryChosen);
+#endif
+    juce::TemporaryFile temporary(target, temporaryPath);
     {
-        error = "Could not write the preset safely.";
-        return false;
+        // Do not publish a partial payload: JUCE's replaceWithData() does not
+        // propagate appendData() failure. Use an unbuffered write so a short write cannot be hidden by flush().
+        juce::FileOutputStream stream(temporary.getFile(), 0);
+        if (stream.failedToOpen() || ! stream.write(data.getData(), data.getSize()))
+        {
+            error = "Could not write the preset safely.";
+            return false;
+        }
+        stream.flush();
+        if (stream.getStatus().failed())
+        {
+            error = "Could not write the preset safely.";
+            return false;
+        }
     }
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+    statePublicationPoint(StatePublicationPoint::userPresetTemporaryWritten);
+#endif
     if (overwrite)
     {
         if (! temporary.overwriteTargetFileWithTemporary())
@@ -961,7 +1000,7 @@ bool SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset,
             for (const auto child : tree)
                 if (child.getProperty("id") == swaraxt::IDs::arpPattern)
                     value = child.getProperty("value", value); // JUCE's last duplicate wins.
-            sequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 7, static_cast<int>(std::lround(static_cast<float>(value)))));
+            sequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 15, static_cast<int>(std::lround(static_cast<float>(value)))));
         }
         const auto quality = decodeFilterQuality(
             tree.getProperty(kFilterQualityProperty,

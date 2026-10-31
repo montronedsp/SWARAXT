@@ -115,34 +115,37 @@ bool parseFullInteger(std::string_view text, long long& value) noexcept
     return parsed.ec == std::errc() && parsed.ptr == last;
 }
 
-bool historicalCommaFraction(const char* cursor, const char* last) noexcept
-{
-    // The built-in EDO scales place the fractional digits after a comma.
-    // The previous converter kept only the number before that comma.
-    if (cursor == last || *cursor != ',')
-        return false;
-    ++cursor;
-    if (cursor == last)
-        return false;
-    for (; cursor != last; ++cursor)
-    {
-        if (*cursor < '0' || *cursor > '9')
-            return false;
-    }
-    return true;
-}
-
-bool parseFullReal(std::string_view text, double& value) noexcept
+bool parseFullReal(std::string_view text, double& value, bool legacyComma = true)
 {
     text = stripScalaComment(text);
     if (text.empty())
         return false;
+    std::string normalized;
+    if (text.find(',') != std::string_view::npos)
+    {
+        // A legacy decimal comma is a separator, never an exponent suffix.
+        if (! legacyComma || text.find_first_of(".eE") != std::string_view::npos
+            || text.find(',', text.find(',') + 1) != std::string_view::npos)
+            return false;
+        const auto comma = text.find(',');
+        if (comma == 0 || comma + 1 == text.size()
+            || text[comma - 1] < '0' || text[comma - 1] > '9'
+            || text[comma + 1] < '0' || text[comma + 1] > '9')
+            return false;
+        normalized.assign(text);
+        normalized[text.find(',')] = '.';
+        text = normalized;
+    }
+    if (text.front() == '+')
+    {
+        text.remove_prefix(1);
+        if (text.empty() || text.front() == '+' || text.front() == '-')
+            return false;
+    }
     const char* const first = text.data();
     const char* const last = first + text.size();
     const auto parsed = std::from_chars(first, last, value, std::chars_format::general);
-    if (parsed.ec != std::errc() || ! std::isfinite(value))
-        return false;
-    return parsed.ptr == last || historicalCommaFraction(parsed.ptr, last);
+    return parsed.ec == std::errc() && parsed.ptr == last && std::isfinite(value);
 }
 
 bool parsePitchLine(const std::string& line, PitchLine& pitch, ParseError& error)
@@ -408,7 +411,7 @@ bool parseStandardScala(const char* sclText, const char* kbmText, TuningSnapshot
         double frequency = 0.0;
         if (kbm.size() < 7 || ! parseFullInteger(kbm[0], size) || ! parseFullInteger(kbm[1], first)
             || ! parseFullInteger(kbm[2], last) || ! parseFullInteger(kbm[3], middle)
-            || ! parseFullInteger(kbm[4], reference) || ! parseFullReal(kbm[5], frequency)
+            || ! parseFullInteger(kbm[4], reference) || ! parseFullReal(kbm[5], frequency, false)
             || kbm[5].find(',') != std::string::npos || ! parseFullInteger(kbm[6], advance))
             return fail("KBM requires seven valid header fields");
         if (size < 0 || size > std::numeric_limits<int32_t>::max())

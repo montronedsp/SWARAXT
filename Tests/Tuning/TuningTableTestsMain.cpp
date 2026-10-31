@@ -134,7 +134,7 @@ int main()
     expect(swaraxt::tuning::parseScalaAndKeyboard(
                "19-EDO\n2\n63,157894736842\n2/1\n", nullptr, bad, error),
            "built-in comma spelling still parses");
-    expect(bad.degreeCents[0] == 63.0, "built-in comma spelling keeps the historical cent value");
+    expect(std::abs(bad.degreeCents[0] - 1200.0 / 19.0) < 1.0e-10, "legacy comma spelling retains the independently calculated fractional cents");
 
     const std::string hugeMap =
         std::string("! hostile\n") + "2147483647\n0\n127\n60\n69\n440.0\n12\n";

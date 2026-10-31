@@ -6,6 +6,7 @@
 #include "shruthi/patch.h"
 
 #include <cmath>
+#include <charconv>
 
 namespace swaraxt {
 
@@ -69,9 +70,39 @@ juce::AudioParameterFloat* cutoffParam()
             return juce::String(value / 1000.0f, value < 10000.0f ? 2 : 1) + " kHz";
         })
         .withValueFromStringFunction([](const juce::String& text) {
-            const auto lower = text.trim().toLowerCase();
-            const float scale = lower.contains("khz") ? 1000.0f : 1.0f;
-            return juce::jlimit(minimumHz, maximumHz, lower.getFloatValue() * scale);
+            auto s = text.trim().toLowerCase();
+            float scale = 1.0f;
+            if (s.endsWith("khz"))
+            {
+                scale = 1000.0f;
+                s = s.dropLastCharacters(3);
+            }
+            else if (s.endsWith("hz"))
+            {
+                scale = 1.0f;
+                s = s.dropLastCharacters(2);
+            }
+            else if (s.endsWith("k"))
+            {
+                scale = 1000.0f;
+                s = s.dropLastCharacters(1);
+            }
+            s = s.trim();
+            if (s.startsWithChar('+'))
+            {
+                s = s.substring(1);
+                if (s.startsWithChar('+') || s.startsWithChar('-'))
+                    return minimumHz;
+            }
+            const auto utf8 = s.toUTF8();
+            const char* first = utf8.getAddress();
+            const char* last = first + s.getNumBytesAsUTF8();
+            double number = 0.0;
+            const auto parsed = std::from_chars(first, last, number, std::chars_format::general);
+            const double value = number * scale;
+            if (parsed.ec != std::errc() || parsed.ptr != last || ! std::isfinite(value))
+                return minimumHz;
+            return static_cast<float>(juce::jlimit(double(minimumHz), double(maximumHz), value));
         });
 
     return new juce::AudioParameterFloat(juce::ParameterID { IDs::filterCutoff, 1 },
@@ -224,7 +255,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         intParam(IDs::arpDirection, "Arp Direction", 0, 4, 0)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
-        intParam(IDs::arpPattern, "Arp Pattern", 0, 7, 1)));
+        intParam(IDs::arpPattern, "Arp Pattern", 0, 15, 1)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(
         intParam(IDs::arpOctaves, "Arp Octaves", 1, 4, 1)));
     params.push_back(std::unique_ptr<juce::RangedAudioParameter>(

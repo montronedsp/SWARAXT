@@ -141,7 +141,8 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
 #if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
     enum class StatePublicationPoint {
         programPublicationLocked, restoreGateLocked, bulkEpochPublished, userPresetFileReady,
-        stateReadBeforeLock, writerContended, restoreBeforeTuningPublish
+        stateReadBeforeLock, writerContended, restoreBeforeTuningPublish,
+        userPresetTemporaryChosen, userPresetTemporaryWritten
     };
     using StatePublicationHook = void (*)(void*, StatePublicationPoint);
     void setStatePublicationHook(StatePublicationHook hook, void* context) noexcept
