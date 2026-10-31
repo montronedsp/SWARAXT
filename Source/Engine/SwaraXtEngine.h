@@ -310,6 +310,9 @@ class SwaraXtEngine {
 #endif
 
  private:
+#if defined(SWARAXT_ENABLE_MIDI_SCHEDULER_TESTS)
+    friend struct SequencerMidiTestAccess;
+#endif
     FilterQuality renderFilterQuality() noexcept
     {
         if (adoptControls_)
@@ -400,6 +403,7 @@ class SwaraXtEngine {
     bool midiOutEnabled_ = false;
     bool sequencerMidiAllowed_ = false;
     bool releaseSequencerMidi_ = false;
+    bool retrySequencerMidiRelease_ = false;
     int renderHostCursor_ = 0;
     uint64_t hostBlockOrigin_ = 0;
     std::array<uint8_t, 128> heldMidi_ {};

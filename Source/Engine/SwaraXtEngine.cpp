@@ -440,6 +440,10 @@ void SwaraXtEngine::prepareHostClock(const HostTransportSnapshot& transport, int
 
     if (! hostTransportWasPlaying_ || discontinuity || hostClockNeedsAlignment_)
     {
+        // Alignment clears firmware-generated identities. Retire their external
+        // notes first so a seek cannot orphan the previous step's release.
+        if (discontinuity)
+            forceFlushSequencerMidiRelease(hostBlockOrigin_);
         nextHostClockTick_ = static_cast<uint64_t>(
             juce::jmax(0.0, std::floor(blockStartPpq_ * 24.0)));
         while (hostTickPpq(nextHostClockTick_) < blockStartPpq_ - tolerance)
@@ -1234,6 +1238,29 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         forceFlushSequencerMidiRelease(hostBlockOrigin_);
         releaseSequencerMidi_ = false;
     }
+    if (retrySequencerMidiRelease_)
+    {
+        retrySequencerMidiRelease_ = false;
+        // One bounded pass per callback. Retain the original channel until an
+        // Off is admitted; never release a pitch that has acquired a new owner.
+        for (uint8_t note = 0; note < 128; ++note)
+        {
+            if (heldMidi_[note] == 0 || externalOwners_[note] != 0)
+                continue;
+            if (enqueueScheduledMidi(hostBlockOrigin_, false, note, 0, heldOutputChannel(note)))
+            {
+                heldMidi_[note] = 0;
+                heldMidiChannel_[note] = 0;
+            }
+            else
+            {
+                // A full all-Off queue cannot admit any other release until
+                // it drains later in this callback. Keep the rest for retry.
+                retrySequencerMidiRelease_ = true;
+                break;
+            }
+        }
+    }
     auto midiCursor = midi.cbegin();
     const auto midiEnd = midi.cend();
     collectMidiEvents(midiCursor, midiEnd, startSample, numSamples);
@@ -1428,16 +1455,22 @@ void SwaraXtEngine::onSequencerNoteOn(uint8_t identity, uint8_t velocity, uint8_
         return;
     if (identityExternal_[identity] != 255)
         onSequencerNoteOff(identity);
-    identityExternal_[identity] = external;
     const bool retrigger = externalOwners_[external] > 0 || heldMidi_[external] != 0;
-    if (externalOwners_[external] < 255)
-        ++externalOwners_[external];
     if (retrigger)
-        scheduleSequencerMidi(false, external, 0, heldOutputChannel(external));
+    {
+        // Never replace the held channel before its release has storage.
+        if (!scheduleSequencerMidi(false, external, 0, heldOutputChannel(external)))
+            return;
+        heldMidi_[external] = 0;
+        heldMidiChannel_[external] = 0;
+    }
     const uint8_t midiVelocity = velocity == 0 ? 1 : (velocity > 127 ? 127 : velocity);
     const uint8_t channel = static_cast<uint8_t>(outputMidiChannel());
     if (scheduleSequencerMidi(true, external, midiVelocity, channel))
     {
+        identityExternal_[identity] = external;
+        if (externalOwners_[external] < 255)
+            ++externalOwners_[external];
         heldMidi_[external] = midiVelocity;
         heldMidiChannel_[external] = channel;
     }
@@ -1461,6 +1494,8 @@ void SwaraXtEngine::onSequencerNoteOff(uint8_t identity) noexcept
             heldMidi_[external] = 0;
             heldMidiChannel_[external] = 0;
         }
+        else
+            retrySequencerMidiRelease_ = true;
     }
 }
 
@@ -1536,17 +1571,19 @@ void SwaraXtEngine::releaseHeldSequencerNotes(uint64_t sample) noexcept
             continue;
         const uint8_t channel = heldOutputChannel(note);
         if (! enqueueScheduledMidi(sample, false, note, 0, channel))
+        {
+            // Cleanup has ended ownership even when release storage is full.
+            externalOwners_[note] = 0;
+            retrySequencerMidiRelease_ = true;
             continue;
+        }
         heldMidi_[note] = 0;
         heldMidiChannel_[note] = 0;
         externalOwners_[note] = 0;
     }
-    for (uint8_t identity = 0; identity < 128; ++identity)
-    {
-        const uint8_t external = identityExternal_[identity];
-        if (external < 128 && heldMidi_[external] == 0)
-            identityExternal_[identity] = 255;
-    }
+    // Cleanup ends every identity's ownership, even when its external Off
+    // must be retried. A late old identity must not release a later note.
+    identityExternal_.fill(255);
 }
 
 void SwaraXtEngine::forceFlushSequencerMidiRelease(uint64_t sample) noexcept
@@ -1943,11 +1980,11 @@ SequenceState::ScaleRandomView SwaraXtEngine::scaleRandomView() const noexcept
 
 void SwaraXtEngine::clearSequencerMidiOutput() noexcept
 {
-    heldMidi_.fill(0);
-    heldMidiChannel_.fill(0);
+    // releaseResources has no output buffer. Keep releases for the next render
+    // instead of forgetting notes already delivered to the host.
+    forceFlushSequencerMidiRelease(hostBlockOrigin_);
     identityExternal_.fill(255);
     externalOwners_.fill(0);
-    scheduledMidiCount_ = 0;
     releaseSequencerMidi_ = false;
     midiOutput_ = nullptr;
 }
