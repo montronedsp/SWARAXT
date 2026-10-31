@@ -16,7 +16,6 @@ from common import Evidence, JUCE_SHA, SDK_SHA, SOURCE, architecture, sha
 from native_reference import BASELINE_SHA, TESTS, validate_output
 from reference_metadata import apply as apply_reference_metadata
 from linux_dependency import apply as apply_linux_dependency
-from boolean_dependency import apply as apply_boolean_dependency
 from pluginval_source import (apply as apply_pluginval_source, SOURCE_SHA as PLUGINVAL_SHA,
                               VENDOR_SHA as PLUGINVAL_JUCE_SHA, FIX_SHA as PLUGINVAL_FIX_SHA,
                               BEFORE_SHA256 as PLUGINVAL_BEFORE, AFTER_SHA256 as PLUGINVAL_AFTER,
@@ -136,7 +135,7 @@ class Campaign(Evidence):
             raise RuntimeError('Checkout differs from reviewed revision')
         self.run('harness-tests', [sys.executable, '-m', 'unittest', 'test_common', 'test_native_reference',
                                   'test_sharing', 'test_test_scopes', 'test_sanitizer_policy', 'test_linux_dependency',
-                                  'test_pluginval_source', 'test_capacity_diagnostic', 'test_boolean_dependency'], cwd=CI)
+                                  'test_pluginval_source', 'test_capacity_diagnostic'], cwd=CI)
         self.run('submodules', ['git', '-C', SOURCE, '-c', 'url.https://github.com/.insteadOf=git://github.com/',
                                'submodule', 'update', '--init', '--recursive'])
         submodules = self.output(['git', 'submodule', 'status', '--recursive'], SOURCE)
@@ -171,7 +170,7 @@ class Campaign(Evidence):
         self.run('checkout-juce', ['git', '-C', juce, '-c', 'core.autocrlf=false', 'checkout', '--detach', JUCE_SHA])
         if self.output(['git', '-C', juce, 'rev-parse', 'HEAD']) != JUCE_SHA:
             raise RuntimeError('JUCE revision mismatch')
-        self.report['dependency_overlay'] = [apply_boolean_dependency(juce, self.root)]
+        self.report['dependency_overlay'] = []
         if self.system == 'Linux':
             self.report['dependency_overlay'] += apply_linux_dependency(juce, self.root)
             probe = self.root / 'dependency-headers.cpp'
