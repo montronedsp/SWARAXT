@@ -12,6 +12,15 @@ namespace swaraxt {
 
 namespace {
 
+// JUCE retains fractional host writes internally. Expose the same thresholded
+// value used by AudioParameterBool::get() to hosts and APVTS state publication.
+class CanonicalBooleanParameter final : public juce::AudioParameterBool {
+public:
+    using juce::AudioParameterBool::AudioParameterBool;
+private:
+    float getValue() const override { return get() ? 1.0f : 0.0f; }
+};
+
 // Preserve retired parameter IDs, indices and domains for existing sessions.
 // Every host-visible choice is canonical; writes cannot change the value.
 class FixedCompatibilityChoice final : public juce::AudioParameterChoice {
@@ -285,7 +294,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createSwaraXtParameterLayout
     params.push_back(std::make_unique<FixedCompatibilityChoice>(
         juce::ParameterID { IDs::inputConditioning, 1 }, "Input Conditioning",
         juce::StringArray { "HARDWARE", "HARDWARE" }, 1));
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
+    params.push_back(std::make_unique<CanonicalBooleanParameter>(
         juce::ParameterID { IDs::seqMidiOut, 1 }, "MIDI Out", false));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID { IDs::midiInputTuning, 1 }, "Input Tune",

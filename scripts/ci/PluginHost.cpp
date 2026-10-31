@@ -20,16 +20,31 @@ void pump(int milliseconds)
     juce::MessageManager::getInstance()->runDispatchLoopUntil(milliseconds);
 }
 
-void checkBooleanNormalization()
+void checkBooleanNormalization(juce::AudioPluginInstance& plugin)
 {
-    juce::AudioParameterBool parameter(juce::ParameterID{"ci.boolean", 1}, "CI boolean", false);
-    juce::AudioProcessorParameter& api = parameter;
-    for (float value : {0.0f, 0.001f, 0.425637f, 0.499f, 0.5f, 0.9f, 1.0f})
+    juce::AudioProcessorParameter* parameter = nullptr;
+    for (auto* candidate : plugin.getParameters())
+        if (candidate->getName(128) == "MIDI Out" && candidate->getNumSteps() == 2)
+        {
+            require(parameter == nullptr, "exactly one MIDI Out boolean");
+            parameter = candidate;
+        }
+    require(parameter != nullptr, "actual plugin exposes MIDI Out boolean");
+    for (float value : {0.0f, 0.001f, 0.331463f, std::nextafter(0.5f, 0.0f), 0.5f, 0.9f, 1.0f})
     {
-        api.setValueNotifyingHost(value);
-        const bool expected = value >= 0.5f;
-        if (api.getValue() != (expected ? 1.0f : 0.0f) || parameter.get() != expected)
+        parameter->setValueNotifyingHost(value);
+        const float expected = value >= 0.5f ? 1.0f : 0.0f;
+        juce::MemoryBlock state;
+        plugin.getStateInformation(state);
+        // The hosted parameter caches the last host write. A state roundtrip
+        // refreshes that cache from the plugin's own canonical readback.
+        plugin.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        if (parameter->getValue() != expected)
             throw std::runtime_error("noncanonical boolean parameter normalization");
+        parameter->setValueNotifyingHost(1.0f - expected);
+        plugin.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        if (parameter->getValue() != expected)
+            throw std::runtime_error("MIDI Out boolean state restoration mismatch");
     }
     std::puts("BOOLEAN_NORMALIZATION_PASS");
 }
@@ -127,7 +142,6 @@ int main(int argc, char** argv)
         prematurePeerTeardown = argc == 5 && juce::String(argv[4]) == "--premature-peer-teardown";
        #endif
         require(argc == 4 || prematurePeerTeardown, "arguments: format plugin-path screenshot-path");
-        checkBooleanNormalization();
         juce::ScopedJuceInitialiser_GUI gui;
         juce::AudioPluginFormatManager manager;
         if (juce::String(argv[1]) == "VST3") manager.addFormat(std::make_unique<juce::VST3PluginFormat>());
@@ -144,6 +158,7 @@ int main(int argc, char** argv)
         if (!second) throw std::runtime_error(error.toStdString());
         serviceLinuxEvents();
         require(first->getParameters().size() > 0, "actual plugin exposes parameters");
+        checkBooleanNormalization(*first);
         juce::MemoryBlock state;
         first->getStateInformation(state);
         require(state.getSize() > 0, "actual plugin serializes state");
