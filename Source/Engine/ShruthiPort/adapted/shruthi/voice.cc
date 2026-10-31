@@ -237,6 +237,9 @@ void Voice::NoteOn(
 }
 
 void Voice::NoteOff() {
+  // Part can update sources (including STEP) before releasing a generated note.
+  // Preserve those pending edits when the HD state is copied back below.
+  hd_voice_.import_modulation_sources(modulation_sources_);
   hd_voice_.NoteOff();
   CopyHdStateToVoice();
 }
