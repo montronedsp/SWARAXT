@@ -43,9 +43,11 @@ class Clock {
 
   inline void Tick() { phase_ += phase_increment_; }
   inline bool Wrap(int8_t amount) {
-    LongWord* w = (LongWord*)(&phase_);
-    if (w->bytes[3] >= 128 + amount) {
-      w->bytes[3] -= (128 + amount);
+    // Preserve the firmware's high-byte subtraction without a union overlay
+    // or a dependency on the host's byte order. The low 24 bits are untouched.
+    const auto threshold = static_cast<uint32_t>(128 + static_cast<int>(amount));
+    if ((phase_ >> 24) >= threshold) {
+      phase_ -= threshold << 24;
       return true;
     } else {
       return false;
@@ -53,6 +55,9 @@ class Clock {
   }
 
  private:
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
+  friend struct ClockTestAccess;
+#endif
   uint16_t bpm_ = 0;
   uint32_t phase_ = 0;
   uint32_t phase_increment_ = 0;

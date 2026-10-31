@@ -34,6 +34,14 @@
 #error SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS must be enabled for these tests.
 #endif
 
+namespace shruthi {
+struct ClockTestAccess {
+    static void phase(Clock& clock, uint32_t value) { clock.phase_ = value; }
+    static uint32_t phase(const Clock& clock) { return clock.phase_; }
+    static void increment(Clock& clock, uint32_t value) { clock.phase_increment_ = value; }
+};
+}
+
 namespace {
 
 namespace fs = std::filesystem;
@@ -50,6 +58,52 @@ double ir3109VcaCvCoeff()
 }
 
 int gFailures = 0;
+
+void testClockArithmetic()
+{
+    // Independent base-256 reference; no union overlay or byte-order assumption.
+    const auto wrap = [](uint32_t& phase, int swing) {
+        const uint64_t high = phase / 16777216u, low = phase % 16777216u;
+        const auto threshold = static_cast<uint64_t>(128 + swing);
+        if (high < threshold) return false;
+        phase = static_cast<uint32_t>((high - threshold) * 16777216u + low);
+        return true;
+    };
+    using Access = shruthi::ClockTestAccess;
+    shruthi::Clock clock;
+    uint64_t comparisons = 0, errors = 0;
+    for (uint32_t high = 0; high < 256; ++high)
+        for (int swing = -128; swing < 128; ++swing)
+            for (uint32_t low : {0u, 1u, 0x7fffffu, 0xffffffu, 0xaaaaaau, 0x555555u})
+            {
+                auto expected = high * 16777216u + low;
+                Access::phase(clock, expected);
+                const bool decision = wrap(expected, swing);
+                const bool actual = clock.Wrap(static_cast<int8_t>(swing));
+                errors += actual != decision || Access::phase(clock) != expected
+                    || (Access::phase(clock) & 0xffffffu) != low;
+                ++comparisons;
+            }
+    for (uint32_t increment : {1u, 0x7fffffffu, 0xffffffffu, 0x31415926u})
+    {
+        uint32_t expected = 0xfffffff0u;
+        Access::phase(clock, expected); Access::increment(clock, increment);
+        for (int i = 0; i < 1000000; ++i)
+        {
+            expected = static_cast<uint32_t>(static_cast<uint64_t>(expected) + increment);
+            clock.Tick();
+            const int swing = i % 256 - 128;
+            const bool decision = wrap(expected, swing);
+            const bool actual = clock.Wrap(static_cast<int8_t>(swing));
+            errors += actual != decision || Access::phase(clock) != expected;
+            ++comparisons;
+        }
+        clock.Reset(); errors += Access::phase(clock) != 0;
+    }
+    std::printf("Clock reference: %llu comparisons, %llu errors\n",
+        static_cast<unsigned long long>(comparisons), static_cast<unsigned long long>(errors));
+    if (errors != 0) ++gFailures;
+}
 
 struct Metrics {
     double peak = 0.0;
@@ -1548,6 +1602,7 @@ void runVcaHold()
 
 int main()
 {
+    testClockArithmetic();
     juce::ScopedJuceInitialiser_GUI juceInit;
     std::printf("SwaraXt Shruthi timing test mode %d start\n", SWARAXT_SHRUTHI_TIMING_TEST_MODE);
     std::fflush(stdout);
