@@ -1,7 +1,7 @@
 // Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
 #include <JuceHeader.h>
 #include "Plugin/PluginProcessor.h"
-#include "../Support/ParameterContractV1.h"
+#include "../Support/ParameterContractV2.h"
 #include <iostream>
 #include <stdexcept>
 #include <chrono>

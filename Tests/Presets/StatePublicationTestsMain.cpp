@@ -612,8 +612,10 @@ int main(int argc, char** argv)
     runCase("newer file completes first", [] { overlappingUserPresetSaves(true); });
     runCase("failed loads and rapid selections", failedLoadsAndRapidSelections);
     runCase("locked tuning and session round-trip", lockedTuningAndSessionRoundTrip);
-    runCase("legacy state and preset versions", legacyVersions);
-    if (argc == 2 && juce::String(argv[1]) == "--state-only")
+    const bool currentOnly = argc == 2 && juce::String(argv[1]) == "--current-state-only";
+    if (! currentOnly)
+        runCase("legacy state and preset versions", legacyVersions);
+    if (currentOnly || (argc == 2 && juce::String(argv[1]) == "--state-only"))
         std::puts("editor case excluded by explicit --state-only selection");
     else
         runCase("editor during publication", editorDuringPublication);

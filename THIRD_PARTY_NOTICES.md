@@ -34,12 +34,29 @@ under GPL-3.0-or-later.
 ## JUCE
 
 - Upstream: https://github.com/juce-framework/JUCE
-- Version: 9.0.1
-- Revision: `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8`
-- License mode: GPLv3 application option
+- Linux version: 9.0.4, revision `3fb5cbc0340758596dac39f7c8de47d562b4896e`
+- Windows/macOS version: 9.0.1, revision `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8`
+- Licensing terms: consult the selected upstream `LICENSE.md` and module notices.
+  JUCE 9.0.4 describes its modules as AGPLv3/commercial dual-licensed. This
+  dependency inventory does not select or certify an application licensing mode.
 
 JUCE's own license and bundled third-party notices apply to its source and VST3
-support materials.
+support materials. Preserve the selected upstream notices when distributing
+JUCE-derived materials. The Linux 9.0.4 source inventory in `JUCE.spdx.json`
+includes the following bundled codecs; symbol visibility does not remove their
+notice requirements:
+
+| Component | Pinned upstream version | SPDX-declared license |
+| --- | --- | --- |
+| libwebp | 1.6.0 | BSD-3-Clause |
+| libogg | 1.3.6 | BSD-3-Clause |
+| libvorbis | 1.3.7 | BSD-3-Clause |
+| Opus | 1.6.1 | BSD-3-Clause |
+| opusfile | 0.12-59-g6dfd29e | BSD-3-Clause |
+| libopusenc | 0.3 | BSD-3-Clause |
+
+The complete pinned source and notice inventory is authoritative; this table
+is not a replacement for bundled copyright/license files.
 
 ## Adriatica Next 1.0
 

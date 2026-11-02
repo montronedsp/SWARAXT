@@ -13,7 +13,12 @@ import urllib.request
 import zipfile
 
 SOURCE = Path(__file__).resolve().parents[2]
-JUCE_SHA = 'e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8'
+def juce_revision(system):
+    return ('3fb5cbc0340758596dac39f7c8de47d562b4896e' if system == 'Linux'
+            else 'e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8')
+
+
+JUCE_SHA = juce_revision(platform.system())
 SDK_SHA = '9fad9770f2ae8542ab1a548a68c1ad1ac690abe0'
 PLUGINVAL = {
     'Linux': ('pluginval_Linux.zip', 'c01c49d8063965c4c2dea8324468336768f5c9139e0b1caebde14c2400b55352'),
