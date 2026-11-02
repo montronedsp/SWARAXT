@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <vector>
 #include "Plugin/PluginProcessor.h"
@@ -208,7 +209,7 @@ void testFactory(int index)
             pitches.push_back(table.periodCents);
         }
     }
-    expect(table.formalPeriod==pitches.size() && table.degreeCount+1==pitches.size(),"period degree count");
+    expect(table.formalPeriod==pitches.size() && static_cast<std::size_t>(table.degreeCount)+1==pitches.size(),"period degree count");
     for(size_t d=0;d<table.degreeCents.size();++d)
         expect(near(table.degreeCents[d],pitches[d]),"independent interval formula");
     expect(near(table.periodCents,pitches.back()),"exact repeating period");

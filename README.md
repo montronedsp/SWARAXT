@@ -77,7 +77,16 @@ Platform-specific compatibility may depend on the operating system, host, and lo
 
 ## Building
 
-Building SWARA XT requires CMake 3.22 or newer, a C++17-compatible compiler, JUCE 9.0.1, Git, and the pinned Shruthi source used by the project.
+Building SWARA XT requires CMake 3.22 or newer, a C++17-compatible compiler, the exact platform JUCE revision listed below, Git, and the pinned Shruthi source used by the project.
+
+Linux requires official JUCE 9.0.4 at `3fb5cbc0340758596dac39f7c8de47d562b4896e`.
+Windows and macOS retain JUCE 9.0.1 at `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8`.
+Pass the immutable checkout with `-DSWARAXT_JUCE_DIR=/path/to/JUCE`.
+Linux CMake verifies its revision and source identity, generates the ChannelType/WAVE
+compatibility sources inside the build tree, and retains the MIDI player reserve policy.
+Do not prepatch the input JUCE checkout. Linux VST3 links isolate the SharedCode
+archive's bundled implementation symbols while retaining the required plugin exports.
+
 
 See [BUILDING.md](BUILDING.md) for build instructions.
 

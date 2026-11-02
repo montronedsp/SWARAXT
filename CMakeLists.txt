@@ -201,6 +201,11 @@ juce_add_plugin(SwaraXT
     VST3_CATEGORIES Instrument Synth
 )
 
+# Private bundled implementation symbols; VST3 entry points are direct module objects.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(SwaraXT_VST3 PRIVATE "-Wl,--exclude-libs,$<TARGET_FILE_NAME:SwaraXT>")
+endif()
+
 juce_generate_juce_header(SwaraXT)
 
 target_sources(SwaraXT PRIVATE ${SWARAXT_ALL_PLUGIN_SOURCES})

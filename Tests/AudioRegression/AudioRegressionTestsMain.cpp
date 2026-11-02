@@ -23,6 +23,8 @@
 #include "Engine/SampleRate/InternalSampleQueue.h"
 #include "Plugin/SwaraXtParameterLayout.h"
 #include "Plugin/PluginProcessor.h"
+#include "../Support/CurrentRenderContract.h"
+#include "../Parity/CurrentAudioGoldens.h"
 
 #include "avrlib/random.h"
 #include "shruthi/audio_out.h"
@@ -303,6 +305,7 @@ void configureBasicPatch(SwaraXtAudioProcessor& proc,
 std::vector<float> renderProcessor(SwaraXtAudioProcessor& proc, int note, bool releaseNote)
 {
     proc.prepareToPlay(kHostRate, kBlockSize);
+    swaraxt::test::currentRenderInput(proc,kHostRate,kBlockSize,kRenderSamples,note,releaseNote,expect);
     std::vector<float> output;
     output.reserve(kRenderSamples);
     juce::AudioBuffer<float> buffer(2, kBlockSize);
@@ -336,6 +339,8 @@ void configureDirectPatch(shruthi::Part& part,
                           int mixBalance,
                           int noise)
 {
+    expect(mixBalance>=0 && mixBalance<=63 && noise>=0 && noise<=63,
+           "direct firmware fixture uses six-bit mixer values");
     auto* patch = part.mutable_patch();
     patch->osc[0].shape = static_cast<uint8_t>(osc1Shape);
     patch->osc[0].parameter = osc1Shape == shruthi::WAVEFORM_SQUARE ? 64 : 0;
@@ -475,18 +480,17 @@ void runAudioParity()
         float resonance;
         int note;
         bool release;
-        uint64_t expectedHash;
     };
 
     const Scenario scenarios[] = {
-        { "01_basic_saw.wav", "Test A basic saw", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 20000.0f, 0.0f, 60, true, 0xe49a2f5d8a7090f9ull },
-        { "02_basic_square.wav", "Test B basic square", shruthi::WAVEFORM_SQUARE, shruthi::WAVEFORM_NONE, 0, 0, 20000.0f, 0.0f, 60, true, 0x608f87853120af8eull },
-        { "03_two_osc_mix.wav", "Test C two oscillators", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_SQUARE, 64, 0, 20000.0f, 0.0f, 60, true, 0x2e5f9d73aeaa1820ull },
-        { "04_filter_low_res.wav", "Test F filter low resonance", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 1200.0f, 0.25f, 48, true, 0x0099139bef0f1690ull },
-        { "05_filter_high_res.wav", "Test G filter high resonance", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 900.0f, 0.82f, 48, true, 0x1ac4a6fabf9a3da5ull },
-        { "06_envelope_bass.wav", "Test I normal envelope", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_SAW, 32, 0, 650.0f, 0.35f, 36, true, 0x8bed59407b8e5da6ull },
-        { "07_noise_only.wav", "Test D noise only", shruthi::WAVEFORM_NONE, shruthi::WAVEFORM_NONE, 0, 127, 5000.0f, 0.2f, 60, true, 0xc91195ddeff8aa65ull },
-        { "08_silence_test.wav", "Test J silence", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 20000.0f, 0.0f, -1, false, 0x81296f5b21ed7843ull },
+        { "01_basic_saw.wav", "Test A basic saw", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 20000.0f, 0.0f, 60, true },
+        { "02_basic_square.wav", "Test B basic square", shruthi::WAVEFORM_SQUARE, shruthi::WAVEFORM_NONE, 0, 0, 20000.0f, 0.0f, 60, true },
+        { "03_two_osc_mix.wav", "Test C two oscillators", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_SQUARE, 64, 0, 20000.0f, 0.0f, 60, true },
+        { "04_filter_low_res.wav", "Test F filter low resonance", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 1200.0f, 0.25f, 48, true },
+        { "05_filter_high_res.wav", "Test G filter high resonance", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 900.0f, 0.82f, 48, true },
+        { "06_envelope_bass.wav", "Test I normal envelope", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_SAW, 32, 0, 650.0f, 0.35f, 36, true },
+        { "07_noise_only.wav", "Test D noise only", shruthi::WAVEFORM_NONE, shruthi::WAVEFORM_NONE, 0, 127, 5000.0f, 0.2f, 60, true },
+        { "08_silence_test.wav", "Test J silence", shruthi::WAVEFORM_SAW, shruthi::WAVEFORM_NONE, 0, 0, 20000.0f, 0.0f, -1, false },
     };
 
     for (const auto& scenario : scenarios)
@@ -506,7 +510,11 @@ void runAudioParity()
         std::printf("GOLDEN classic %s samples=%zu hash=%016llx\n",
                     scenario.name, audio.size(),
                     static_cast<unsigned long long>(m.hash));
-        expect(m.hash == scenario.expectedHash, scenario.name);
+        const auto* expected=swaraxt_current_golden::find(swaraxt_current_golden::kClassic,
+            swaraxt_current_golden::kClassicCount,scenario.name);
+        expect(expected!=nullptr,"current classic case exists");
+        if(expected)expect(m.hash==expected->hash && audio.size()==expected->samples,scenario.name);
+        swaraxt::test::currentRenderOutput(scenario.file,audio,expect);
         expect(m.invalidCount == 0, "final render finite");
         if (scenario.note >= 0)
             expect(m.peak > 1.0e-4f, "final render non-silent");
@@ -547,7 +555,7 @@ void runSignalChain()
 
     ShruthiRuntime noiseOnly;
     noiseOnly.init();
-    configureDirectPatch(noiseOnly.part, shruthi::WAVEFORM_NONE, shruthi::WAVEFORM_NONE, 0, 127);
+    configureDirectPatch(noiseOnly.part, shruthi::WAVEFORM_NONE, shruthi::WAVEFORM_NONE, 0, 63); // Firmware domain; public127 maps to63.
     const auto noise = renderShruthiSource(noiseOnly, 64, 60, false);
 
     ShruthiRuntime silence;

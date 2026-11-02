@@ -67,10 +67,3 @@ function(swaraxt_label_tests)
         endif()
     endforeach()
 endfunction()
-
-# Keep the known unsigned-negative comparison diagnostic visible during GCC
-# qualification. Its production correction requires separate review; this
-# narrow exception does not suppress the warning or affect shipping builds.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND TARGET SwaraXtTuningConverter)
-    target_compile_options(SwaraXtTuningConverter PRIVATE -Wno-error=type-limits)
-endif()

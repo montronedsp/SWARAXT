@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -16,7 +17,7 @@
 
 #include "Engine/SwaraXtEngine.h"
 #include "Plugin/PluginProcessor.h"
-#include "../Support/ParameterContractV1.h"
+#include "../Support/ParameterContractV2.h"
 #include "Plugin/SwaraXtParameterLayout.h"
 #include "Ui/SwaraXtLfoVisualizer.h"
 #include "Ui/SwaraXtModulationNames.h"
@@ -503,7 +504,8 @@ void testJuce9ParameterMetadataCompatibility()
             }
         }
     }
-    expect(parameterIds.size() == parameters.size(), "parameter IDs remain unique");
+    expect(parameterIds.size() == static_cast<std::size_t>(parameters.size()),
+           "parameter IDs remain unique");
 
     auto checkInt = [&](const char* id,
                         const char* name,

@@ -470,9 +470,12 @@ double TuningSnapshot::hzForDegree(int degree) const noexcept
 {
     if (formalPeriod == 0 || referenceHz <= 0.0 || periodCents <= 0.0)
         return 0.0;
-    if (referenceNote < 0 || referenceNote >= kMidiNotes || ! assigned(referenceNote))
+    // The serialized note is uint16_t; use a checked signed MIDI index, as in
+    // rebuildFrequencies(), before testing bounds or indexing the mapping.
+    const int referenceMidiNote = referenceNote;
+    if (referenceMidiNote < 0 || referenceMidiNote >= kMidiNotes || ! assigned(referenceMidiNote))
         return 0.0;
-    const double cents = centsForDegree(*this, degree) - centsForDegree(*this, midiDegree[referenceNote]);
+    const double cents = centsForDegree(*this, degree) - centsForDegree(*this, midiDegree[referenceMidiNote]);
     return referenceHz * std::pow(2.0, cents / 1200.0);
 }
 

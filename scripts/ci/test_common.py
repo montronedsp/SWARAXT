@@ -12,8 +12,15 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from common import architecture, command_argv, extract_zip
+from common import architecture, command_argv, extract_zip, juce_revision
 from desktop import LINUX_PROFILES, WINDOWS_PROFILES, profile_flags, validate_ctest, verify_binary, validate_msvc_defaults, validate_host_log, validate_peer_teardown_control, validate_compile_commands
+
+
+class DependencyRevision(unittest.TestCase):
+    def test_linux_904_and_other_platforms_keep_901(self):
+        self.assertEqual(juce_revision('Linux'), '3fb5cbc0340758596dac39f7c8de47d562b4896e')
+        for system in ('Windows', 'Darwin'):
+            self.assertEqual(juce_revision(system), 'e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8')
 
 
 class Profiles(unittest.TestCase):

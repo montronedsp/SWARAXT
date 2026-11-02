@@ -7,7 +7,8 @@
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
 #include "Engine/SequenceState.h"
-#include "Parity/ExactParityGoldens.h"
+#include "Parity/CurrentAudioGoldens.h"
+#include "Support/CurrentRenderContract.h"
 
 #include "shruthi/patch.h"
 
@@ -75,6 +76,7 @@ void configureSaw(SwaraXtAudioProcessor& proc)
     setInt(proc, swaraxt::IDs::osc2Shape, shruthi::WAVEFORM_NONE);
     setInt(proc, swaraxt::IDs::mixBalance, 0);
     setInt(proc, swaraxt::IDs::mixNoise, 0);
+    setInt(proc, swaraxt::IDs::mixSub, 64); // Explicit current manual-Saw stimulus: firmware32.
     setFloat(proc, swaraxt::IDs::filterCutoff, 20000.0f);
     setFloat(proc, swaraxt::IDs::filterResonance, 0.0f);
     setInt(proc, swaraxt::IDs::env2Attack, 0);
@@ -86,6 +88,7 @@ void configureSaw(SwaraXtAudioProcessor& proc)
 std::vector<float> render(SwaraXtAudioProcessor& proc, int note, bool releaseNote)
 {
     proc.prepareToPlay(kHostRate, kBlockSize);
+    swaraxt::test::currentRenderInput(proc,kHostRate,kBlockSize,kRenderSamples,note,releaseNote,expect);
     std::vector<float> output;
     output.reserve(kRenderSamples);
     juce::AudioBuffer<float> buffer(2, kBlockSize);
@@ -125,10 +128,11 @@ std::vector<float> render(SwaraXtAudioProcessor& proc, int note, bool releaseNot
 void golden(const char* name, const std::vector<float>& audio, std::size_t expectedCount)
 {
     const auto h = hashBits(audio);
+    swaraxt::test::currentRenderOutput(name,audio,expect);
     std::printf("GOLDEN integrated %s samples=%zu hash=%016llx\n",
                 name, audio.size(), static_cast<unsigned long long>(h));
     expect(audio.size() == expectedCount, name);
-    const auto* expected = swaraxt_golden::find(swaraxt_golden::kIntegrated, swaraxt_golden::kIntegratedCount, name);
+    const auto* expected = swaraxt_current_golden::find(swaraxt_current_golden::kIntegrated, swaraxt_current_golden::kIntegratedCount, name);
     expect(expected != nullptr, name);
     if (expected != nullptr)
         expect(h == expected->hash, name);
@@ -201,6 +205,7 @@ int main()
         setInt(proc, swaraxt::IDs::dspFxParam1, 64);
         setInt(proc, swaraxt::IDs::dspFxParam2, 0);
         proc.prepareToPlay(kHostRate, kBlockSize);
+        swaraxt::test::currentRenderInput(proc,kHostRate,kBlockSize,2048,60,false,expect);
         juce::AudioBuffer<float> buffer(2, kBlockSize);
         for (int block = 0; block < 48; ++block)
         {
@@ -223,7 +228,7 @@ int main()
                 replay.push_back(buffer.getSample(0, i));
         }
         proc.releaseResources();
-        golden("looper_replay", replay, replay.size());
+        golden("looper_replay", replay, 2048);
     }
 
     {
