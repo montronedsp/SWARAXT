@@ -1,10 +1,22 @@
 // Copyright 2026 MontroneDSP.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <JuceHeader.h>
+// SWARAXT_DUAL_HEADLESS_INCLUDE_BEGIN
+#if defined(SWARAXT_DUAL_SVF_HEADLESS)
+#include "Plugin/PluginProcessor.h"
+#else
 #include "Plugin/PluginEditor.h"
+#endif
+// SWARAXT_DUAL_HEADLESS_INCLUDE_END
 #include "Engine/Filter/ShruthiSvfSection2Control.h"
 #include "shruthi/resources.h"
+// SWARAXT_DUAL_PLATFORM_GOLDENS_BEGIN
+#if defined(__linux__)
+#include "DualSvfCurrentLinuxGoldens.h"
+#else
 #include "DualSvfSection2Goldens.h"
+#endif
+// SWARAXT_DUAL_PLATFORM_GOLDENS_END
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -209,12 +221,18 @@ Render render(Control control, int cut, int res, int route, int calibration, int
     juce::AudioBuffer<float> buffer(2, 256);
     juce::MidiBuffer midi;
     Render result;
+#if defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_SETUP_OBSERVER
+    headlessConfigured(p, control, cut, res, route, calibration, m1, m2);
+#endif // SWARAXT_DUAL_SETUP_OBSERVER
     for (int b = 0; b < 100; ++b)
     {
         midi.clear();
         if (b == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(110)), 0);
         if (b == 40) midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(96)), 0);
         p.processBlock(buffer, midi);
+#if defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_BLOCK_OBSERVER
+        headlessBlock(p, buffer);
+#endif // SWARAXT_DUAL_BLOCK_OBSERVER
         expect(finite(buffer), "production render finite");
         const auto& voice = p.engineForTests().shruthiPart().voice();
         result.fxHash ^= static_cast<std::uint32_t>(voice.cv_1()) | (static_cast<std::uint32_t>(voice.cv_2()) << 8);
@@ -232,6 +250,9 @@ Render render(Control control, int cut, int res, int route, int calibration, int
     result.f2 = dual.section2().cutoffHz();
     result.fx1 = p.engineForTests().shruthiPart().voice().cv_1();
     result.fx2 = p.engineForTests().shruthiPart().voice().cv_2();
+#if defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_FINISH_OBSERVER
+    headlessFinished(p);
+#endif // SWARAXT_DUAL_FINISH_OBSERVER
     return result;
 }
 
@@ -268,16 +289,19 @@ void audioControls()
             && resB.hash == dualIndependentGoldens[cal][2], "separate Independent audio references unchanged");
         expect(cutA.hash != cutB.hash && cutB.hash != resB.hash && identical(cutA.f1, cutB.f1)
             && identical(cutB.f1, resB.f1), "cutoff and resonance independently audible with fixed F1");
+#if !defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_PRINT_GUARD
         std::printf("DualIndependent_%s_Cut40_Res32 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(cutA.hash));
         std::printf("DualIndependent_%s_Cut90_Res32 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(cutB.hash));
         std::printf("DualIndependent_%s_Cut90_Res63 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(resB.hash));
         std::printf("DualRelative_%s_Minus12 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(low.hash));
         std::printf("DualRelative_%s_Center64 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(mid.hash));
         std::printf("DualRelative_%s_Plus12 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(high.hash));
+#endif // SWARAXT_DUAL_PRINT_GUARD
     }
     std::printf("Production independence: 108 paired renders across routes, modes and calibrations\n");
 }
 
+#if !defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_GUI_GUARD
 void guiAndStress()
 {
     SwaraXtAudioProcessor p;
@@ -360,6 +384,8 @@ void guiAndStress()
     std::printf("Section 2 GUI/lifetime: 12 teardown cycles, 1800 audio blocks, 48000 concurrent requests\n");
     std::printf("Section 2 screenshots: %d across five skins, three sizes, both new modes\n", images);
 }
+
+#endif // SWARAXT_DUAL_GUI_GUARD
 
 void rateMatrix()
 {
@@ -446,6 +472,7 @@ void dormantTargets()
 }
 } // namespace
 
+#if !defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_MAIN_GUARD
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
@@ -453,3 +480,4 @@ int main()
     std::printf("Dual SVF Section 2: %s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
     return failures == 0 ? 0 : 1;
 }
+#endif // SWARAXT_DUAL_MAIN_GUARD
