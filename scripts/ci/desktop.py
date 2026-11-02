@@ -13,7 +13,9 @@ import sys
 import xml.etree.ElementTree as ET
 
 from common import Evidence, JUCE_SHA, SDK_SHA, SOURCE, architecture, sha
-from native_reference import BASELINE_SHA, TESTS, validate_output
+from native_reference import WINDOWS_BASELINE_SHA, TESTS, validate_windows_output as validate_output
+import current_reference
+import windows_reference_policy
 from reference_metadata import apply as apply_reference_metadata
 from linux_dependency import apply as apply_linux_dependency
 from pluginval_source import (apply as apply_pluginval_source, SOURCE_SHA as PLUGINVAL_SHA,
@@ -280,11 +282,47 @@ class Campaign(Evidence):
     def build(self, build, name, targets, timeout=10800):
         self.run(name, ['cmake', '--build', build, '--target', *targets, '--parallel', '2'], timeout=timeout)
 
+    def current_reference(self, build):
+        identity = current_reference.context(SOURCE, self.report['source_sha'],
+            self.env['SWARAXT_NATIVE_PROFILE'], self.report['run_id'])
+        executables = {name: self.binary(build, name) for name in current_reference.ALL_TESTS}
+        manifest = current_reference.stage_reference(self.root, SOURCE, identity, executables, build)
+        root = self.root / 'native-reference'
+        # Re-seal a changed record deliberately: the pinned approved data must
+        # still reject it, independently of the transport checksum.
+        negative = self.root / 'negative-reference'
+        shutil.copytree(root, negative)
+        name = 'SwaraXTHostSrcExactParityTests'
+        file = negative / (name + '.json')
+        record = current_reference.decode(file.read_bytes())
+        case = next(key for key in record['records'] if 'impulse' in key)
+        record['records'][case][1] = '0' * 16
+        file.write_bytes(current_reference.encode(record))
+        bad = current_reference.decode((negative / 'manifest.json').read_bytes())
+        bad['tests'][name]['record_sha256'] = sha(file)
+        data = current_reference.encode(bad)
+        (negative / 'manifest.json').write_bytes(data)
+        (negative / 'manifest.sha256').write_text(current_reference.digest(data) + '\n')
+        code = self.run('reference-negative-control', [sys.executable, CI / 'native_reference.py',
+            '--reference-root', negative, '--test-name', name, self.binary(build, name)], expected=None)
+        if code == 0 or 'Reference records differ from immutable approved cases' not in (self.root / 'reference-negative-control.log').read_text(errors='replace'):
+            raise RuntimeError('Current native reference mutation control failed')
+        current_reference.admit_reference(root, SOURCE, identity, build, expected_manifest=manifest)
+        self.report['native_reference_negative_control'] = 'PASS'
+        self.report['native_audio_reference'] = manifest
+        self.report['native_audio_reference_manifest_sha256'] = sha(root / 'manifest.json')
+        self.run('configure-reference-launchers', ['cmake', '-S', SOURCE, '-B', build,
+                  '-DSWARAXT_CI_REFERENCE_ROOT=' + str(root)])
+
     def reference(self, juce, build):
+        if self.system == 'Linux':
+            return self.current_reference(build)
+        # Windows retains its frozen-build policy pending separate migration.
+        windows_reference_policy.require_frozen_source(SOURCE)
         baseline = self.root / 'frozen-upstream'
         self.run('clone-reference', ['git', '-c', 'core.autocrlf=false', 'clone', '--filter=blob:none',
                  '--no-checkout', 'https://github.com/montronedsp/SWARAXT.git', baseline])
-        self.run('checkout-reference', ['git', '-C', baseline, '-c', 'core.autocrlf=false', 'checkout', '--detach', BASELINE_SHA])
+        self.run('checkout-reference', ['git', '-C', baseline, '-c', 'core.autocrlf=false', 'checkout', '--detach', WINDOWS_BASELINE_SHA])
         self.run('reference-submodules', ['git', '-C', baseline, '-c', 'url.https://github.com/.insteadOf=git://github.com/',
                                          'submodule', 'update', '--init', '--recursive'])
         for relative in [*TESTS.values(), 'Tests/Parity/ExactParityGoldens.h', 'Tests/Filter/DualSvfSection2Goldens.h']:
@@ -303,7 +341,7 @@ class Campaign(Evidence):
         self.run('configure-reference', ['cmake', '-S', baseline, '-B', reference_build, '-G', 'Ninja', *options])
         self.build(reference_build, 'build-reference', list(TESTS))
         root = self.root / 'native-reference'; root.mkdir()
-        manifest = {'baseline_sha': BASELINE_SHA, 'candidate_sha': self.report['source_sha'],
+        manifest = {'baseline_sha': WINDOWS_BASELINE_SHA, 'candidate_sha': self.report['source_sha'],
                     'architecture': architecture(), 'profile': self.env['SWARAXT_NATIVE_PROFILE'],
                     'run_id': self.report['run_id'], 'baseline_build_metadata_overlay': metadata_overlay, 'tests': {}}
         for name in TESTS:
@@ -514,9 +552,9 @@ def toolchain(args):
         campaign.save()
 
 
-def contained_runner_path(path, must_exist):
+def contained_runner_path(path, must_exist, trusted_root=None):
     """Resolve a qualification path and keep it inside RUNNER_TEMP."""
-    root_text = os.environ.get('RUNNER_TEMP')
+    root_text = trusted_root if trusted_root is not None else os.environ.get('RUNNER_TEMP')
     if not root_text:
         raise RuntimeError('Qualification paths require RUNNER_TEMP')
     root = Path(root_text).resolve(strict=True)
@@ -559,14 +597,31 @@ def admit_reference_record(profile_root, name, entry):
         raise RuntimeError('Changed native reference record')
 
 
-def gate(system, evidence):
-    evidence = contained_runner_path(evidence, True)
+def admit_linux_reference(profile_root, reference, manifest_sha256, candidate_sha, profile, run_id):
+    """Pure reference-only final admission; no build, workflow or host execution."""
+    profile_root = Path(profile_root)
+    identity = current_reference.context(SOURCE, candidate_sha, profile, run_id)
+    current_reference.admit_reference(profile_root / 'native-reference', SOURCE,
+        identity, profile_root / 'build', expected_manifest=reference)
+    if sha(profile_root / 'native-reference/manifest.json') != manifest_sha256:
+        raise RuntimeError('Changed current reference producer manifest')
+
+
+def gate(system, evidence, context=None):
+    # Explicit context is for pure local evidence-admission unit fixtures.
+    # Normal CI invocation still requires its original trusted environment.
+    context = context if context is not None else {
+        'source_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'],
+        'trusted_root': os.environ['RUNNER_TEMP']}
+    evidence = contained_runner_path(evidence, True, context['trusted_root'])
+    if system == 'Windows':
+        windows_reference_policy.require_frozen_source(SOURCE)
     expected = set(LINUX_PROFILES if system == 'Linux' else WINDOWS_PROFILES)
     results = {}
     for path in evidence.rglob('report.json'):
         data = json.loads(path.read_text())
         key = (data['compiler'], data['profile'])
-        if key in results or data['platform'] != system or data['source_sha'] != os.environ['GITHUB_SHA'] or data['run_id'] != os.environ['GITHUB_RUN_ID']:
+        if key in results or data['platform'] != system or data['source_sha'] != context['source_sha'] or data['run_id'] != context['run_id']:
             raise RuntimeError('Duplicate or mismatched profile provenance')
         if data['decision'] != 'PASS':
             raise RuntimeError('Profile did not pass')
@@ -584,10 +639,14 @@ def gate(system, evidence):
                 if commands.get(name) != 0:
                     raise RuntimeError('Missing successful native command: ' + name)
             reference = data['native_audio_reference']
-            if reference['candidate_sha'] != data['source_sha'] or reference['baseline_sha'] != BASELINE_SHA or reference['run_id'] != data['run_id'] or reference['profile'] != data['compiler'] + '-' + data['profile'] or reference['architecture'] != 'x86_64':
-                raise RuntimeError('Mismatched native reference provenance')
-            for name in TESTS:
-                admit_reference_record(path.parent, name, reference['tests'][name])
+            if system == 'Linux':
+                admit_linux_reference(path.parent, reference, data['native_audio_reference_manifest_sha256'],
+                    data['source_sha'], data['compiler'] + '-' + data['profile'], data['run_id'])
+            else:
+                if reference['candidate_sha'] != data['source_sha'] or reference['baseline_sha'] != WINDOWS_BASELINE_SHA or reference['run_id'] != data['run_id'] or reference['profile'] != data['compiler'] + '-' + data['profile'] or reference['architecture'] != 'x86_64':
+                    raise RuntimeError('Mismatched native reference provenance')
+                for name in TESTS:
+                    admit_reference_record(path.parent, name, reference['tests'][name])
             host = (path.parent / 'actual-VST3.log').read_text(errors='replace')
             validate_host_log(host)
             if 'BOOLEAN_NORMALIZATION_PASS' not in host:
@@ -627,13 +686,14 @@ def gate(system, evidence):
         results[key] = 'PASS'
     if set(results) != expected:
         raise RuntimeError('Missing or extra native profiles: ' + str(expected.symmetric_difference(results)))
-    report = {'source_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'], 'platform': system,
+    report = {'source_sha': context['source_sha'], 'run_id': context['run_id'], 'platform': system,
               'decision': 'NATIVE_CI_MATRIX_PASS', 'profiles': {c + '-' + p: s for (c, p), s in results.items()},
               'distribution_approval': False, 'visible_gui_acceptance': 'NOT_RUN', 'installation': 'NOT_RUN'}
     sys.stdout.write(json.dumps(report, indent=2) + '\n')
 
 
-def main():
+def argument_parser():
+    """Construct the CLI without running a campaign or reading Actions state."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='task', required=True)
     native = commands.add_parser('native')
@@ -647,7 +707,11 @@ def main():
     review = commands.add_parser('gate')
     review.add_argument('--platform', choices=['Linux', 'Windows'], required=True)
     review.add_argument('--evidence', type=Path, required=True)
-    args = parser.parse_args()
+    return parser
+
+
+def main():
+    args = argument_parser().parse_args()
     if args.task == 'native': Campaign(args).execute()
     elif args.task == 'toolchain': toolchain(args)
     else: gate(args.platform, args.evidence)

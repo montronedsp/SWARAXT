@@ -37,7 +37,7 @@ jobs:
         run: |
           test "$REVIEWED_SHA" = "$GITHUB_SHA"
           cd scripts/ci
-          python -m unittest test_common test_native_reference
+          python -m unittest test_common test_native_reference test_dual_svf_reference test_windows_reference_policy
   native:
     needs: preflight
     runs-on: ubuntu-24.04
@@ -91,6 +91,11 @@ jobs:
             ${{ runner.temp }}/swara-native/*.png
             ${{ runner.temp }}/swara-native/*-negative.cpp
             ${{ runner.temp }}/swara-native/native-reference/*.json
+            ${{ runner.temp }}/swara-native/native-reference/manifest.sha256
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTAudioParityTests
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTDspFxIntegratedExactParityTests
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTHostSrcExactParityTests
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTDualSvfHeadlessTests
             ${{ runner.temp }}/swara-native/build/Testing/Temporary/**
             ${{ runner.temp }}/swara-native/build/Tests/sonic-*/**
             ${{ runner.temp }}/swara-native/*-crashes/**

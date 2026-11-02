@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 MontroneDSP
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Exact native comparison against separately built frozen production source.
+"""Native reference launcher: pinned current Linux data and frozen Windows source preflight.
 
-Historical MSVC hashes remain unchanged. Only their identified hash assertions
-may differ on a native toolchain; every other test assertion must still pass.
+Historical mismatch allowances below belong only to the Windows frozen path.
+They are never accepted by the current Linux parser or evidence admission.
 """
 import argparse
 from collections import Counter
@@ -12,12 +12,15 @@ import hashlib
 import json
 import os
 from common import architecture
+import platform
+import current_reference
+import windows_reference_policy
 from pathlib import Path
 import re
 import subprocess
 import sys
 
-BASELINE_SHA = 'acf08d6b8d0041d594ce0bf069038e91317b2670'
+WINDOWS_BASELINE_SHA = 'acf08d6b8d0041d594ce0bf069038e91317b2670'
 TESTS = {
     'SwaraXTAudioParityTests': 'Tests/AudioRegression/AudioRegressionTestsMain.cpp',
     'SwaraXTDualSvfSection2Tests': 'Tests/Filter/DualSvfSection2TestsMain.cpp',
@@ -30,7 +33,7 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def validate_output(name, text, code, source):
+def validate_windows_output(name, text, code, source):
     if code not in (0, 1):
         raise RuntimeError('Native reference crashed or failed to execute')
     if any(marker in text for marker in ('runtime error:', 'AddressSanitizer:', 'ThreadSanitizer:', 'JUCE Assertion failure')):
@@ -94,16 +97,25 @@ def validate_output(name, text, code, source):
     return {'records': records, 'historical_hash_mismatches': sum(expected_failures.values())}
 
 
-def main():
+def validate_output(name, text, code, source):
+    """Current Linux admission; historical mismatch accounting is Windows-only."""
+    if platform.system() == 'Windows':
+        return validate_windows_output(name, text, code, source)
+    return current_reference.validate_output(name, text, code, source)
+
+
+def windows_main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--reference-root', type=Path, required=True)
     p.add_argument('--test-name', choices=TESTS, required=True)
     p.add_argument('command', nargs=argparse.REMAINDER)
     args = p.parse_args()
-    root = args.reference_root.resolve()
-    manifest = json.loads((root / 'manifest.json').read_text())
     source = Path(__file__).resolve().parents[2]
-    if manifest['baseline_sha'] != BASELINE_SHA or manifest['candidate_sha'] != os.environ.get('GITHUB_SHA'):
+    windows_reference_policy.require_frozen_source(source)
+    root = args.reference_root.absolute()
+    manifest_file = windows_reference_policy.trusted_file(root, 'manifest.json')
+    manifest = windows_reference_policy.strict_json(manifest_file.read_bytes())
+    if manifest['baseline_sha'] != WINDOWS_BASELINE_SHA or manifest['candidate_sha'] != os.environ.get('GITHUB_SHA'):
         raise RuntimeError('Native reference source provenance mismatch')
     if manifest['architecture'] != architecture() or not args.command:
         raise RuntimeError('Native reference architecture or command missing')
@@ -112,18 +124,27 @@ def main():
     command = Path(args.command[0]).resolve()
     if command.stem != args.test_name:
         raise RuntimeError('Unexpected native regression executable')
+    windows_reference_policy.admit_manifest(root, manifest, {'candidate_sha': os.environ.get('GITHUB_SHA'), 'profile': os.environ.get('SWARAXT_NATIVE_PROFILE'), 'run_id': os.environ.get('GITHUB_RUN_ID'), 'architecture': architecture()})
     entry = manifest['tests'][args.test_name]
     record_file = root / entry['record_file']
     if sha(record_file) != entry['record_sha256']:
         raise RuntimeError('Native reference record checksum changed')
     result = subprocess.run(args.command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     print(result.stdout, end='')
-    candidate = validate_output(args.test_name, result.stdout, result.returncode, source)
+    candidate = validate_windows_output(args.test_name, result.stdout, result.returncode, source)
     baseline = json.loads(record_file.read_text())
     if candidate['records'] != baseline['records']:
         raise RuntimeError('Actual native audio differs from independently built frozen upstream source')
     print('NATIVE_BASELINE_EXACT_PASS', args.test_name, 'cases=' + str(len(candidate['records'])),
-          'baseline=' + BASELINE_SHA, 'historical_mismatches=' + str(candidate['historical_hash_mismatches']))
+          'baseline=' + WINDOWS_BASELINE_SHA, 'historical_mismatches=' + str(candidate['historical_hash_mismatches']))
+
+
+def main():
+    if platform.system() == 'Linux':
+        return current_reference.main()
+    if platform.system() == 'Windows':
+        return windows_main()
+    raise RuntimeError('Unsupported native reference platform')
 
 
 if __name__ == '__main__':

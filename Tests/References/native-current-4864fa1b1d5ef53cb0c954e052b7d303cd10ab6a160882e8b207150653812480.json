@@ -1,0 +1,1108 @@
+{
+  "authority_file": "Tests/References/CurrentAudioReferenceProvenance.json",
+  "authority_sha256": "222b2be5b052f6f77ac576d1dffbcac6c61ba9aa415b75d9496714aee7cf4ae5",
+  "current_audio_cases": 30,
+  "current_golden_file": "Tests/Parity/CurrentAudioGoldens.h",
+  "current_golden_sha256": "046b240b020e9c440d031587a32a46045d4607c7f63623e80f6e6ffa977660bc",
+  "policy": "linux-current-phase3-v1",
+  "qualification": {
+    "architecture": "x86_64",
+    "compilers": [
+      "GCC 15.1.1",
+      "Clang 20.1.8"
+    ],
+    "platform": "Linux",
+    "profile": "Release",
+    "source_manifest_sha256": "fdd345a1d8d5e198cea01c934f9bc6691654fa20ceb9e388784ebc1de8be7e16",
+    "successful_reference_logs": {
+      "clang-release": {
+        "SwaraXTAudioParityTests": {
+          "cases": {
+            "Test A basic saw": [
+              44100,
+              "e49a2f5d8a7090f9"
+            ],
+            "Test B basic square": [
+              44100,
+              "608f87853120af8e"
+            ],
+            "Test C two oscillators": [
+              44100,
+              "2e5f9d73aeaa1820"
+            ],
+            "Test D noise only": [
+              44100,
+              "c473d3385b5767ba"
+            ],
+            "Test F filter low resonance": [
+              44100,
+              "0099139bef0f1690"
+            ],
+            "Test G filter high resonance": [
+              44100,
+              "1ac4a6fabf9a3da5"
+            ],
+            "Test I normal envelope": [
+              44100,
+              "8bed59407b8e5da6"
+            ],
+            "Test J silence": [
+              44100,
+              "81296f5b21ed7843"
+            ]
+          },
+          "successful_profile_ctest_sha256": "2b3d3af7213452c06e80a4c83cdc4fb1fd1fb27954ce2e473ee8f7f505a1ab14"
+        },
+        "SwaraXTDspFxIntegratedExactParityTests": {
+          "cases": {
+            "combNegative_default": [
+              4096,
+              "b4073e2570f056b0"
+            ],
+            "combPositive_default": [
+              4096,
+              "267920d638fd9335"
+            ],
+            "crushDelayDub_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "crushDelayFeedback_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "crush_default": [
+              4096,
+              "8a31616a6fa6aab2"
+            ],
+            "delay12_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay16_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay3_16_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay8_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delayDub_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delayFeedback_cv2max": [
+              4096,
+              "5dcc4a73a0c1ba86"
+            ],
+            "delayFeedback_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "distortion_cv1max": [
+              4096,
+              "5af78ba07ed4cba8"
+            ],
+            "distortion_cv1min": [
+              4096,
+              "5fcd5a4fa71958f5"
+            ],
+            "distortion_default": [
+              4096,
+              "8817d1113ae623f6"
+            ],
+            "looper_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "looper_replay": [
+              2048,
+              "a538dccc999e97db"
+            ],
+            "off_default": [
+              4096,
+              "9259aab1c591727e"
+            ],
+            "pitch_default": [
+              4096,
+              "5673780a78b12c38"
+            ],
+            "ringMod_default": [
+              4096,
+              "28a756a09db1f074"
+            ],
+            "seq_ringmod": [
+              4096,
+              "be7fb0911be00383"
+            ]
+          },
+          "successful_profile_ctest_sha256": "2b3d3af7213452c06e80a4c83cdc4fb1fd1fb27954ce2e473ee8f7f505a1ab14"
+        },
+        "SwaraXTHostSrcExactParityTests": {
+          "cases": {
+            "176400_impulse": [
+              7056,
+              "0ecd7a7279a32a35"
+            ],
+            "176400_noise": [
+              7056,
+              "214e98de2e28ef91"
+            ],
+            "176400_silence": [
+              7056,
+              "4ecef083be81ee83"
+            ],
+            "176400_sine1k": [
+              7056,
+              "2694a697b0cf8229"
+            ],
+            "176400_transient": [
+              7056,
+              "1aa35fb6f8abb09a"
+            ],
+            "192000_impulse": [
+              7680,
+              "50ca75d7ab7f1cca"
+            ],
+            "192000_noise": [
+              7680,
+              "8b0a8d39e516d8d7"
+            ],
+            "192000_silence": [
+              7680,
+              "97cc35a2251aa383"
+            ],
+            "192000_sine1k": [
+              7680,
+              "efc0c2ee71bad520"
+            ],
+            "192000_transient": [
+              7680,
+              "2e5233ae6529729e"
+            ],
+            "44100_impulse": [
+              1764,
+              "77cb365a04153cd6"
+            ],
+            "44100_noise": [
+              1764,
+              "7bdfc09e387f584e"
+            ],
+            "44100_silence": [
+              1764,
+              "9c30604f57c67643"
+            ],
+            "44100_sine1k": [
+              1764,
+              "384838fbe0ae7880"
+            ],
+            "44100_transient": [
+              1764,
+              "aef5bc5dc8424320"
+            ],
+            "48000_impulse": [
+              1920,
+              "7e808dc5206ec172"
+            ],
+            "48000_noise": [
+              1920,
+              "173cb1d55f3a6eb6"
+            ],
+            "48000_silence": [
+              1920,
+              "571f74d802dc6b83"
+            ],
+            "48000_sine1k": [
+              1920,
+              "91a94602740d03c7"
+            ],
+            "48000_transient": [
+              1920,
+              "fa3eca2322710cdd"
+            ],
+            "88200_impulse": [
+              3528,
+              "9cd8ed5cddc2eecb"
+            ],
+            "88200_noise": [
+              3528,
+              "0be6614ccb40bb0b"
+            ],
+            "88200_silence": [
+              3528,
+              "4604fb4ba8dd1903"
+            ],
+            "88200_sine1k": [
+              3528,
+              "33704ba92964b99a"
+            ],
+            "88200_transient": [
+              3528,
+              "ca2ae2a966128a31"
+            ],
+            "96000_impulse": [
+              3840,
+              "1ef2f1d127eee2b7"
+            ],
+            "96000_noise": [
+              3840,
+              "8cec30fdf443ef70"
+            ],
+            "96000_silence": [
+              3840,
+              "4f9197d17adbd383"
+            ],
+            "96000_sine1k": [
+              3840,
+              "cee808929d7a015c"
+            ],
+            "96000_transient": [
+              3840,
+              "0782d3ea6c5e70e7"
+            ]
+          },
+          "successful_profile_ctest_sha256": "2b3d3af7213452c06e80a4c83cdc4fb1fd1fb27954ce2e473ee8f7f505a1ab14"
+        }
+      },
+      "gcc-release": {
+        "SwaraXTAudioParityTests": {
+          "cases": {
+            "Test A basic saw": [
+              44100,
+              "e49a2f5d8a7090f9"
+            ],
+            "Test B basic square": [
+              44100,
+              "608f87853120af8e"
+            ],
+            "Test C two oscillators": [
+              44100,
+              "2e5f9d73aeaa1820"
+            ],
+            "Test D noise only": [
+              44100,
+              "c473d3385b5767ba"
+            ],
+            "Test F filter low resonance": [
+              44100,
+              "0099139bef0f1690"
+            ],
+            "Test G filter high resonance": [
+              44100,
+              "1ac4a6fabf9a3da5"
+            ],
+            "Test I normal envelope": [
+              44100,
+              "8bed59407b8e5da6"
+            ],
+            "Test J silence": [
+              44100,
+              "81296f5b21ed7843"
+            ]
+          },
+          "successful_profile_ctest_sha256": "8038bcb49ca187350f6d6ce6e73f77c7fd995f9a4b5760a61cf09e8f0013a7b8"
+        },
+        "SwaraXTDspFxIntegratedExactParityTests": {
+          "cases": {
+            "combNegative_default": [
+              4096,
+              "b4073e2570f056b0"
+            ],
+            "combPositive_default": [
+              4096,
+              "267920d638fd9335"
+            ],
+            "crushDelayDub_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "crushDelayFeedback_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "crush_default": [
+              4096,
+              "8a31616a6fa6aab2"
+            ],
+            "delay12_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay16_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay3_16_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay8_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delayDub_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delayFeedback_cv2max": [
+              4096,
+              "5dcc4a73a0c1ba86"
+            ],
+            "delayFeedback_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "delay_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "distortion_cv1max": [
+              4096,
+              "5af78ba07ed4cba8"
+            ],
+            "distortion_cv1min": [
+              4096,
+              "5fcd5a4fa71958f5"
+            ],
+            "distortion_default": [
+              4096,
+              "8817d1113ae623f6"
+            ],
+            "looper_default": [
+              4096,
+              "400dc09a72426a7b"
+            ],
+            "looper_replay": [
+              2048,
+              "a538dccc999e97db"
+            ],
+            "off_default": [
+              4096,
+              "9259aab1c591727e"
+            ],
+            "pitch_default": [
+              4096,
+              "5673780a78b12c38"
+            ],
+            "ringMod_default": [
+              4096,
+              "28a756a09db1f074"
+            ],
+            "seq_ringmod": [
+              4096,
+              "be7fb0911be00383"
+            ]
+          },
+          "successful_profile_ctest_sha256": "8038bcb49ca187350f6d6ce6e73f77c7fd995f9a4b5760a61cf09e8f0013a7b8"
+        },
+        "SwaraXTHostSrcExactParityTests": {
+          "cases": {
+            "176400_impulse": [
+              7056,
+              "0ecd7a7279a32a35"
+            ],
+            "176400_noise": [
+              7056,
+              "214e98de2e28ef91"
+            ],
+            "176400_silence": [
+              7056,
+              "4ecef083be81ee83"
+            ],
+            "176400_sine1k": [
+              7056,
+              "2694a697b0cf8229"
+            ],
+            "176400_transient": [
+              7056,
+              "1aa35fb6f8abb09a"
+            ],
+            "192000_impulse": [
+              7680,
+              "50ca75d7ab7f1cca"
+            ],
+            "192000_noise": [
+              7680,
+              "8b0a8d39e516d8d7"
+            ],
+            "192000_silence": [
+              7680,
+              "97cc35a2251aa383"
+            ],
+            "192000_sine1k": [
+              7680,
+              "efc0c2ee71bad520"
+            ],
+            "192000_transient": [
+              7680,
+              "2e5233ae6529729e"
+            ],
+            "44100_impulse": [
+              1764,
+              "77cb365a04153cd6"
+            ],
+            "44100_noise": [
+              1764,
+              "7bdfc09e387f584e"
+            ],
+            "44100_silence": [
+              1764,
+              "9c30604f57c67643"
+            ],
+            "44100_sine1k": [
+              1764,
+              "384838fbe0ae7880"
+            ],
+            "44100_transient": [
+              1764,
+              "aef5bc5dc8424320"
+            ],
+            "48000_impulse": [
+              1920,
+              "7e808dc5206ec172"
+            ],
+            "48000_noise": [
+              1920,
+              "173cb1d55f3a6eb6"
+            ],
+            "48000_silence": [
+              1920,
+              "571f74d802dc6b83"
+            ],
+            "48000_sine1k": [
+              1920,
+              "91a94602740d03c7"
+            ],
+            "48000_transient": [
+              1920,
+              "fa3eca2322710cdd"
+            ],
+            "88200_impulse": [
+              3528,
+              "9cd8ed5cddc2eecb"
+            ],
+            "88200_noise": [
+              3528,
+              "0be6614ccb40bb0b"
+            ],
+            "88200_silence": [
+              3528,
+              "4604fb4ba8dd1903"
+            ],
+            "88200_sine1k": [
+              3528,
+              "33704ba92964b99a"
+            ],
+            "88200_transient": [
+              3528,
+              "ca2ae2a966128a31"
+            ],
+            "96000_impulse": [
+              3840,
+              "1ef2f1d127eee2b7"
+            ],
+            "96000_noise": [
+              3840,
+              "8cec30fdf443ef70"
+            ],
+            "96000_silence": [
+              3840,
+              "4f9197d17adbd383"
+            ],
+            "96000_sine1k": [
+              3840,
+              "cee808929d7a015c"
+            ],
+            "96000_transient": [
+              3840,
+              "0782d3ea6c5e70e7"
+            ]
+          },
+          "successful_profile_ctest_sha256": "8038bcb49ca187350f6d6ce6e73f77c7fd995f9a4b5760a61cf09e8f0013a7b8"
+        }
+      }
+    }
+  },
+  "reference_juce_sha": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+  "reference_source_sha": "a21530355b03d78749f30afc3c1048d7ca36000d",
+  "schema": 1,
+  "source_fixtures": [
+    {
+      "path": "Tests/AudioRegression/AudioRegressionTestsMain.cpp",
+      "sha256": "9c27e06bf0dd56185f49d92fa316da51cd10abe9e76a071e7085c2751dc04592"
+    },
+    {
+      "path": "Tests/Parity/DspFxIntegratedExactParityTestsMain.cpp",
+      "sha256": "655cec3edd70caebb62ed3c6a1132374c82291b7e53eea62f418e45d92790797"
+    },
+    {
+      "path": "Tests/Support/CurrentRenderContract.h",
+      "sha256": "1ae25418a1fa9d87d429688b6a66d2efb784301ffe897432ce5649ea3eb4bbcd"
+    },
+    {
+      "path": "Source/Engine/PatchBridge.cpp",
+      "sha256": "53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab"
+    },
+    {
+      "path": "Source/Plugin/ShruthiFactoryPresets.cpp",
+      "sha256": "e28f18cc0dc6661470ef71b8a690139b6732074747b8d959bbbf18941088215d"
+    },
+    {
+      "path": "Source/Plugin/SwaraXtParameterLayout.cpp",
+      "sha256": "153216cba505a7ca18605832820d156efa0862300a05076a24c5e55e8d158c44"
+    }
+  ],
+  "tests": {
+    "SwaraXTAudioParityTests": {
+      "case_count": 8,
+      "cases": {
+        "Test A basic saw": [
+          44100,
+          "e49a2f5d8a7090f9"
+        ],
+        "Test B basic square": [
+          44100,
+          "608f87853120af8e"
+        ],
+        "Test C two oscillators": [
+          44100,
+          "2e5f9d73aeaa1820"
+        ],
+        "Test D noise only": [
+          44100,
+          "c473d3385b5767ba"
+        ],
+        "Test F filter low resonance": [
+          44100,
+          "0099139bef0f1690"
+        ],
+        "Test G filter high resonance": [
+          44100,
+          "1ac4a6fabf9a3da5"
+        ],
+        "Test I normal envelope": [
+          44100,
+          "8bed59407b8e5da6"
+        ],
+        "Test J silence": [
+          44100,
+          "81296f5b21ed7843"
+        ]
+      },
+      "driver": "Tests/AudioRegression/AudioRegressionTestsMain.cpp",
+      "driver_sha256": "9c27e06bf0dd56185f49d92fa316da51cd10abe9e76a071e7085c2751dc04592",
+      "grammar": "classic",
+      "qualification": "Phase3 GCC15/Clang20 Release PASS",
+      "raw_provenance": {
+        "Test A basic saw": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "77a9a4e2ec9633a34ead307c56858d9231a8d09af7594a34e6d5b68208117299",
+          "samples": 44100,
+          "sha256": "c94564640924361b705c52db0a553a4340d0334b1dfb97c666b3785d21fd4632"
+        },
+        "Test B basic square": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "f92d980b013eb779647806a96dabd1203fe7030f831dad2e5b43bac0af309a8c",
+          "samples": 44100,
+          "sha256": "7f708fd7ec3c8e062d27d278d5d1d4471e27daa8984568b77ce8ab5f8a6f438e"
+        },
+        "Test C two oscillators": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "27063e0e245de0e25fa57c6c90208af4cbe479a26f7d9945091036247aca0c6f",
+          "samples": 44100,
+          "sha256": "553151ff7c05334d38ae219d9d6787d68c4a35e53183bc1e18770f6039c7d5e5"
+        },
+        "Test D noise only": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "8e90a43d5e357190b724a96717e35f5960fea4bb57072e0e6245988f7b95f527",
+          "samples": 44100,
+          "sha256": "99734369828e893bf4f4a1c0b85bc2cee0fbbb8fd4e98ca6bb4f8d21bfa20349"
+        },
+        "Test F filter low resonance": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "7160d049d02581edaea5276837fdb2c6411c052be2508a21acf574f3c77baf57",
+          "samples": 44100,
+          "sha256": "d83092e342ca560b0a31d9a8834165d151f1141dc0c3de63c86faed9696ef7c4"
+        },
+        "Test G filter high resonance": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "ed0794859bb7429ae9a4a83a1ccb057edb8095f9b054a9b682bc6639ceca901c",
+          "samples": 44100,
+          "sha256": "51804b79a8e717f9f3e70f9270c6b93a319d6fffce75b2a0a8e092290875aa72"
+        },
+        "Test I normal envelope": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "46d9946ba80072b4c521b311777b2fb44f6935609d0445729ceb8cec8807c694",
+          "samples": 44100,
+          "sha256": "3a866c826e4bb7b8744859b8dddf622ae4d91e624f73936743f725d0ebb69d2c"
+        },
+        "Test J silence": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "1f6940bd4e6126b120c1c46f3a3f046bbad72ab1174c9ed1a560a300a776725c",
+          "samples": 44100,
+          "sha256": "fd6f479534cdd14635e88dfedf25c3859c01062b645f2a85570f20451b4a95bc"
+        }
+      }
+    },
+    "SwaraXTDspFxIntegratedExactParityTests": {
+      "case_count": 22,
+      "cases": {
+        "combNegative_default": [
+          4096,
+          "b4073e2570f056b0"
+        ],
+        "combPositive_default": [
+          4096,
+          "267920d638fd9335"
+        ],
+        "crushDelayDub_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "crushDelayFeedback_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "crush_default": [
+          4096,
+          "8a31616a6fa6aab2"
+        ],
+        "delay12_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "delay16_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "delay3_16_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "delay8_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "delayDub_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "delayFeedback_cv2max": [
+          4096,
+          "5dcc4a73a0c1ba86"
+        ],
+        "delayFeedback_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "delay_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "distortion_cv1max": [
+          4096,
+          "5af78ba07ed4cba8"
+        ],
+        "distortion_cv1min": [
+          4096,
+          "5fcd5a4fa71958f5"
+        ],
+        "distortion_default": [
+          4096,
+          "8817d1113ae623f6"
+        ],
+        "looper_default": [
+          4096,
+          "400dc09a72426a7b"
+        ],
+        "looper_replay": [
+          2048,
+          "a538dccc999e97db"
+        ],
+        "off_default": [
+          4096,
+          "9259aab1c591727e"
+        ],
+        "pitch_default": [
+          4096,
+          "5673780a78b12c38"
+        ],
+        "ringMod_default": [
+          4096,
+          "28a756a09db1f074"
+        ],
+        "seq_ringmod": [
+          4096,
+          "be7fb0911be00383"
+        ]
+      },
+      "driver": "Tests/Parity/DspFxIntegratedExactParityTestsMain.cpp",
+      "driver_sha256": "655cec3edd70caebb62ed3c6a1132374c82291b7e53eea62f418e45d92790797",
+      "grammar": "integrated",
+      "qualification": "Phase3 GCC15/Clang20 Release PASS",
+      "raw_provenance": {
+        "combNegative_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "f61ae590abe1f380d47ea6978ae67cdde81377aba4c97a5916a8edc1f80bd2bd",
+          "samples": 4096,
+          "sha256": "270f7e055081358171047181312df5f098fe1e91f01c30fcc8f4862d6e25891b"
+        },
+        "combPositive_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "41833bdf757f523beb2028de9ceb37a5578a3f65d2b1f7cc6a42a2cf5c21da2e",
+          "samples": 4096,
+          "sha256": "ee9a1e2f1c311d4d47a75582f1dc2dd1751caed096438e549716176543f379d7"
+        },
+        "crushDelayDub_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "a6715a2c1b8152a5055c7da060ddbc59b8fcce45e8c784f4c6d7d16cc6bbb86a",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "crushDelayFeedback_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "d7fcbc06cf7ff7e1385cecba593a4ee47c5dd294802e7e9764ada60f7a0d45b0",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "crush_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "412a38e46a6359a36b43403fc999489ef9d14f0a98643de236aacfec81a6c4a1",
+          "samples": 4096,
+          "sha256": "53b90fa64dcc70a578f9362137c43e70a4a0df15b21726c1393bcee328321ad6"
+        },
+        "delay12_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "b5d9bb2d9f564b04b6a03bf0ce3035c9370434aff63f13731c37a810301ee267",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "delay16_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "59962973cec75c295ab8fd155df5e944fad96a1f415059f32404e4c48fe1a023",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "delay3_16_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "fc73f9ca057aee16489a92e47a83cb6a6c25dbc5216861392795a3da8feec1f3",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "delay8_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "f4c428a4501c7e4c9d812e5a3e9a24a9024025846e89665748451575e53b91d6",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "delayDub_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "1417e5d4c5ac8668c9e56d62cda6872d843bf305ec148db4014b764abe666719",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "delayFeedback_cv2max": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "075275e20878c5f5aa475fe305d2d2e7da98058a979b84cc796e38dca58179d7",
+          "samples": 4096,
+          "sha256": "cc681dfc8c2f8f50f1011ee661ede49bdfd6bbcd3e43149c3c36ee748e64cd66"
+        },
+        "delayFeedback_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "53da67eeafbc6c3747bff02344a524757699962d9c75b1164e1eebfd2dd5eab6",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "delay_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "ef3d13c94cff6c88ccd6c9001ca1a4b7f05dcb36b22882a81de471dc445d489e",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "distortion_cv1max": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "b50b79ab40640871648ddf6eeb73c7bc27e45ca191852e2da1b290eac0ca950b",
+          "samples": 4096,
+          "sha256": "175b132d446f701e3ebefe942fe1e01af567a9160f082b653de93f1338eab233"
+        },
+        "distortion_cv1min": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "ef7bf347fc56e0008ce996614c55235cf56943c439269911e87ae0db235d95e1",
+          "samples": 4096,
+          "sha256": "e68a666ca5ebfd967a3084d7d56ff9e76ae776ba68b203aaf7eb13d198d14304"
+        },
+        "distortion_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "a515ebbbaebd3383eacb86587dcb1291ab0a98d236456d9c371759f985206c25",
+          "samples": 4096,
+          "sha256": "fcb9bd634ac85785551bf231875a80c5dacaa0468dc4e7bcf3939fd95da2372c"
+        },
+        "looper_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "5b775454ac74d2faf25861301615724f3ca97410f3aff5351f66d32b46e62855",
+          "samples": 4096,
+          "sha256": "05d7456f8a704f7354829d83d6ddd800d524b59a8a24c97404e591fc64742484"
+        },
+        "looper_replay": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "a883abc3f3a33ee0cda8efc6d35df4f1554206aee5a27eaf7bb557859425335e",
+          "samples": 2048,
+          "sha256": "55c1d7cf7172c79fa8d418af1f99e73c80d53b961dd65131da5deb7b278a4cc8"
+        },
+        "off_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "0acd6d99e6799e012a545c3b44bb711c668220464004d2d56ad08c8ff8439399",
+          "samples": 4096,
+          "sha256": "68c2a2181990bb3c60ea84e4069e4d69ce3c415e6729df6309d3095d795c8fa3"
+        },
+        "pitch_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "9ece5cbc4d2f3e489812313eee14d33d46b0c8158d61c3644999005b17b3741e",
+          "samples": 4096,
+          "sha256": "c5e7dd5f8b423cba4d3a4f59a3a8d9a63dfdd3b182f3b7c27ac66ac1611cb24c"
+        },
+        "ringMod_default": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "e814f2c1049ffb4685e742cb354e860aa5187db8d1f8ff5004a4dca67bf3c5df",
+          "samples": 4096,
+          "sha256": "ae9ba4541665bba6ad38cd5b0906bdc929653555f9e7973c8070c02dde97fdfb"
+        },
+        "seq_ringmod": {
+          "captured_channel": 0,
+          "channels": 2,
+          "input_sha256": "95d3f28d7e97ec5a57c07fab57b9ab1921643c792efeae7b30ecac451a378977",
+          "samples": 4096,
+          "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe"
+        }
+      }
+    },
+    "SwaraXTDualSvfSection2Tests": {
+      "case_count": 12,
+      "cases": {
+        "DualIndependent_Eagle_Cut40_Res32": [
+          25600,
+          "7e874a740b73392e"
+        ],
+        "DualIndependent_Eagle_Cut90_Res32": [
+          25600,
+          "f5f0dc043c0a672c"
+        ],
+        "DualIndependent_Eagle_Cut90_Res63": [
+          25600,
+          "696ac69cd52ec5f4"
+        ],
+        "DualIndependent_Paper_Cut40_Res32": [
+          25600,
+          "ef139144414c5c37"
+        ],
+        "DualIndependent_Paper_Cut90_Res32": [
+          25600,
+          "cfb4deaeda072793"
+        ],
+        "DualIndependent_Paper_Cut90_Res63": [
+          25600,
+          "e3ae9c3d53ff973b"
+        ],
+        "DualRelative_Eagle_Center64": [
+          25600,
+          "7998ba0118727a6e"
+        ],
+        "DualRelative_Eagle_Minus12": [
+          25600,
+          "2efe0fbc75874c4b"
+        ],
+        "DualRelative_Eagle_Plus12": [
+          25600,
+          "d4a8fbe60fde8a40"
+        ],
+        "DualRelative_Paper_Center64": [
+          25600,
+          "d8b8558a76679c7b"
+        ],
+        "DualRelative_Paper_Minus12": [
+          25600,
+          "97a5625193a2326d"
+        ],
+        "DualRelative_Paper_Plus12": [
+          25600,
+          "3af2d505b736708e"
+        ]
+      },
+      "driver": "Tests/Filter/DualSvfSection2TestsMain.cpp",
+      "driver_sha256": "d504cfa82d5aeeb00ed4cab3720ef7a9a5eb1174d62ce718ec079333d86fd6e2",
+      "golden_file": "Tests/Filter/DualSvfSection2Goldens.h",
+      "golden_sha256": "02ccf4fd24c54a5ccbc9b7afb7f6ee7578bde100dd586884ed237a4f0ea4ab5e",
+      "grammar": "dual",
+      "qualification": "Existing unchanged Q20 contract; GUI runtime NOT_RUN in headless qualification"
+    },
+    "SwaraXTHostSrcExactParityTests": {
+      "case_count": 30,
+      "cases": {
+        "176400_impulse": [
+          7056,
+          "0ecd7a7279a32a35"
+        ],
+        "176400_noise": [
+          7056,
+          "214e98de2e28ef91"
+        ],
+        "176400_silence": [
+          7056,
+          "4ecef083be81ee83"
+        ],
+        "176400_sine1k": [
+          7056,
+          "2694a697b0cf8229"
+        ],
+        "176400_transient": [
+          7056,
+          "1aa35fb6f8abb09a"
+        ],
+        "192000_impulse": [
+          7680,
+          "50ca75d7ab7f1cca"
+        ],
+        "192000_noise": [
+          7680,
+          "8b0a8d39e516d8d7"
+        ],
+        "192000_silence": [
+          7680,
+          "97cc35a2251aa383"
+        ],
+        "192000_sine1k": [
+          7680,
+          "efc0c2ee71bad520"
+        ],
+        "192000_transient": [
+          7680,
+          "2e5233ae6529729e"
+        ],
+        "44100_impulse": [
+          1764,
+          "77cb365a04153cd6"
+        ],
+        "44100_noise": [
+          1764,
+          "7bdfc09e387f584e"
+        ],
+        "44100_silence": [
+          1764,
+          "9c30604f57c67643"
+        ],
+        "44100_sine1k": [
+          1764,
+          "384838fbe0ae7880"
+        ],
+        "44100_transient": [
+          1764,
+          "aef5bc5dc8424320"
+        ],
+        "48000_impulse": [
+          1920,
+          "7e808dc5206ec172"
+        ],
+        "48000_noise": [
+          1920,
+          "173cb1d55f3a6eb6"
+        ],
+        "48000_silence": [
+          1920,
+          "571f74d802dc6b83"
+        ],
+        "48000_sine1k": [
+          1920,
+          "91a94602740d03c7"
+        ],
+        "48000_transient": [
+          1920,
+          "fa3eca2322710cdd"
+        ],
+        "88200_impulse": [
+          3528,
+          "9cd8ed5cddc2eecb"
+        ],
+        "88200_noise": [
+          3528,
+          "0be6614ccb40bb0b"
+        ],
+        "88200_silence": [
+          3528,
+          "4604fb4ba8dd1903"
+        ],
+        "88200_sine1k": [
+          3528,
+          "33704ba92964b99a"
+        ],
+        "88200_transient": [
+          3528,
+          "ca2ae2a966128a31"
+        ],
+        "96000_impulse": [
+          3840,
+          "1ef2f1d127eee2b7"
+        ],
+        "96000_noise": [
+          3840,
+          "8cec30fdf443ef70"
+        ],
+        "96000_silence": [
+          3840,
+          "4f9197d17adbd383"
+        ],
+        "96000_sine1k": [
+          3840,
+          "cee808929d7a015c"
+        ],
+        "96000_transient": [
+          3840,
+          "0782d3ea6c5e70e7"
+        ]
+      },
+      "driver": "Tests/Parity/HostSrcExactParityTestsMain.cpp",
+      "driver_sha256": "455a164544acc91934d6f02add0c229a6b1d9f8213701db4323fbd8695928178",
+      "golden_file": "Tests/Parity/ExactParityGoldens.h",
+      "golden_sha256": "8dd39766b2154d33829a9525c1e81882526d70b25058dfe9b1de693a5d6312cf",
+      "grammar": "src",
+      "qualification": "Phase3 GCC15/Clang20 Release PASS"
+    }
+  },
+  "total_reference_cases": 72
+}

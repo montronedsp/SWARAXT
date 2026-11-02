@@ -28,7 +28,11 @@ if(PROJECT_NAME STREQUAL "SwaraXT" AND PROJECT_IS_TOP_LEVEL)
             if(CMAKE_VERSION VERSION_LESS 3.29)
                 message(FATAL_ERROR "Independent native audio launchers require CMake 3.29+")
             endif()
-            foreach(target SwaraXTAudioParityTests SwaraXTDualSvfSection2Tests
+            set(swaraxt_dual_reference_target SwaraXTDualSvfSection2Tests)
+            if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+                set(swaraxt_dual_reference_target SwaraXTDualSvfHeadlessTests)
+            endif()
+            foreach(target SwaraXTAudioParityTests ${swaraxt_dual_reference_target}
                            SwaraXTHostSrcExactParityTests SwaraXTDspFxIntegratedExactParityTests)
                 set_property(TARGET ${target} PROPERTY TEST_LAUNCHER
                     "${Python3_EXECUTABLE};${CMAKE_CURRENT_FUNCTION_LIST_DIR}/native_reference.py;--reference-root;${SWARAXT_CI_REFERENCE_ROOT};--test-name;${target}")
