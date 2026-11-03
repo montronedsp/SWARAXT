@@ -18,3 +18,11 @@ or affiliated with Mutable Instruments.
 
 - Swara XT software code: GPL-3.0-or-later
 - Adapted panel artwork: CC BY-SA 3.0
+
+## Original brand marks
+
+The outlined vector files `Shared/montronedsp_wordmark.svg` and
+`Shared/stones_letters.svg` are copyright 2026 Andrea Montrone, as confirmed
+by the rights holder. They have no embedded-font dependency. Their existing
+CC-BY-SA-3.0 grants remain in effect. This asset-specific attribution does not
+change the licenses of the other panel artwork, decorations, examples or fonts.

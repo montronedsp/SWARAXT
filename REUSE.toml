@@ -62,3 +62,13 @@ SPDX-FileCopyrightText = [
   "2026 MontroneDSP",
 ]
 SPDX-License-Identifier = "CC-BY-SA-3.0"
+
+# Owner-confirmed original brand artwork. Preserve existing CC grants.
+[[annotations]]
+path = [
+  "resources/Skin/Shared/montronedsp_wordmark.svg",
+  "resources/Skin/Shared/stones_letters.svg",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Andrea Montrone"
+SPDX-License-Identifier = "CC-BY-SA-3.0"

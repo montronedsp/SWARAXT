@@ -142,6 +142,10 @@ See:
 - [COPYRIGHT](COPYRIGHT)
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
+The MontroneDSP and STONES outlined brand SVGs are copyright 2026 Andrea
+Montrone and retain their existing CC BY-SA 3.0 grants;
+the software GPL notice does not independently license brand assets.
+
 Adapted panel artwork has separate CC BY-SA 3.0 terms and attribution documented in:
 
 [resources/Skin/ATTRIBUTION.md](resources/Skin/ATTRIBUTION.md)
