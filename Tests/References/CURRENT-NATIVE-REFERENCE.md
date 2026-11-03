@@ -66,7 +66,7 @@ missing/duplicate/additional cases, metadata changes, tampering and scope drift.
 ## Windows and review boundaries
 
 Linux fingerprints alone are not an MSVC authority. The separate Windows
-package `windows-current-5aa4cf43be099bae3868d6c7d247ea867b47891cf50f0547700a6d24611dbcd2.json`
+package `windows-current-00ed3f5558abdd3741dc49645d2a85ba5057649a7adb9515fc7b78434f58c9ff.json`
 is pinned in `scripts/ci/windows_current_reference.py`. Its 72 values were
 corroborated under native MSVC Release, Debug and AddressSanitizer, with repeated
 execution and independent Q23/Q20/raw-PCM checking. Equality with the existing

@@ -11,7 +11,7 @@ import subprocess
 import windows_reference_policy as paths
 
 POLICY = 'windows-current-msvc-v1'
-PACKAGE_SHA256 = '5aa4cf43be099bae3868d6c7d247ea867b47891cf50f0547700a6d24611dbcd2'
+PACKAGE_SHA256 = '00ed3f5558abdd3741dc49645d2a85ba5057649a7adb9515fc7b78434f58c9ff'
 PACKAGE_FILE = 'Tests/References/windows-current-' + PACKAGE_SHA256 + '.json'
 ALL_TESTS = ('SwaraXTAudioParityTests', 'SwaraXTDspFxIntegratedExactParityTests',
              'SwaraXTHostSrcExactParityTests', 'SwaraXTDualSvfHeadlessTests')
