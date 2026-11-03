@@ -361,6 +361,18 @@ class ArtifactControls(unittest.TestCase):
             desktop.gate('Windows', self.root, dict(source_sha=self.sha, run_id='SYNTHETIC-RUN', trusted_root=self.temp.name))
         self.assertIn('WINDOWS_PORTABLE_GATE_PASS', ''.join(call.args[0] for call in output.write.call_args_list))
 
+    def test_desktop_root_alias_is_rejected_before_resolution(self):
+        import desktop
+        alias = Path(self.temp.name) / 'alias'
+        if os.name == 'nt':
+            subprocess.run(['cmd', '/d', '/c', 'mklink', '/J', str(alias), str(self.root)], check=True, capture_output=True)
+            self.addCleanup(alias.rmdir)
+        else:
+            alias.symlink_to(self.root, target_is_directory=True)
+        with patch.dict(os.environ, {'PREFLIGHT_RESULT': 'success', 'NATIVE_RESULT': 'success'}):
+            with self.assertRaisesRegex(RuntimeError, 'artifact root link/junction'):
+                desktop.gate('Windows', alias, dict(source_sha=self.sha, run_id='SYNTHETIC-RUN', trusted_root=self.temp.name))
+
     def test_workflow_contract(self):
         text = (SOURCE / '.github/workflows/windows-qualification.yml').read_text()
         self.assertIn('windows-artifact/', text)
