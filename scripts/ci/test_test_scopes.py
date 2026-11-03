@@ -12,6 +12,30 @@ from reference_metadata import apply, PARENT_BEFORE, PARENT_AFTER, CHILD_BEFORE,
 
 
 class TestScopes(unittest.TestCase):
+    def test_tuning_fuzz_regression_is_in_the_qualification_aggregate(self):
+        source = Path(__file__).resolve().parents[2]
+        text = (source / 'Tests/Qualification.cmake').read_text()
+        pattern = re.search(r'NOT target MATCHES "([^"]+)"', text)[1]
+        with tempfile.TemporaryDirectory(prefix='swara qualification inventory ') as directory:
+            script = Path(directory) / 'inventory.cmake'
+            checks = []
+            for name, excluded in (('SwaraXTTuningFuzz', True),
+                                   ('SwaraXTStateMidiFuzz', True),
+                                   ('SwaraXTFilterCpuBench', True),
+                                   ('SwaraXTTuningFuzzRegressionTests', False),
+                                   ('SwaraXTTuningTableTests', False)):
+                condition = 'NOT ' if excluded else ''
+                checks.append(f'if({condition}"{name}" MATCHES "{pattern}")\n'
+                              f'  message(FATAL_ERROR "Wrong aggregate membership: {name}")\nendif()\n')
+            script.write_text(''.join(checks))
+            result = subprocess.run(['cmake', '-P', script], text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            # Recreate the exact prefix collision, rather than only comparing text.
+            script.write_text(script.read_text().replace('SwaraXTTuningFuzz$', 'SwaraXTTuningFuzz'))
+            result = subprocess.run(['cmake', '-P', script], text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Wrong aggregate membership: SwaraXTTuningFuzzRegressionTests', result.stderr)
+
     def test_actual_parent_and_child_metadata_configure_and_label_all_cases(self):
         source = Path(__file__).resolve().parents[2]
         parent = (source / 'Tests/Qualification.cmake').read_text()
