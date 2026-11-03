@@ -600,6 +600,10 @@ def gate(system, evidence, context=None):
     context = context if context is not None else {
         'source_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'],
         'trusted_root': os.environ['RUNNER_TEMP']}
+    if system == 'Windows':
+        for part in (Path(evidence).absolute(), *Path(evidence).absolute().parents):
+            if part.is_symlink() or getattr(part, 'is_junction', lambda: False)():
+                raise RuntimeError('Untrusted Windows artifact root link/junction')
     evidence = contained_runner_path(evidence, True, context['trusted_root'])
     if system == 'Windows':
         result = windows_artifacts.admit_matrix(evidence, SOURCE, context['source_sha'], context['run_id'],
