@@ -66,7 +66,7 @@ missing/duplicate/additional cases, metadata changes, tampering and scope drift.
 ## Windows and review boundaries
 
 Linux fingerprints alone are not an MSVC authority. The separate Windows
-package `windows-current-3023b0d75c2593f7c328249b8336bd3e5f3cfeed600aff99b9d40f1ab72c8be7.json`
+package `windows-current-5aa4cf43be099bae3868d6c7d247ea867b47891cf50f0547700a6d24611dbcd2.json`
 is pinned in `scripts/ci/windows_current_reference.py`. Its 72 values were
 corroborated under native MSVC Release, Debug and AddressSanitizer, with repeated
 execution and independent Q23/Q20/raw-PCM checking. Equality with the existing
@@ -89,3 +89,10 @@ This is an engineering-review branch, not production or release approval.
 Previously recorded cache roundtrip fuzz FAIL, analyzer/tidy INCOMPLETE/OPEN and
 SDK64 UNSUPPORTED remain open. No GUI/DAW, installation, release, merge or PR is
 implied by successful headless reference admission.
+
+The previous Windows package remains unchanged as historical authority. The current
+package retains all 72 audio values and qualifies the MSVC GUI reference selection
+and Integration Audit native anchors using the mixer-only historical control.
+See DualSvfCurrentWindowsTimingProvenance.json. The MSVC-only GUI guard reverses
+byte-exactly to the pinned Linux fixture; Linux audio data and package are unchanged.
+Linux runtime requalification of the shared driver remains a separate requirement.
