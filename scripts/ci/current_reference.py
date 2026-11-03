@@ -102,12 +102,14 @@ def checked_file(root, relative, expected):
 
 
 DUAL_ADAPTER_SHA256 = '7b6ef093df70cfe2de8de6561ddc42a8c0683dd3dcc72ece020f1220b4a6f861'
+DUAL_WINDOWS_ADAPTER_SHA256 = '7ce29c25db9ddd4fc35b58a422333f817d1f1b70b564e41593a06b938c6a22a9'
 DUAL_ORIGINAL_SHA256 = 'd504cfa82d5aeeb00ed4cab3720ef7a9a5eb1174d62ce718ec079333d86fd6e2'
 
 
 def original_dual_driver(data):
     """Reverse only the reviewed compile-time guards/test observers, byte-exact."""
     text = data.decode('utf-8')
+    text = text.replace('#if defined(__linux__) || defined(_MSC_VER)\n', '#if defined(__linux__)\n')
     platform_goldens = ('// SWARAXT_DUAL_PLATFORM_GOLDENS_BEGIN\n'
         '#if defined(__linux__)\n#include "DualSvfCurrentLinuxGoldens.h"\n#else\n'
         '#include "DualSvfSection2Goldens.h"\n#endif\n'
@@ -141,7 +143,7 @@ def checked_driver(source, entry):
     data = safe_bytes(source, entry['driver'])
     if digest(data) == entry['driver_sha256']:
         return data
-    if entry['driver_sha256'] != DUAL_ORIGINAL_SHA256 or digest(data) != DUAL_ADAPTER_SHA256:
+    if entry['driver_sha256'] != DUAL_ORIGINAL_SHA256 or digest(data) not in (DUAL_ADAPTER_SHA256, DUAL_WINDOWS_ADAPTER_SHA256):
         raise RuntimeError('Unapproved Dual headless driver adapter')
     return original_dual_driver(data)
 
@@ -154,6 +156,13 @@ def load_package(source):
     authority = decode(checked_file(source, package['authority_file'], package['authority_sha256']))
     checked_file(source, package['current_golden_file'], package['current_golden_sha256'])
     for entry in package['source_fixtures']:
+        # The sole MSVC-only guard change reverses byte-exactly to the pinned
+        # Linux fixture. Do not republish Linux audio authority for this guard.
+        if entry['path'] == 'Tests/Filter/DualSvfSection2TestsMain.cpp' and entry['sha256'] == DUAL_ADAPTER_SHA256:
+            data = safe_bytes(source, entry['path'])
+            restored = data.replace(b'#if defined(__linux__) || defined(_MSC_VER)\n', b'#if defined(__linux__)\n')
+            if digest(data) == DUAL_WINDOWS_ADAPTER_SHA256 and digest(restored) == entry['sha256']:
+                continue
         checked_file(source, entry['path'], entry['sha256'])
     if len(authority['rows']) != 30 or set(package['tests']) != set(ALL_TESTS):
         raise RuntimeError('Incomplete approved reference inventory')

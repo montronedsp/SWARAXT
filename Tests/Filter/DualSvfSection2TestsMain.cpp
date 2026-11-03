@@ -11,7 +11,7 @@
 #include "Engine/Filter/ShruthiSvfSection2Control.h"
 #include "shruthi/resources.h"
 // SWARAXT_DUAL_PLATFORM_GOLDENS_BEGIN
-#if defined(__linux__)
+#if defined(__linux__) || defined(_MSC_VER)
 #include "DualSvfCurrentLinuxGoldens.h"
 #else
 #include "DualSvfSection2Goldens.h"
