@@ -3,7 +3,12 @@
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/PluginEditor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
+#if defined(_MSC_VER)
+#include "DualSvfCurrentLinuxGoldens.h" // Host values independently qualified on MSVC.
+#include "DualSvfCurrentWindowsTimingGoldens.h"
+#else
 #include "DualSvfSection2Goldens.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -344,7 +349,7 @@ Trace renderSection2Reference(const Sel& selection,int fx) {
 void section2TimingContracts() {
     const auto verify=[](const Sel& s,int fx,uint64_t nativeGolden,uint64_t hostGolden=0) {
         const auto t=renderSection2Reference(s,fx);
-        // The frozen pre-F2.1 native fingerprint prevents candidate synthesis
+        // Independently qualified native anchors prevent candidate synthesis
         // from supplying its own unverified reference to the downstream replay.
         check(q20Hash(t.undelayed)==nativeGolden,"pre-delay synthesis matches the published baseline fingerprint");
         fixedPipeline(t,48000,true,fx,4,true);
@@ -365,7 +370,7 @@ void section2TimingContracts() {
             verify(s,fx,dualTimingNativeGoldens[cal][route][control]);
         }
     }
-    std::puts("Section 2 timing: 12 migrated references + 36 route/calibration/control/FX cases; frozen baseline synthesis and independent indexed delay/FX/gain/SRC/DC replay.");
+    std::puts("Section 2 timing: 12 host references + 36 route/calibration/control/FX cases; qualified native synthesis and independent indexed delay/FX/gain/SRC/DC replay.");
 }
 void latency(const std::filesystem::path& out) {
     const auto centre = [](const std::vector<float>& x) {

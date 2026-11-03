@@ -1,0 +1,779 @@
+{
+  "schema": 1,
+  "source_sha": "29430a26b7ca048974265bd9a6fc96b8ce917c16",
+  "compiler_sha256": "d66e441c8ef64b7f52553beafcbd0c53decff0b0ba4e0896a7e0671d72a198c9",
+  "juce_sha": "e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8",
+  "historical_header": "Tests/Filter/DualSvfSection2Goldens.h",
+  "historical_mixer_fix": "bbad62564953dca09a31c045159e00691148363a",
+  "fixture": "factory0, 48000Hz/256, 100 blocks; note48/110 block0 and note60/96 block40; no transport; native 20000000/510Hz",
+  "mapping": "public Sub64/Noise0 -> current firmware32/0; isolated historical control changes only two PatchBridge assignments ->64/0",
+  "quantization": "clamp[-32,32], llround(x*1048576), uint32 XOR, multiply1099511628211 modulo2^64, seed1469598103934665603",
+  "verification": [
+    "48/48 historical native fingerprints reproduced exactly",
+    "12/12 historical host fingerprints reproduced exactly",
+    "independent Python signed-Q20 rehash matches C++",
+    "Release/Debug raw PCM byte-identical, current and historical, repeated",
+    "zero indexed-delay/FX/SRC/DC replay error for all48 cases in both variants",
+    "18 FX-Off/Dub pre-FX pairs equal in both variants",
+    "Section1 output ignores Section2 mode in both calibrations",
+    "12 current host values reused unchanged from approved Windows72 authority"
+  ],
+  "cases": [
+    {
+      "case": "relative-0-0",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "0",
+        "cutoff2": "52",
+        "res2": "0",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "4ef241d9f8eb9497",
+      "current_native": "31231bf7e0a69ff0",
+      "old_pcm_sha256": "81b6615ad57d0e79aa2a2f8bec786135043d317a8770218ae3f65f590870ef1e",
+      "current_pcm_sha256": "eb1cec4b8330fc2a5eb1921ee7cec8cf6ee943dd8d57ee179afdd3be90f14602",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "97a5625193a2326d",
+      "current_host": "a5418f72030ca56c"
+    },
+    {
+      "case": "independent-0-0",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "3251d9ffb512f701",
+      "current_native": "d76fe2932d46c058",
+      "old_pcm_sha256": "1e6fd6f46487f64e6b323959d41811136d31fe6219768bf9d2e9a40e1c624006",
+      "current_pcm_sha256": "11863ae1a4d5d3776d02106e84fc4df22c066aa29049f1481523a57ec0d85420",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "ef139144414c5c37",
+      "current_host": "f666bfd056d076fc"
+    },
+    {
+      "case": "relative-0-1",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "0",
+        "cutoff2": "64",
+        "res2": "0",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "66aad0d7b284df11",
+      "current_native": "f919e99d55f5b7a7",
+      "old_pcm_sha256": "fa6722123f3d9eb154c36c8c1769e0373cccfef2cdd14541c09f8a32103052ad",
+      "current_pcm_sha256": "caf97d435bd4050dbaa24a033f85630c83dbfd76f74556363949e84e82e1e7d0",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "d8b8558a76679c7b",
+      "current_host": "567ef6fb95cdb472"
+    },
+    {
+      "case": "independent-0-1",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "90",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "2521425e569b0947",
+      "current_native": "a0bbfdce3f8d1554",
+      "old_pcm_sha256": "1f4f773b61272dcd8a6f51d2e768ec3d566b4c162a726a3962a4fdaef0d486c2",
+      "current_pcm_sha256": "0d0e1e7a456e45376bac05c06f92a7bf97b2556d6496187d353413c8d56b25bd",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "cfb4deaeda072793",
+      "current_host": "3acfa698d58aa88e"
+    },
+    {
+      "case": "relative-0-2",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "0",
+        "cutoff2": "76",
+        "res2": "0",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "e86b5e75817bc511",
+      "current_native": "26429e00e764559d",
+      "old_pcm_sha256": "d4cf55f8065097f99d438310cc1475c7a06ffd72d261d72d850f1e3f3c792977",
+      "current_pcm_sha256": "da38b4f1926c4c88406237b098b4f8976826adb2f89002ecc9629e14ce2c1cbe",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "3af2d505b736708e",
+      "current_host": "66ed4f4c07a50d83"
+    },
+    {
+      "case": "independent-0-2",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "90",
+        "res2": "63",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "935046a2b103f7ec",
+      "current_native": "a23cc73126baf381",
+      "old_pcm_sha256": "fc2091d59b89a2c6e6c14e32830d314a41a71adfc0aa5c92e5efefc55342ed7c",
+      "current_pcm_sha256": "7a5d7c32573bb4a53ceadf58fd09ac9fad92a9322df78dccbf73c735a02e5f9a",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "e3ae9c3d53ff973b",
+      "current_host": "3c42ee56a924fb6c"
+    },
+    {
+      "case": "timing-0-0-0-0",
+      "controls": {
+        "cal": "0",
+        "route": "0",
+        "control": "0",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "45141e1aa5e81b09",
+      "current_native": "c2642b9bbe15cab3",
+      "old_pcm_sha256": "d32886fc74453243989cf9e22cc3de11cecad9840e42c946bd407853a5030e0f",
+      "current_pcm_sha256": "b3a4798732f9427bbc6234d4cc378480775341265329c48c0e6c13fe94996495",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-0-1-0",
+      "controls": {
+        "cal": "0",
+        "route": "0",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "45141e1aa5e81b09",
+      "current_native": "c2642b9bbe15cab3",
+      "old_pcm_sha256": "d32886fc74453243989cf9e22cc3de11cecad9840e42c946bd407853a5030e0f",
+      "current_pcm_sha256": "b3a4798732f9427bbc6234d4cc378480775341265329c48c0e6c13fe94996495",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-0-2-0",
+      "controls": {
+        "cal": "0",
+        "route": "0",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "76",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "45141e1aa5e81b09",
+      "current_native": "c2642b9bbe15cab3",
+      "old_pcm_sha256": "d32886fc74453243989cf9e22cc3de11cecad9840e42c946bd407853a5030e0f",
+      "current_pcm_sha256": "b3a4798732f9427bbc6234d4cc378480775341265329c48c0e6c13fe94996495",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-1-0-0",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "0",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "cbfea6e6ead98e03",
+      "current_native": "90e325878624db83",
+      "old_pcm_sha256": "81f5b4a302a764fc6b4459f6cca55a9837725fcc1986081db59ba6fe4d33ba15",
+      "current_pcm_sha256": "12d227ebe9d8ff3b0c59fb7f4369ff894386133779ecdf4c2df299fce0b126fa",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-1-1-0",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "3251d9ffb512f701",
+      "current_native": "d76fe2932d46c058",
+      "old_pcm_sha256": "1e6fd6f46487f64e6b323959d41811136d31fe6219768bf9d2e9a40e1c624006",
+      "current_pcm_sha256": "11863ae1a4d5d3776d02106e84fc4df22c066aa29049f1481523a57ec0d85420",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-1-2-0",
+      "controls": {
+        "cal": "0",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "76",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "f79a06dde02c3cbe",
+      "current_native": "90d9c605cfd0f3fb",
+      "old_pcm_sha256": "5a11b3c7020556f0eb1f673ad354929e206f617e2988686429c59e19ecca83d5",
+      "current_pcm_sha256": "69c6c260b1a46305e0d895064c38098f17055fb70ca3473da41fff0170adeeed",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-2-0-0",
+      "controls": {
+        "cal": "0",
+        "route": "2",
+        "control": "0",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "52f36293f51df8f9",
+      "current_native": "003d95711ed2b3fe",
+      "old_pcm_sha256": "65d44084f571b0d651e44bc6920146f02c41d86e7dfecba77cfba9ec249d8729",
+      "current_pcm_sha256": "42bb2950157289c3210ca7839006bca7fe49e43906eeeb68c60a04851199126e",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-2-1-0",
+      "controls": {
+        "cal": "0",
+        "route": "2",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "d8146a8ac0746797",
+      "current_native": "4d6dddb76e9a9cbd",
+      "old_pcm_sha256": "15f2d50333b2f56c74ef3763e10a506f02fd9634fd2ab863d25d934945f6df2c",
+      "current_pcm_sha256": "0c4cfa134b2be097b2b628df6c93b43ea7a99af11b37379d9988e77f231480b2",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-0-2-2-0",
+      "controls": {
+        "cal": "0",
+        "route": "2",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "76",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "6941778dd4124e32",
+      "current_native": "575a10cc22e6749f",
+      "old_pcm_sha256": "375e6261d4c9a1d0d64de829d2fae1b8198917935bd5a63d2f81db8d18445f47",
+      "current_pcm_sha256": "d0b7fdf115af6a38537c7b1cb7467119b19c8a144bbb4d4eebe08c1bc66faa46",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "relative-1-0",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "0",
+        "cutoff2": "52",
+        "res2": "0",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "a20e730156d8afd7",
+      "current_native": "3ab94afdcac2b2f1",
+      "old_pcm_sha256": "476a860f761896404a03b9746dcf798a7e2d7ae9e6e83660148e758ca8b2227b",
+      "current_pcm_sha256": "5e2717153291daedadb3866699bef54825da75e1d6a2d25f25f50e0a54169b46",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "2efe0fbc75874c4b",
+      "current_host": "0e9265e82289808a"
+    },
+    {
+      "case": "independent-1-0",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "78183c0ca2d3b26f",
+      "current_native": "84920f63f7fff5e0",
+      "old_pcm_sha256": "66de85666bb44768c9a89871c589eb66f8162dfaede7b372f103a95b8af29a6b",
+      "current_pcm_sha256": "ffe99ffa6544c29b363a8877e8b9eafbc1a46c873c52dd3581ef21146b0e6e72",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "7e874a740b73392e",
+      "current_host": "811d9feadbc5c7d3"
+    },
+    {
+      "case": "relative-1-1",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "0",
+        "cutoff2": "64",
+        "res2": "0",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "1676cfa3dff83f88",
+      "current_native": "b86fe6aef9983edf",
+      "old_pcm_sha256": "eadf789d06a8bfc708b18c02e1a159f279c0f7574c3c86be836f341b29ce2a45",
+      "current_pcm_sha256": "e2ee6ef23d3ecb62528e4b7cc33f14bf4158ab59822d534ff906ac3c69fb161f",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "7998ba0118727a6e",
+      "current_host": "d9dbe8c95525e5b8"
+    },
+    {
+      "case": "independent-1-1",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "90",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "1d2388dc3784a61b",
+      "current_native": "fa0850b69949a553",
+      "old_pcm_sha256": "df141a5bc4f20c97b837aa6bbbc4249ffc7b7884819706e3aae3731b4fb53eee",
+      "current_pcm_sha256": "2f50a9da10ed3091d915dc71288517bcfce2854c9ca8992e2cf603ac1b4e08d1",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "f5f0dc043c0a672c",
+      "current_host": "47b06b64de6c9b05"
+    },
+    {
+      "case": "relative-1-2",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "0",
+        "cutoff2": "76",
+        "res2": "0",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "37458b4229218ce9",
+      "current_native": "1f64af609bf2a329",
+      "old_pcm_sha256": "66a1ce070804d51ccfb1be6fe60a354c202af0c40846213af3d8cec83ab6325a",
+      "current_pcm_sha256": "9feaf2ed8a6e25038384705b1fc977abbca9abd986842843f0983f2b8dcbec59",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "d4a8fbe60fde8a40",
+      "current_host": "ddc5f8a84b6c52a3"
+    },
+    {
+      "case": "independent-1-2",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "90",
+        "res2": "63",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "8d9a56148a6f62c1",
+      "current_native": "b818508f4dfab2fc",
+      "old_pcm_sha256": "a43e1df5984ac832c111dd30d4ddb4144ed909b9ba51e1759dde4189a4c12788",
+      "current_pcm_sha256": "c40970cb05f29ac1baba5467ffcbd6338a41cb4624ee88da53792dcae516afcc",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "old_host": "696ac69cd52ec5f4",
+      "current_host": "7e672b793567f751"
+    },
+    {
+      "case": "timing-1-0-0-0",
+      "controls": {
+        "cal": "1",
+        "route": "0",
+        "control": "0",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "bd31818003032f9e",
+      "current_native": "24b380a5039b5120",
+      "old_pcm_sha256": "3dd0ac153d023ce6f2c357ca1c24bebb86fd71d09a254c9b1570c975383f40ec",
+      "current_pcm_sha256": "47c85a13a92403852613b3c63b44cb8253f196b768014a6b7089bff4c69e360d",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-0-1-0",
+      "controls": {
+        "cal": "1",
+        "route": "0",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "bd31818003032f9e",
+      "current_native": "24b380a5039b5120",
+      "old_pcm_sha256": "3dd0ac153d023ce6f2c357ca1c24bebb86fd71d09a254c9b1570c975383f40ec",
+      "current_pcm_sha256": "47c85a13a92403852613b3c63b44cb8253f196b768014a6b7089bff4c69e360d",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-0-2-0",
+      "controls": {
+        "cal": "1",
+        "route": "0",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "76",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "bd31818003032f9e",
+      "current_native": "24b380a5039b5120",
+      "old_pcm_sha256": "3dd0ac153d023ce6f2c357ca1c24bebb86fd71d09a254c9b1570c975383f40ec",
+      "current_pcm_sha256": "47c85a13a92403852613b3c63b44cb8253f196b768014a6b7089bff4c69e360d",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-1-0-0",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "0",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "324521cba2df3387",
+      "current_native": "d088c7ec4c2d9093",
+      "old_pcm_sha256": "a3592d81c3db295122c81f1de92abde554e06f01d77fb71091f9ef3cc8ea7b62",
+      "current_pcm_sha256": "408f4807e56990d574d2c52e96669642a2fa099c354572deec192eadd616eaaf",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-1-1-0",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "78183c0ca2d3b26f",
+      "current_native": "84920f63f7fff5e0",
+      "old_pcm_sha256": "66de85666bb44768c9a89871c589eb66f8162dfaede7b372f103a95b8af29a6b",
+      "current_pcm_sha256": "ffe99ffa6544c29b363a8877e8b9eafbc1a46c873c52dd3581ef21146b0e6e72",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-1-2-0",
+      "controls": {
+        "cal": "1",
+        "route": "1",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "76",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "cab40b77f20eb5c5",
+      "current_native": "7147ebb8f253e4c0",
+      "old_pcm_sha256": "8a31341b43413bdd0159405cade164aead23a4c282036e5238cfb61ec3e74627",
+      "current_pcm_sha256": "8cbb380913921d5ef5e0d6a3983cc677390473323319a8460e7c6422b850a7c4",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-2-0-0",
+      "controls": {
+        "cal": "1",
+        "route": "2",
+        "control": "0",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "906ddd1e71c3177e",
+      "current_native": "a7ab1df7ad656b4e",
+      "old_pcm_sha256": "0af03738aefd9f15e599bb21be7900cef69f301d956d1b221241ba55a580db19",
+      "current_pcm_sha256": "d4c6c056239e4997ab7421c379f8f1026458a7ea6fec444302dba1bba4842335",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-2-1-0",
+      "controls": {
+        "cal": "1",
+        "route": "2",
+        "control": "1",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "40",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "138691fc335db05a",
+      "current_native": "cddc64e9d7f14851",
+      "old_pcm_sha256": "03767a6c2dcd0ef0631c74059521a92882a0100a39bc5b301398f7b1b38e143e",
+      "current_pcm_sha256": "2322a21e9b743c941c7f140543ed6acfa8f4e255fc53e37ac575ce807a0e0128",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    },
+    {
+      "case": "timing-1-2-2-0",
+      "controls": {
+        "cal": "1",
+        "route": "2",
+        "control": "2",
+        "mode1": "0",
+        "mode2": "1",
+        "cutoff2": "76",
+        "res2": "32",
+        "fx": "0",
+        "nativeSamples": "20960",
+        "hostSamples": "25600"
+      },
+      "old_native": "ac39c2dc286b668d",
+      "current_native": "88cdc0bab3459880",
+      "old_pcm_sha256": "3cba021438b7556703a428632a6fabe677ffc1687a9b236cc8aca749e359297d",
+      "current_pcm_sha256": "1c5932d9da7f56ef17e99a8719deeaf6c34e9d5df01365939cf31d92102560a8",
+      "first_mixer_difference": 0,
+      "first_native_difference": 0,
+      "first_host_difference": 314,
+      "fx_verified": [
+        0,
+        8
+      ]
+    }
+  ]
+}
