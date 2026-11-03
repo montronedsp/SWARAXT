@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Pure admission negative controls. Fixtures are not native audio evidence."""
 import json
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ import dual_svf_reference as dual
 SOURCE = Path(__file__).resolve().parents[2]
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'Linux reference admission requires POSIX trusted-file APIs')
 class DualAdmissionControls(unittest.TestCase):
     def setUp(self):
         self.rows = []

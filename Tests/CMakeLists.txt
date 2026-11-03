@@ -500,6 +500,14 @@ else()
     target_compile_options(SwaraXTTuningTableTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME SwaraXTTuningTableTests COMMAND SwaraXTTuningTableTests)
+add_executable(SwaraXTTuningFuzzRegressionTests
+    Fuzz/TuningFuzzRegressionTestsMain.cpp Fuzz/TuningFuzz.cpp
+    "${CMAKE_SOURCE_DIR}/Source/Tuning/TuningTable.cpp")
+target_include_directories(SwaraXTTuningFuzzRegressionTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings_as_errors(SwaraXTTuningFuzzRegressionTests)
+add_test(NAME SwaraXTTuningFuzzRegressionTests COMMAND SwaraXTTuningFuzzRegressionTests)
+set_tests_properties(SwaraXTTuningFuzzRegressionTests PROPERTIES TIMEOUT 60 LABELS "headless;fuzz-regression")
+
 
 add_executable(SwaraXTQuantizerTests Tuning/QuantizerTestsMain.cpp
     "${CMAKE_SOURCE_DIR}/Source/Tuning/TuningTable.cpp")
