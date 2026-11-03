@@ -19,7 +19,8 @@ focused success cannot pass the full gate. Version 2 explicitly replaces the
 old GUI-bearing Dual identity; executables are never renamed or aliased in
 manifests. Tests/Filter/DualSvfSection2TestsMain.cpp remains available for future
 authorized GUI qualification, with Linux current goldens selected by platform.
-Windows continues using its own historical header and policy prerequisite.
+Windows selects its independently qualified current data through the explicit
+DualSvfWindowsHeadlessTestsMain.cpp adapter; the historical header is preserved.
 
 ## Current Dual SVF authority
 
@@ -37,8 +38,9 @@ identity and production DSP invariants. Current positive runs pass both the
 twelve exact references and the original shared DSP/control/rate tests. No
 production DSP algorithm or gain law changed during reference renewal.
 
-DualSvfCurrentLinuxGoldens.h is a Linux-only current contract. The historical
-DualSvfSection2Goldens.h and the original content-addressed version1 package
+DualSvfCurrentLinuxGoldens.h records the qualified Linux current contract.
+Windows reuses its values only through its independently qualified adapter. The
+historical DualSvfSection2Goldens.h and the original content-addressed version1 package
 remain unchanged as provenance. Existing Classic/FX authority, Host SRC data,
 CurrentAudioGoldens.h and CurrentAudioReferenceProvenance.json are unchanged.
 The new package authenticates current drivers, related source fixtures, golden
@@ -63,12 +65,25 @@ missing/duplicate/additional cases, metadata changes, tampering and scope drift.
 
 ## Windows and review boundaries
 
-Linux fingerprints are not an MSVC authority. Windows frozen-source identities
-are checked before reference construction, execution and final admission.
-Current drivers fail that historical predicate with
-WINDOWS_NATIVE_QUALIFICATION_REQUIRED. Native Windows qualification remains
-required; simulated policy tests cannot qualify Windows audio. Windows/macOS
-JUCE selection remains9.0.1.
+Linux fingerprints alone are not an MSVC authority. The separate Windows
+package `windows-current-3023b0d75c2593f7c328249b8336bd3e5f3cfeed600aff99b9d40f1ab72c8be7.json`
+is pinned in `scripts/ci/windows_current_reference.py`. Its 72 values were
+corroborated under native MSVC Release, Debug and AddressSanitizer, with repeated
+execution and independent Q23/Q20/raw-PCM checking. Equality with the existing
+Linux values was observed rather than assumed. No candidate run generates
+expected audio during acquisition or admission.
+
+Windows admission binds the complete case inventory, fixtures, actual source
+bytes, candidate revision, run, profile, x64 PE executables, compile commands,
+qualified compiler and pristine JUCE 9.0.1 revision. The manifest and records use
+canonical bytes; resealing altered records cannot authorize changed values.
+Native negative controls include junction escape, wrong compiler/profile,
+historical mixer output, diagnostics and focused-scope impersonation.
+
+The frozen Windows source predicate and old golden header remain historical
+evidence. Their expected current-source rejection is not a current audio PASS.
+New compiler identities or reference changes require separate qualification.
+Windows/macOS JUCE selection remains 9.0.1; macOS was not qualified here.
 
 This is an engineering-review branch, not production or release approval.
 Previously recorded cache roundtrip fuzz FAIL, analyzer/tidy INCOMPLETE/OPEN and

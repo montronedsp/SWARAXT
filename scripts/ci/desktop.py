@@ -16,6 +16,7 @@ from common import Evidence, JUCE_SHA, SDK_SHA, SOURCE, architecture, sha
 from native_reference import WINDOWS_BASELINE_SHA, TESTS, validate_windows_output as validate_output
 import current_reference
 import windows_reference_policy
+import windows_current_reference
 from reference_metadata import apply as apply_reference_metadata
 from linux_dependency import apply as apply_linux_dependency
 from pluginval_source import (apply as apply_pluginval_source, SOURCE_SHA as PLUGINVAL_SHA,
@@ -317,63 +318,43 @@ class Campaign(Evidence):
     def reference(self, juce, build):
         if self.system == 'Linux':
             return self.current_reference(build)
-        # Windows retains its frozen-build policy pending separate migration.
-        windows_reference_policy.require_frozen_source(SOURCE)
-        baseline = self.root / 'frozen-upstream'
-        self.run('clone-reference', ['git', '-c', 'core.autocrlf=false', 'clone', '--filter=blob:none',
-                 '--no-checkout', 'https://github.com/montronedsp/SWARAXT.git', baseline])
-        self.run('checkout-reference', ['git', '-C', baseline, '-c', 'core.autocrlf=false', 'checkout', '--detach', WINDOWS_BASELINE_SHA])
-        self.run('reference-submodules', ['git', '-C', baseline, '-c', 'url.https://github.com/.insteadOf=git://github.com/',
-                                         'submodule', 'update', '--init', '--recursive'])
-        for relative in [*TESTS.values(), 'Tests/Parity/ExactParityGoldens.h', 'Tests/Filter/DualSvfSection2Goldens.h']:
-            if sha(baseline / relative) != sha(SOURCE / relative):
-                raise RuntimeError('Frozen reference driver or legacy golden changed')
-        metadata_overlay = []
-        if self.system == 'Windows':
-            if self.output(['git', 'status', '--porcelain'], baseline):
-                raise RuntimeError('Reference must be pristine before build-metadata staging')
-            metadata_overlay = apply_reference_metadata(baseline, self.root)
-        reference_build = self.root / 'reference-build'
-        options = self.cmake_options(juce)
-        if self.system == 'Windows':
-            options += ['-DCMAKE_PROJECT_INCLUDE=' + str(CI / 'project.cmake'),
-                        '-DSWARAXT_CI_SANITIZER=' + ('ON' if self.flags else 'OFF')]
-        self.run('configure-reference', ['cmake', '-S', baseline, '-B', reference_build, '-G', 'Ninja', *options])
-        self.build(reference_build, 'build-reference', list(TESTS))
-        root = self.root / 'native-reference'; root.mkdir()
-        manifest = {'baseline_sha': WINDOWS_BASELINE_SHA, 'candidate_sha': self.report['source_sha'],
-                    'architecture': architecture(), 'profile': self.env['SWARAXT_NATIVE_PROFILE'],
-                    'run_id': self.report['run_id'], 'baseline_build_metadata_overlay': metadata_overlay, 'tests': {}}
-        for name in TESTS:
-            code = self.run('reference-' + name, [self.binary(reference_build, name)], expected=None)
-            record = validate_output(name, (self.root / ('reference-' + name + '.log')).read_text(errors='replace'), code, baseline)
-            file = root / (name + '.json'); file.write_text(json.dumps(record, indent=2) + '\n')
-            manifest['tests'][name] = {'record_file': file.name, 'record_sha256': sha(file),
-                                     'case_count': len(record['records']), 'legacy_exit_code': code,
-                                     'historical_hash_mismatches': record['historical_hash_mismatches']}
-        (root / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+        identity = windows_current_reference.context(SOURCE, self.report['source_sha'],
+            self.env['SWARAXT_NATIVE_PROFILE'], self.report['run_id'])
+        (self.root / 'profile.json').write_bytes(windows_current_reference.encode(identity))
+        executables = {name: self.binary(build, name) for name in windows_current_reference.ALL_TESTS}
+        manifest = windows_current_reference.stage_reference(self.root, SOURCE, identity, executables, build)
+        root = self.root / 'native-reference'
         negative = self.root / 'negative-reference'; shutil.copytree(root, negative)
-        name = 'SwaraXTHostSrcExactParityTests'; file = negative / manifest['tests'][name]['record_file']
-        record = json.loads(file.read_text()); case = next(key for key in record['records'] if 'impulse' in key)
-        value = record['records'][case][1]; record['records'][case][1] = ('1' if value[0] == '0' else '0') + value[1:]
-        file.write_text(json.dumps(record, indent=2) + '\n')
-        bad = json.loads((negative / 'manifest.json').read_text()); bad['tests'][name]['record_sha256'] = sha(file)
-        (negative / 'manifest.json').write_text(json.dumps(bad, indent=2) + '\n')
+        name = 'SwaraXTHostSrcExactParityTests'; file = negative / (name + '.json')
+        record = windows_current_reference.decode(file.read_bytes())
+        case = next(key for key in record['records'] if 'impulse' in key)
+        record['records'][case][1] = '0' * 16
+        file.write_bytes(windows_current_reference.encode(record))
+        bad = windows_current_reference.decode((negative / 'manifest.json').read_bytes())
+        bad['tests'][name]['record_sha256'] = sha(file)
+        data = windows_current_reference.encode(bad)
+        (negative / 'manifest.json').write_bytes(data)
+        (negative / 'manifest.sha256').write_bytes((windows_current_reference.digest(data) + '\n').encode('ascii'))
         code = self.run('reference-negative-control', [sys.executable, CI / 'native_reference.py',
             '--reference-root', negative, '--test-name', name, self.binary(build, name)], expected=None)
-        if code == 0 or 'Actual native audio differs' not in (self.root / 'reference-negative-control.log').read_text(errors='replace'):
-            raise RuntimeError('Native reference mutation control failed')
-        changes = self.output(['git', 'diff', '--name-only'], baseline).splitlines()
-        if set(changes) != {record['file'] for record in metadata_overlay}:
-            raise RuntimeError('Unexpected change in frozen reference checkout')
-        for record in metadata_overlay:
-            if sha(baseline / record['file']) != record['after_sha256']:
-                raise RuntimeError('Frozen reference build metadata changed unexpectedly')
-        if self.output(['git', 'diff', '--name-only', '--', 'Source', *TESTS.values(),
-                        'Tests/Parity/ExactParityGoldens.h', 'Tests/Filter/DualSvfSection2Goldens.h'], baseline):
-            raise RuntimeError('Frozen production source, driver or golden changed')
+        if code == 0 or 'Unauthorized Windows reference mutation' not in (self.root / 'reference-negative-control.log').read_text(errors='replace'):
+            raise RuntimeError('Current Windows reference mutation control failed')
+        if self.args.profile == 'Release':
+            key = 'SWARAXT_WINDOWS_REFERENCE_TEST_BUILD'
+            previous = self.env.get(key)
+            self.env[key] = str(build)
+            try:
+                self.run('windows-native-reference-controls',
+                         [sys.executable, CI / 'test_windows_current_reference.py'])
+            finally:
+                if previous is None:
+                    self.env.pop(key, None)
+                else:
+                    self.env[key] = previous
+        windows_current_reference.admit_reference(root, SOURCE, identity, build, manifest)
         self.report['native_reference_negative_control'] = 'PASS'
         self.report['native_audio_reference'] = manifest
+        self.report['native_audio_reference_manifest_sha256'] = sha(root / 'manifest.json')
         self.run('configure-reference-launchers', ['cmake', '-S', SOURCE, '-B', build,
                   '-DSWARAXT_CI_REFERENCE_ROOT=' + str(root)])
 
@@ -615,7 +596,7 @@ def gate(system, evidence, context=None):
         'trusted_root': os.environ['RUNNER_TEMP']}
     evidence = contained_runner_path(evidence, True, context['trusted_root'])
     if system == 'Windows':
-        windows_reference_policy.require_frozen_source(SOURCE)
+        windows_current_reference.load_package(SOURCE)
     expected = set(LINUX_PROFILES if system == 'Linux' else WINDOWS_PROFILES)
     results = {}
     for path in evidence.rglob('report.json'):
@@ -643,10 +624,14 @@ def gate(system, evidence, context=None):
                 admit_linux_reference(path.parent, reference, data['native_audio_reference_manifest_sha256'],
                     data['source_sha'], data['compiler'] + '-' + data['profile'], data['run_id'])
             else:
-                if reference['candidate_sha'] != data['source_sha'] or reference['baseline_sha'] != WINDOWS_BASELINE_SHA or reference['run_id'] != data['run_id'] or reference['profile'] != data['compiler'] + '-' + data['profile'] or reference['architecture'] != 'x86_64':
-                    raise RuntimeError('Mismatched native reference provenance')
-                for name in TESTS:
-                    admit_reference_record(path.parent, name, reference['tests'][name])
+                identity = windows_current_reference.context(SOURCE, data['source_sha'],
+                    data['compiler'] + '-' + data['profile'], data['run_id'])
+                windows_current_reference.admit_reference(path.parent / 'native-reference', SOURCE,
+                    identity, path.parent / 'build', reference)
+                if data['profile'] == 'Release' and commands.get('windows-native-reference-controls') != 0:
+                    raise RuntimeError('Missing Windows native reference controls')
+                if sha(path.parent / 'native-reference/manifest.json') != data['native_audio_reference_manifest_sha256']:
+                    raise RuntimeError('Changed Windows current manifest')
             host = (path.parent / 'actual-VST3.log').read_text(errors='replace')
             validate_host_log(host)
             if 'BOOLEAN_NORMALIZATION_PASS' not in host:

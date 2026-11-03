@@ -77,7 +77,10 @@ class SimulatedWindowsPolicyTests(unittest.TestCase):
             with self.subTest(relative=relative), self.assertRaisesRegex(RuntimeError, 'path escape'):
                 policy.trusted_file(self.root, relative)
         path = self.root / 'linked'
-        path.symlink_to(self.root / (policy.TEST_NAMES[0] + '.json'))
+        try:
+            path.symlink_to(self.root / (policy.TEST_NAMES[0] + '.json'))
+        except OSError as error:
+            self.skipTest('symlink unavailable: ' + str(error))
         with self.assertRaisesRegex(RuntimeError, 'link/junction'):
             policy.trusted_file(self.root, path.name)
         linkroot = self.root / 'linked-root'

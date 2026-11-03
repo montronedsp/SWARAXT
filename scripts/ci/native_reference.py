@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 MontroneDSP
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Native reference launcher: pinned current Linux data and frozen Windows source preflight.
+"""Native reference launcher with separate current Linux and MSVC authorities.
 
 Historical mismatch allowances below belong only to the Windows frozen path.
-They are never accepted by the current Linux parser or evidence admission.
+They are never accepted by either current platform parser or admission gate.
 """
 import argparse
 from collections import Counter
@@ -104,7 +104,7 @@ def validate_output(name, text, code, source):
     return current_reference.validate_output(name, text, code, source)
 
 
-def windows_main():
+def historical_windows_main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--reference-root', type=Path, required=True)
     p.add_argument('--test-name', choices=TESTS, required=True)
@@ -137,6 +137,11 @@ def windows_main():
         raise RuntimeError('Actual native audio differs from independently built frozen upstream source')
     print('NATIVE_BASELINE_EXACT_PASS', args.test_name, 'cases=' + str(len(candidate['records'])),
           'baseline=' + WINDOWS_BASELINE_SHA, 'historical_mismatches=' + str(candidate['historical_hash_mismatches']))
+
+
+def windows_main():
+    import windows_current_reference
+    return windows_current_reference.main()
 
 
 def main():
