@@ -3,7 +3,7 @@
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/PluginEditor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(__linux__)
 #include "DualSvfCurrentLinuxGoldens.h" // Host values independently qualified on MSVC.
 #include "DualSvfCurrentWindowsTimingGoldens.h"
 #else
@@ -566,7 +566,7 @@ void tails(const std::filesystem::path& out) {
 }
 int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI init; std::setvbuf(stdout,nullptr,_IONBF,0);
-    const std::filesystem::path out=argc>1 ? argv[1] : "dual-svf-integration-audit";
+    const auto out=std::filesystem::absolute(argc>1 ? argv[1] : "dual-svf-integration-audit");
     std::filesystem::create_directories(out);
     const std::string mode=argc>2 ? argv[2] : "contracts";
     if(mode!="all" && mode!="latency" && mode!="transitions" && mode!="controls" && mode!="contracts" && mode!="tails") {
