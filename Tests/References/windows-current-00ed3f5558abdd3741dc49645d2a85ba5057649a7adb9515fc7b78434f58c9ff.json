@@ -6,7 +6,7 @@
     "Source/Plugin/SwaraXtParameterLayout.cpp": "153216cba505a7ca18605832820d156efa0862300a05076a24c5e55e8d158c44",
     "Tests/AudioRegression/AudioRegressionTestsMain.cpp": "9c27e06bf0dd56185f49d92fa316da51cd10abe9e76a071e7085c2751dc04592",
     "Tests/Filter/DualSvfCurrentLinuxGoldens.h": "e4113e7a066cbae70f2fe4fe5e56290832c79e51cdec00cef49dd2066688b26a",
-    "Tests/Filter/DualSvfCurrentWindowsTimingGoldens.h": "39cacecc86c2c59133c0ad95df0c04714c177b8c5db264e30dba20537c875b32",
+    "Tests/Filter/DualSvfCurrentWindowsTimingGoldens.h": "3843b5c6d4b9f0e01ee6d62336080f38ff012d9970203ca387d44846c459bd1c",
     "Tests/Filter/DualSvfHeadlessTestsMain.cpp": "2768b0f7696968243c7acd01b9c5133ef7f2eff3ef6578b490a1dcfd05e1b577",
     "Tests/Filter/DualSvfIntegrationAuditMain.cpp": "29bcfd677028bef87c31fe0be4280aa05e42da282d150cbd58aedbeb1adee91c",
     "Tests/Filter/DualSvfSection2Goldens.h": "02ccf4fd24c54a5ccbc9b7afb7f6ee7578bde100dd586884ed237a4f0ea4ab5e",
@@ -14,7 +14,7 @@
     "Tests/Filter/DualSvfWindowsHeadlessTestsMain.cpp": "184ba4ceb600e9db797123b14c9e7b0e07ef4bd2b3fd8a936a43584be329bda8",
     "Tests/Parity/DspFxIntegratedExactParityTestsMain.cpp": "655cec3edd70caebb62ed3c6a1132374c82291b7e53eea62f418e45d92790797",
     "Tests/References/DualSvfCurrentLinuxProvenance.json": "4e0baf9424a629d1bcdb37923ff78f932858088ab5d2566d97a8e28540ce73a1",
-    "Tests/References/DualSvfCurrentWindowsTimingProvenance.json": "23ffe1e754706bd0dedca61c4ae19095b637f44cdb384b7b20900d9af99c1cad",
+    "Tests/References/DualSvfCurrentWindowsTimingProvenance.json": "a6b2893d12c0954ee8cf594a1296a2c886e426d4f7eccc3945eeaeca0d368b28",
     "Tests/Support/CurrentRenderContract.h": "1ae25418a1fa9d87d429688b6a66d2efb784301ffe897432ce5649ea3eb4bbcd"
   },
   "policy": "windows-current-msvc-v1",
