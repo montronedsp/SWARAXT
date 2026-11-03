@@ -15,7 +15,8 @@ fi
 
 cmake -S "${source_dir}" -B "${build_dir}" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DSWARA_BUILD_SKIN_EDITOR=OFF \
     -DSWARAXT_JUCE_DIR="${juce_dir}"
 
 cmake --build "${build_dir}" --target \
-    SwaraXT_VST3 SwaraXT_Standalone SwaraXtSkinEditor --parallel "${jobs}"
+    SwaraXT_VST3 SwaraXT_Standalone --parallel "${jobs}"

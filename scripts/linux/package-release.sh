@@ -13,7 +13,6 @@ arch="$(uname -m)"
 package_name="SwaraXT-Linux-${arch}-v${version}.tar.gz"
 package_path="${artifacts_dir}/${package_name}"
 artefacts="${build_dir}/SwaraXT_artefacts/Release"
-skin_editor="${build_dir}/SwaraXtSkinEditor_artefacts/Release/SWARA XT Skin Editor"
 skin_examples="${source_dir}/resources/Skin/Examples"
 
 if [[ -z "${version}" ]]; then
@@ -22,10 +21,6 @@ if [[ -z "${version}" ]]; then
 fi
 source "${script_dir}/validate-package.sh"
 [[ "$version" == "1.3.0" ]] || { echo "This release requires PROJECT_VERSION 1.3.0" >&2; exit 1; }
-[[ -x "${skin_editor}" || -f "${skin_editor}" ]] || {
-    echo "Release Skin Editor not found at ${skin_editor} (build SwaraXtSkinEditor)" >&2
-    exit 1
-}
 [[ -d "${skin_examples}" ]] || {
     echo "Skin Examples folder missing at ${skin_examples}" >&2
     exit 1
@@ -35,15 +30,15 @@ rm -rf "${stage_dir}"
 mkdir -p \
     "${stage_dir}/VST3" \
     "${stage_dir}/Standalone" \
-    "${stage_dir}/Skin Editor" \
     "${artifacts_dir}"
 
 cp -a "${artefacts}/VST3/Swara XT.vst3" "${stage_dir}/VST3/Swara XT.vst3"
 cp -a "${artefacts}/Standalone/Swara XT" "${stage_dir}/Standalone/Swara XT"
 chmod +x "${stage_dir}/Standalone/Swara XT"
-cp -a "${skin_editor}" "${stage_dir}/Skin Editor/SWARA XT Skin Editor"
-chmod +x "${stage_dir}/Skin Editor/SWARA XT Skin Editor"
 cp -a "${skin_examples}" "${stage_dir}/Skin Examples"
+cp -a "${source_dir}/resources/Skin/Decorations" "${stage_dir}/Skin Examples/Decorations"
+cp "${source_dir}/resources/Skin/ATTRIBUTION.md" "${stage_dir}/Skin Examples/ATTRIBUTION.md"
+cp "${source_dir}/resources/Skin/CC-BY-SA-3.0.txt" "${stage_dir}/Skin Examples/CC-BY-SA-3.0.txt"
 
 vst3_so="$(find "${stage_dir}/VST3/Swara XT.vst3" -type f -name 'Swara XT.so' | head -n 1)"
 if [[ -z "${vst3_so}" ]]; then
@@ -59,6 +54,9 @@ cp "${source_dir}/THIRD_PARTY_NOTICES.md" "${stage_dir}/THIRD_PARTY_NOTICES.txt"
 cp "${source_dir}/resources/Skin/ATTRIBUTION.md" "${stage_dir}/PANEL_ARTWORK_ATTRIBUTION.txt"
 cp "${source_dir}/resources/Skin/CC-BY-SA-3.0.txt" "${stage_dir}/PANEL_ARTWORK_LICENSE.txt"
 cp "${source_dir}/resources/Fonts/OFL-1.1.txt" "${stage_dir}/FONT_OFL-1.1.txt"
+cp "${source_dir}/packaging/SOURCE.txt" "${stage_dir}/SOURCE.txt"
+printf '\nPackage source revision: %s\nPackage source URL: https://github.com/montronedsp/SWARAXT/tree/%s\n' \
+    "$(git -C "$source_dir" rev-parse HEAD)" "$(git -C "$source_dir" rev-parse HEAD)" >> "${stage_dir}/SOURCE.txt"
 validate_package_identity "$version" "$stage_dir" "$package_name"
 
 tar -C "${package_dir}" --owner=0 --group=0 --numeric-owner -czf "${package_path}" "Swara XT"

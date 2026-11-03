@@ -33,18 +33,13 @@ You may place it in a folder such as:
 ~/.local/bin/
 or another location of your choice.
 
-Skin Editor:
-
-chmod +x "Skin Editor/SWARA XT Skin Editor"
-
-Then launch it for a live colour preview. Use Install for Plugin or Save As
-to write a colour text file.
-
 Skin Examples:
 
 The Skin Examples folder contains starter SVG/PNG/TXT assets
 (manufacturer mark watermark, column decoration, background, and colours).
-Load them from the Skin Editor or from the plugin editor context menus.
+Load them directly from the synthesizer editor context menus.
+The separate Skin Editor application is not included in version 1.3.0.
+Additional SVG decorations are in Skin Examples/Decorations.
 Installed user copies live under:
 
 ~/.config/MontroneDSP/Swara XT/skin_assets/
@@ -58,3 +53,8 @@ support@montronedsp.com
 
 Source:
 https://github.com/montronedsp/SWARAXT
+
+Corresponding source
+--------------------
+See SOURCE.txt for the exact source revision, dependencies and license notices.
+The source includes the optional Skin Editor; its application is not packaged.

@@ -1,0 +1,19 @@
+SWARA XT corresponding source
+
+The package-specific source revision and URL are appended by the packaging script.
+Repository: https://github.com/montronedsp/SWARAXT
+Build instructions: BUILDING.md at that exact revision.
+The source includes the optional Skin Editor, even though its executable is excluded.
+
+Pinned source dependencies (preserve their own licenses and notices):
+Shruthi-1: https://github.com/pichenettes/shruthi-1/tree/56bfe78a27cd7430ab4531439d4efc2834353b17
+avrlib: https://github.com/pichenettes/avril/tree/af7266e5b48ae20c0f83d4352c75c1068545cffc
+Shruthi tools: https://github.com/pichenettes/avril-firmware_tools/tree/1c8c71c42a2290975153972de9b66a51f21fd7b0
+Linux JUCE 9.0.4: https://github.com/juce-framework/JUCE/tree/3fb5cbc0340758596dac39f7c8de47d562b4896e
+Windows JUCE 9.0.1: https://github.com/juce-framework/JUCE/tree/e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8
+
+When publishing binaries, provide the matching complete corresponding source,
+including required pinned dependencies, build scripts and applicable notices,
+with equivalent access alongside the binaries. GitHub's automatic source archive
+alone omits submodule contents. The repository links above identify source but
+do not replace the distributor's corresponding-source obligations.

@@ -2,7 +2,7 @@ param(
     [ValidateSet("Release", "Debug")]
     [string]$Config = "Release",
     [string]$BuildDirectory = "",
-    [string[]]$Target = @("SwaraXT_VST3", "SwaraXT_Standalone", "SwaraXtSkinEditor")
+    [string[]]$Target = @("SwaraXT_VST3", "SwaraXT_Standalone")
 )
 
 $ErrorActionPreference = "Stop"
