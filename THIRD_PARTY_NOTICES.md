@@ -68,3 +68,12 @@ is not a replacement for bundled copyright/license files.
   The Mozilla Foundation and Telefonica S.A. (2012--2015)
 - License: SIL Open Font License 1.1, included at `resources/Fonts/OFL-1.1.txt`
 - Usage: embedded SWARA XT GUI typography
+
+## Brand artwork
+
+`resources/Skin/Shared/montronedsp_wordmark.svg` and `stones_letters.svg`
+are copyright 2026 Andrea Montrone, as confirmed by the rights holder. They
+contain outlined vector paths and require no embedded font or font installation.
+Their existing CC-BY-SA-3.0 grants remain in effect. The software GPL notice
+does not independently license these files. No prior permissions are withdrawn,
+and no trademark registration or unverified font provenance is asserted.
