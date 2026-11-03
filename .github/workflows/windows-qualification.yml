@@ -40,7 +40,7 @@ jobs:
         run: |
           test "$REVIEWED_SHA" = "$GITHUB_SHA"
           cd scripts/ci
-          python -m unittest test_common test_native_reference
+          python -m unittest test_common test_native_reference test_windows_artifacts
   native:
     needs: preflight
     runs-on: windows-2022
@@ -73,11 +73,19 @@ jobs:
       - name: Complete native qualification
         shell: bash
         run: python scripts/ci/desktop.py native --compiler "$COMPILER" --profile "$PROFILE" --root "$RUNNER_TEMP/swara-native"
+      - name: Verified portable native evidence
+        if: success()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: native-windows-${{ env.COMPILER }}-${{ matrix.profile }}-${{ github.sha }}
+          path: ${{ runner.temp }}/swara-native/windows-artifact/
+          if-no-files-found: error
+          retention-days: 14
       - name: Qualification evidence, including failures
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: native-windows-${{ env.COMPILER }}-${{ matrix.profile }}-${{ github.sha }}
+          name: diagnostic-windows-${{ env.COMPILER }}-${{ matrix.profile }}-${{ github.sha }}
           path: |
             ${{ runner.temp }}/swara-native/*.log
             ${{ runner.temp }}/swara-native/*.json
@@ -117,9 +125,13 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
+      - name: Verify portable admission controls on Linux
+        working-directory: scripts/ci
+        run: python -m unittest test_windows_artifacts
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: native-windows-*-${{ github.sha }}
+          pattern: native-windows-msvc-*-${{ github.sha }}
+          merge-multiple: false
           path: ${{ runner.temp }}/native-evidence
       - name: Independently verify all source-bound reports and CTest results
         run: >-
