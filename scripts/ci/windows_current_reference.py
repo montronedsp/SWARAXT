@@ -13,6 +13,12 @@ import windows_reference_policy as paths
 POLICY = 'windows-current-msvc-v1'
 PACKAGE_SHA256 = '00ed3f5558abdd3741dc49645d2a85ba5057649a7adb9515fc7b78434f58c9ff'
 PACKAGE_FILE = 'Tests/References/windows-current-' + PACKAGE_SHA256 + '.json'
+# Admitted for fresh qualification, not a claim of native audio acceptance.
+# Verified by hosted run 41700756992; standard toolset also used by 40027581469.
+# The immutable package retains its original compiler provenance and 72 values.
+ADMITTED_COMPILER_SHA256 = 'fe251ef50a1545b1b0835ee17b1e785459712b38d79e45b5c1d3d28970a36619'
+ADMITTED_COMPILER_VERSION = '19.44.35229.0'
+ADMITTED_TOOLSET_VERSION = '14.44.35207'
 ALL_TESTS = ('SwaraXTAudioParityTests', 'SwaraXTDspFxIntegratedExactParityTests',
              'SwaraXTHostSrcExactParityTests', 'SwaraXTDualSvfHeadlessTests')
 PROFILES = ('msvc-Release', 'msvc-Debug', 'msvc-asan')
@@ -126,6 +132,11 @@ def validate_output(name, text, code, source):
     return {'schema': 1, 'test': name, 'records': records}
 
 
+def require_compiler(actual):
+    if actual != ADMITTED_COMPILER_SHA256:
+        raise RuntimeError('Unqualified Windows compiler')
+
+
 def toolchain(build, profile, package):
     data = paths.trusted_file(build, 'compile_commands.json').read_bytes()
     entries = decode(data)
@@ -147,7 +158,7 @@ def toolchain(build, profile, package):
             raise RuntimeError('Wrong Windows build configuration')
         if profile != 'msvc-Debug' and not re.search(r'/O[12x]', command):
             raise RuntimeError('Unoptimized Windows Release configuration')
-    if compilers != {package['compiler_sha256']}:
+    if compilers != {ADMITTED_COMPILER_SHA256}:
         raise RuntimeError('Unqualified Windows compiler')
     cache = paths.trusted_file(build, 'CMakeCache.txt').read_text()
     expected_config = 'Debug' if profile == 'msvc-Debug' else 'Release'

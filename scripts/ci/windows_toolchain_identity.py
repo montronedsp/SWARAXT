@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 
@@ -13,9 +14,14 @@ from common import SOURCE, juce_revision, msvc_environment, sha
 import windows_current_reference
 
 
-def require_compiler(actual, expected):
-    if actual != expected:
-        raise RuntimeError('Hosted MSVC differs from the qualified compiler; owner review required')
+def verify_identity(compiler, version_log, compiler_sha256):
+    windows_current_reference.require_compiler(compiler_sha256)
+    version = re.search(r'cl\.exe:\s+Version\s+(\d+\.\d+\.\d+\.\d+)', version_log, re.I)
+    toolset = re.search(r'[\\/]MSVC[\\/]([^\\/]+)[\\/]', str(compiler), re.I)
+    if (not version or version[1] != windows_current_reference.ADMITTED_COMPILER_VERSION
+            or not toolset or toolset[1] != windows_current_reference.ADMITTED_TOOLSET_VERSION):
+        raise RuntimeError('Hosted MSVC version/toolset differs from admitted identity')
+    return {'compiler_version': version[1], 'toolset_version': toolset[1]}
 
 
 def main():
@@ -39,10 +45,12 @@ def main():
         if not compiler:
             raise RuntimeError('Selected cl.exe not found')
         report.update(compiler_path=compiler, compiler_sha256=sha(compiler),
-                      expected_compiler_sha256=package['compiler_sha256'])
+                      expected_compiler_sha256=windows_current_reference.ADMITTED_COMPILER_SHA256,
+                      audio_package_original_compiler_sha256=package['compiler_sha256'])
         result = subprocess.run([compiler, '/Bv'], env=env, capture_output=True, text=True)
         (root / 'cl-Bv.log').write_text(result.stdout + result.stderr)
         report['cl_Bv_exit_code'] = result.returncode  # cl without an input can exit nonzero.
+        report.update(verify_identity(compiler, result.stdout + result.stderr, report['compiler_sha256']))
         juce = root / 'JUCE'
         with (root / 'juce-source.log').open('w') as log:
             subprocess.run(['git', '-c', 'core.autocrlf=false', 'clone', '--filter=blob:none',
@@ -56,7 +64,6 @@ def main():
                                          '--untracked-files=all', '--ignored'], text=True)
         if report['juce_sha'] != package['reference_juce_sha'] or dirty:
             raise RuntimeError('JUCE source identity mismatch')
-        require_compiler(report['compiler_sha256'], package['compiler_sha256'])
         report['decision'] = 'TOOLCHAIN_IDENTITY_PASS'
     except BaseException as error:
         report.update(decision='FAIL', failure=str(error))

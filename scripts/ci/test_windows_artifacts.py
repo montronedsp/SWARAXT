@@ -23,7 +23,7 @@ SOURCE = Path(__file__).resolve().parents[2]
 def synthetic_profile(root, identity):
     """Deliberately fabricated unit data; never used as real qualification."""
     package = current.load_package(SOURCE)
-    proof = dict(compile_commands_sha256='1' * 64, compiler_sha256=package['compiler_sha256'],
+    proof = dict(compile_commands_sha256='1' * 64, compiler_sha256=current.ADMITTED_COMPILER_SHA256,
                  juce_sha=package['reference_juce_sha'], cmake_cache_sha256='2' * 64,
                  configuration='Debug' if identity['profile'] == 'msvc-Debug' else 'Release',
                  translation_units=100, cpp_exception_unwinding=True,
@@ -217,6 +217,10 @@ class ArtifactControls(unittest.TestCase):
 
     def test_wrong_compiler(self):
         self.change_proof('compiler_sha256', '0' * 64);self.reject('toolchain proof')
+
+    def test_historical_compiler_is_not_current_hosted_admission(self):
+        self.change_proof('compiler_sha256', current.load_package(SOURCE)['compiler_sha256'])
+        self.reject('toolchain proof')
 
     def change_proof(self, key, value):
         a = self.load('attestation.json');a['native_proof'][key] = value;self.save('build-provenance.json', a['native_proof']);self.save('attestation.json', a);self.reseal('build-provenance.json')

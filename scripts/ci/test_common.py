@@ -192,4 +192,84 @@ COMMAND
         self.assertNotEqual(result.returncode, 0)
 
 
+class WindowsCompilerAdmission(unittest.TestCase):
+    def test_verified_hosted_identity(self):
+        import windows_current_reference as authority
+        from windows_toolchain_identity import verify_identity
+        result = verify_identity('C:/VS/VC/Tools/MSVC/14.44.35207/bin/HostX64/x64/cl.exe',
+                                 ' cl.EXE: Version 19.44.35229.0', authority.ADMITTED_COMPILER_SHA256)
+        self.assertEqual(result, dict(compiler_version='19.44.35229.0', toolset_version='14.44.35207'))
+
+    def test_unknown_and_historical_hashes_rejected(self):
+        import windows_current_reference as authority
+        package = authority.load_package(Path(__file__).resolve().parents[2])
+        for value in ('0' * 64, package['compiler_sha256'], None):
+            with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, 'Unqualified Windows compiler'):
+                authority.require_compiler(value)
+
+    def test_version_toolset_and_missing_version_rejected(self):
+        import windows_current_reference as authority
+        from windows_toolchain_identity import verify_identity
+        for toolset, log in (('14.38.33130', 'cl.exe: Version 19.44.35229.0'),
+                             ('14.44.35207', 'cl.exe: Version 19.38.33145.0'),
+                             ('14.44.35207', '')):
+            with self.subTest(toolset=toolset, log=log), self.assertRaisesRegex(RuntimeError, 'version/toolset'):
+                verify_identity('C:/VS/VC/Tools/MSVC/' + toolset + '/bin/HostX64/x64/cl.exe',
+                                log, authority.ADMITTED_COMPILER_SHA256)
+
+    def native_toolchain(self, profile, extra_compiler=False, omit_asan=False):
+        # Synthetic metadata only: no compiler or Windows binary is executed.
+        import hashlib
+        import windows_current_reference as authority
+        package = authority.load_package(Path(__file__).resolve().parents[2])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compiler = root / 'selected compiler' / 'cl.exe'
+            compiler.parent.mkdir(); compiler.write_bytes(b'SYNTHETIC HOSTED COMPILER')
+            flags = '/Od' if profile == 'msvc-Debug' else '/O2'
+            if profile == 'msvc-asan' and not omit_asan:
+                flags += ' /fsanitize=address'
+            entries = [dict(file='unit' + str(i) + '.cpp', command='"' + str(compiler) + '" /EHsc ' + flags)
+                       for i in range(10)]
+            if extra_compiler:
+                other = root / 'other compiler' / 'cl.exe'
+                other.parent.mkdir(); other.write_bytes(b'WRONG COMPILER')
+                entries.append(dict(file='one-wrong-unit.cpp', command='"' + str(other) + '" /EHsc ' + flags))
+            (root / 'compile_commands.json').write_text(json.dumps(entries))
+            config = 'Debug' if profile == 'msvc-Debug' else 'Release'
+            (root / 'CMakeCache.txt').write_text('CMAKE_BUILD_TYPE:STRING=' + config + '\nSWARAXT_JUCE_DIR:PATH=' + str(root / 'JUCE') + '\n')
+            digest = lambda data: (authority.ADMITTED_COMPILER_SHA256 if data == b'SYNTHETIC HOSTED COMPILER'
+                                   else hashlib.sha256(data).hexdigest())
+            with patch.object(authority, 'digest', side_effect=digest), \
+                    patch.object(authority.subprocess, 'check_output', side_effect=[package['reference_juce_sha'], '']):
+                return authority.toolchain(root, profile, package)
+
+    def test_native_release_debug_asan_enforce_current_hash(self):
+        import windows_current_reference as authority
+        for profile in authority.PROFILES:
+            with self.subTest(profile=profile):
+                self.assertEqual(self.native_toolchain(profile)['compiler_sha256'], authority.ADMITTED_COMPILER_SHA256)
+
+    def test_one_wrong_translation_unit_is_rejected(self):
+        import windows_current_reference as authority
+        for profile in authority.PROFILES:
+            with self.subTest(profile=profile), self.assertRaisesRegex(RuntimeError, 'Unqualified Windows compiler'):
+                self.native_toolchain(profile, extra_compiler=True)
+
+    def test_asan_instrumentation_still_required(self):
+        with self.assertRaisesRegex(RuntimeError, 'Uninstrumented Windows ASan'):
+            self.native_toolchain('msvc-asan', omit_asan=True)
+
+    def test_default_environment_and_immutable_authority(self):
+        import inspect
+        import common
+        import windows_current_reference as authority
+        body = inspect.getsource(common.msvc_environment)
+        self.assertNotIn('-vcvars_ver', body)
+        self.assertNotIn('install.exe', body)
+        package = authority.load_package(Path(__file__).resolve().parents[2])
+        self.assertEqual(package['compiler_sha256'], 'd66e441c8ef64b7f52553beafcbd0c53decff0b0ba4e0896a7e0671d72a198c9')
+        self.assertEqual(sum(len(entry['cases']) for entry in package['tests'].values()), 72)
+
+
 if __name__ == '__main__': unittest.main()
