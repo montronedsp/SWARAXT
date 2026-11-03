@@ -598,10 +598,17 @@ class PackageAuthenticationTests(unittest.TestCase):
         for name in current.ALL_TESTS:
             self.assertIn(prefix+'build/Tests/**/'+name,workflow)
 
-    def test_windows_frozen_policy_remains_explicit(self):
+    def test_platform_reference_authorities_remain_explicit(self):
         from desktop import Campaign
-        self.assertIn('WINDOWS_BASELINE_SHA',inspect.getsource(Campaign.reference))
-        self.assertIn("if self.system == 'Linux'",inspect.getsource(Campaign.reference))
+        import native_reference
+        body = inspect.getsource(Campaign.reference)
+        self.assertIn("if self.system == 'Linux'", body)
+        self.assertIn('return self.current_reference(build)', body)
+        for method in ('context', 'stage_reference', 'admit_reference'):
+            self.assertIn('windows_current_reference.' + method, body)
+        self.assertNotIn('WINDOWS_BASELINE_SHA', body)
+        self.assertIn('windows_reference_policy.require_frozen_source',
+                      inspect.getsource(native_reference.historical_windows_main))
 
 
 if __name__ == '__main__':
