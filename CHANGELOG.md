@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0 — Unreleased
+
+- Align product and qualification package metadata for the feature-frozen 1.3.0 candidate.
+- Native release qualification remains required before publication.
+
 ## 1.2.3
 
 - Public Windows x64 and Linux x86_64 VST3 and Standalone release.

@@ -16,10 +16,10 @@ $version = (Select-String -Path (Join-Path $repoRoot "CMakeLists.txt") `
 if ([string]::IsNullOrWhiteSpace($version)) {
     throw "Unable to read project version from CMakeLists.txt"
 }
-if ($version -ne "1.2.3") { throw "This release requires PROJECT_VERSION 1.2.3" }
+if ($version -ne "1.3.0") { throw "This release requires PROJECT_VERSION 1.3.0" }
 function Assert-PackageDocumentation([string]$Directory) {
     $readme = Get-Content -Raw (Join-Path $Directory "README.txt")
-    if ($readme -notmatch '^Swara XT 1\.2\.3\r?\n' -or
+    if ($readme -notmatch '^Swara XT 1\.3\.0\r?\n' -or
         $readme -notmatch '(?m)^Source repository: https://github\.com/montronedsp/SWARAXT\r?$') {
         throw "Package README version or source repository is incorrect"
     }
@@ -41,7 +41,7 @@ $workspace = Join-Path $artifactsDir "windows-package"
 $stageRoot = Join-Path $workspace "Swara XT"
 $packageName = "SwaraXT-Windows-x64-v$version.zip"
 $packagePath = Join-Path $artifactsDir $packageName
-if ($packageName -ne "SwaraXT-Windows-x64-v1.2.3.zip") { throw "Invalid package filename" }
+if ($packageName -ne "SwaraXT-Windows-x64-v1.3.0.zip") { throw "Invalid package filename" }
 
 if (-not (Test-Path (Join-Path $artefacts "VST3/Swara XT.vst3"))) {
     throw "Release VST3 not found under $artefacts"

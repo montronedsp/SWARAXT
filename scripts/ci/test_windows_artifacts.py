@@ -77,7 +77,7 @@ def synthetic_profile(root, identity):
             vst3sdk_tool=dict(source_sha=SDK_SHA, binary_sha256='4' * 64),
             external_validators=dict(sha256='3' * 64, vst3sdk_binary_sha256='4' * 64))
         payload['windows-native-reference-controls.log'] = b'Ran 24 tests in 1.0s\n\nOK\n'
-        payload['pluginval.log'] = b'Num plugins found: 1\nStrictness level: 10\nv1.2.3\nSUCCESS\n'
+        payload['pluginval.log'] = b'Num plugins found: 1\nStrictness level: 10\nv1.3.0\nSUCCESS\n'
         payload['validator-extensive.log'] = b'Result: 100 tests passed, 0 tests failed\n'
     if identity['profile'] == 'msvc-asan':
         commands.update({'asan-control-build': 0, 'asan-negative-control': 3})

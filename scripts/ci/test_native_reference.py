@@ -242,7 +242,7 @@ class GateReportTests(unittest.TestCase):
                 'after_sha256': PLUGINVAL_AFTER, 'compiler_portability': PLUGINVAL_PORTABILITY,
                 'binary_sha256': 'a' * 64,
             }
-            (directory / 'pluginval.log').write_text('Num plugins found: 1\nStrictness level: 10\nv1.2.3\nSUCCESS\n')
+            (directory / 'pluginval.log').write_text('Num plugins found: 1\nStrictness level: 10\nv1.3.0\nSUCCESS\n')
             (directory / 'validator-extensive.log').write_text('Result: 100 tests passed, 0 tests failed\n')
         (reference / 'manifest.json').write_text(json.dumps(data['native_audio_reference']))
         data['native_audio_reference_manifest_sha256'] = sha(reference / 'manifest.json')

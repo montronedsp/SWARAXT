@@ -142,7 +142,7 @@ def validate_results(report, payload, identity, source):
                     'configure-validator', 'build-validator', 'validator-selftest', 'validator-extensive']
         require(all(commands.get(n) == 0 for n in required), 'Missing successful validator command')
         log = payload['pluginval.log'].decode('utf-8')
-        require(all(m in log for m in ('Num plugins found: 1', 'Strictness level: 10', 'v1.2.3', 'SUCCESS')),
+        require(all(m in log for m in ('Num plugins found: 1', 'Strictness level: 10', 'v1.3.0', 'SUCCESS')),
                 'Incomplete pluginval validation')
         result = re.search(r'Result: (\d+) tests passed, (\d+) tests failed', payload['validator-extensive.log'].decode())
         require(result is not None and int(result[1]) >= 100 and int(result[2]) == 0,

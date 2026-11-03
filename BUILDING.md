@@ -1,5 +1,8 @@
 # Building Swara XT
 
+The current source and package metadata target **1.3.0 (unreleased)**. The latest
+published release remains [1.2.3](https://github.com/montronedsp/SWARAXT/releases/tag/v1.2.3).
+
 ## Requirements
 
 - CMake 3.22 or newer
@@ -113,3 +116,20 @@ Primary artifacts (multi-config generators use a `Release`/`Debug` subdirectory)
 - `build/<preset>/SwaraXT_artefacts/.../Standalone/Swara XT`
 
 Set `SWARAXT_JUCE_DIR` at configure time if JUCE is stored outside `.cache/JUCE`.
+
+## Release-candidate qualification
+
+Run the existing eight-profile Linux qualification workflow on its Ubuntu 24.04
+GitHub Actions infrastructure after owner approval. SteamOS is the separate
+compatibility and real-host acceptance environment; it does not need a copy of
+the hosted Ubuntu toolchain. Local Python preflight success does not establish
+native qualification or release approval.
+
+Before any hosted Windows qualification run, verify the actual `windows-2022`
+runner's selected `cl.exe` identity against the current Windows reference
+package. Its qualified compiler is MSVC 19.38.33145.0 / v143 14.38.33130, with
+SHA-256 `d66e441c8ef64b7f52553beafcbd0c53decff0b0ba4e0896a7e0671d72a198c9`.
+A runner label alone cannot establish that identity. Keep the compiler checks
+in `scripts/ci/windows_current_reference.py`; a mismatch requires review,
+not a bypass or automatic reference regeneration. Existing Windows evidence
+remains bound to its original source revision.
