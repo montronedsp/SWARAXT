@@ -192,6 +192,34 @@ COMMAND
         self.assertNotEqual(result.returncode, 0)
 
 
+class WindowsAuditFixtureAuthentication(unittest.TestCase):
+    def test_exact_linux_dispatch_and_path_edits_keep_original_package(self):
+        import windows_current_reference as authority
+        source = Path(__file__).resolve().parents[2]
+        package = authority.load_package(source)
+        self.assertEqual(sum(len(t['cases']) for t in package['tests'].values()), 72)
+        relative = 'Tests/Filter/DualSvfIntegrationAuditMain.cpp'
+        data = (source / relative).read_bytes()
+        self.assertEqual(authority.checked_fixture(source, relative, package['fixtures'][relative]), data)
+
+    def test_other_audit_edits_and_golden_edits_are_rejected(self):
+        import windows_current_reference as authority
+        source = Path(__file__).resolve().parents[2]
+        package = authority.load_package(source)
+        relative = 'Tests/Filter/DualSvfIntegrationAuditMain.cpp'
+        data = (source / relative).read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / relative; target.parent.mkdir(parents=True)
+            target.write_bytes(data + b'// unapproved fixture edit\n')
+            with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
+                authority.checked_fixture(root, relative, package['fixtures'][relative])
+            other = 'Tests/Filter/DualSvfCurrentWindowsTimingGoldens.h'
+            (root / other).write_bytes(data)
+            with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
+                authority.checked_fixture(root, other, package['fixtures'][relative])
+
+
 class WindowsCompilerAdmission(unittest.TestCase):
     def test_verified_hosted_identity(self):
         import windows_current_reference as authority

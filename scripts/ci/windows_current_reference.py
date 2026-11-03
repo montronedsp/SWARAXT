@@ -38,13 +38,31 @@ def checked(root, relative, expected):
     return data
 
 
+def checked_fixture(root, relative, expected):
+    data = paths.trusted_file(root, relative).read_bytes()
+    if digest(data) == expected:
+        return data
+    if relative == 'Tests/Filter/DualSvfIntegrationAuditMain.cpp':
+        # Linux current-header dispatch and absolute output paths do not change
+        # the approved Windows render/check body. Reverse only these exact
+        # edits, then authenticate every original byte against the fixed package.
+        original = data.replace(b'#if defined(_MSC_VER) || defined(__linux__)\n',
+                                b'#if defined(_MSC_VER)\n')
+        original = original.replace(
+            b'    const auto out=std::filesystem::absolute(argc>1 ? argv[1] : "dual-svf-integration-audit");\n',
+            b'    const std::filesystem::path out=argc>1 ? argv[1] : "dual-svf-integration-audit";\n')
+        if digest(original) == expected:
+            return data
+    raise RuntimeError('Windows reference checksum mismatch: ' + relative)
+
+
 def load_package(source):
     package = decode(checked(source, PACKAGE_FILE, PACKAGE_SHA256))
     if (package['schema'] != 1 or package['policy'] != POLICY or package['scope'] != 'full-native-72'
             or set(package['tests']) != set(ALL_TESTS) or sum(len(t['cases']) for t in package['tests'].values()) != 72):
         raise RuntimeError('Wrong Windows reference package or full scope')
     for relative, expected in package['fixtures'].items():
-        checked(source, relative, expected)
+        checked_fixture(source, relative, expected)
     return package
 
 

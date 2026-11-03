@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Real CMake directory-scope regression and baseline metadata controls."""
 import json
+import platform
+import shutil
 from pathlib import Path
 import re
 import subprocess
@@ -12,6 +14,50 @@ from reference_metadata import apply, PARENT_BEFORE, PARENT_AFTER, CHILD_BEFORE,
 
 
 class TestScopes(unittest.TestCase):
+    @unittest.skipUnless(platform.system() == 'Linux', 'Linux loader contract')
+    def test_fault_shim_is_built_and_missing_preload_is_rejected(self):
+        source = Path(__file__).resolve().parents[2]
+        text = (source / 'Tests/CMakeLists.txt').read_text()
+        # Exercise the actual target/CTest declarations, with a zero-exit dummy
+        # caller. This is build/loader regression evidence, not product testing.
+        begin = text.index('    add_library(SwaraXTPresetFilesystemFaults SHARED')
+        end = text.index('    endforeach()', begin) + len('    endforeach()')
+        declarations = text[begin:end]
+        # ld.so separates LD_PRELOAD entries at spaces; use a private space-free
+        # Linux tmpfs path rather than a caller's possibly spaced TMPDIR.
+        with tempfile.TemporaryDirectory(prefix='swara-loader-contract-', dir='/tmp') as directory:
+            root = Path(directory); (root / 'Regression').mkdir()
+            shutil.copyfile(source / 'Tests/Regression/PresetFilesystemFaults.cpp',
+                            root / 'Regression/PresetFilesystemFaults.cpp')
+            (root / 'caller.cpp').write_text('int main(){return 0;}\n')
+            (root / 'CMakeLists.txt').write_text(
+                'cmake_minimum_required(VERSION 3.22)\nproject(LoaderContract CXX)\nenable_testing()\n'
+                'add_executable(SwaraXTControlIntegrityTests caller.cpp)\n' + declarations + '\n'
+                'add_custom_target(SwaraXTQualificationTests DEPENDS SwaraXTControlIntegrityTests)\n')
+            build = root / 'build'
+            for argv in (['cmake', '-S', root, '-B', build, '-G', 'Ninja'],
+                         ['cmake', '--build', build, '--target', 'SwaraXTQualificationTests', '--parallel', '1']):
+                result = subprocess.run(argv, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            libraries = list(build.rglob('libSwaraXTPresetFilesystemFaults.so'))
+            self.assertEqual(len(libraries), 1, 'Aggregate must build the preload dependency')
+            inventory = json.loads(subprocess.check_output(
+                ['ctest', '--test-dir', build, '--show-only=json-v1'], text=True))
+            self.assertEqual(len(inventory['tests']), 3)
+            for test in inventory['tests']:
+                props = {p['name']: p['value'] for p in test['properties']}
+                self.assertIn('LD_PRELOAD=' + str(libraries[0]), props['ENVIRONMENT'])
+                self.assertEqual(props['FAIL_REGULAR_EXPRESSION'], ['cannot be preloaded'])
+            valid = subprocess.run(['ctest', '--test-dir', build, '--output-on-failure'], capture_output=True, text=True)
+            self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
+            # Recreate the original missing-library error. The caller still
+            # exits zero, so only the real loader diagnostic rejects this run.
+            libraries[0].rename(libraries[0].with_suffix('.withheld'))
+            missing = subprocess.run(['ctest', '--test-dir', build, '--output-on-failure'], capture_output=True, text=True)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn('cannot be preloaded', missing.stdout + missing.stderr)
+            self.assertIn('3 tests failed out of 3', missing.stdout + missing.stderr)
+
     def test_tuning_fuzz_regression_is_in_the_qualification_aggregate(self):
         source = Path(__file__).resolve().parents[2]
         text = (source / 'Tests/Qualification.cmake').read_text()
