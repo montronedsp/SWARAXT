@@ -16,6 +16,14 @@ if(PROJECT_NAME STREQUAL "SwaraXT" AND PROJECT_IS_TOP_LEVEL)
             JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
         target_link_libraries(SwaraXTNativePluginHost PRIVATE juce::juce_audio_utils
             juce::juce_recommended_config_flags)
+        if(MSVC)
+            juce_add_console_app(SwaraXTWindowsHeadlessHost PRODUCT_NAME "SwaraXTWindowsHeadlessHost")
+            juce_generate_juce_header(SwaraXTWindowsHeadlessHost)
+            target_sources(SwaraXTWindowsHeadlessHost PRIVATE "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/WindowsHeadlessHost.cpp")
+            target_compile_definitions(SwaraXTWindowsHeadlessHost PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+            target_link_libraries(SwaraXTWindowsHeadlessHost PRIVATE juce::juce_audio_utils juce::juce_recommended_config_flags)
+            swaraxt_enable_warnings_as_errors(SwaraXTWindowsHeadlessHost)
+        endif()
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             # Xlib's process-global locale cache must outlive its users and
             # remain rooted when JUCE unloads its dynamic X11 symbol table.
@@ -29,7 +37,7 @@ if(PROJECT_NAME STREQUAL "SwaraXT" AND PROJECT_IS_TOP_LEVEL)
                 message(FATAL_ERROR "Independent native audio launchers require CMake 3.29+")
             endif()
             set(swaraxt_dual_reference_target SwaraXTDualSvfSection2Tests)
-            if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MSVC)
                 set(swaraxt_dual_reference_target SwaraXTDualSvfHeadlessTests)
             endif()
             foreach(target SwaraXTAudioParityTests ${swaraxt_dual_reference_target}
