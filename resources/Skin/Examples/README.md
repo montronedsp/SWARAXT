@@ -1,6 +1,6 @@
 # Custom skin artwork
 
-Use the standalone **SWARA XT Skin Editor** (`SwaraXtSkinEditor`) for a live colour preview, then Install for Plugin or Save As a `.txt` file. You can also load files from the plugin context menus.
+SWARA XT 1.3.0 packages include these examples and the `Decorations/` SVG collection. Load them directly through the synthesizer editor context menus; the separate Skin Editor application is not included.
 
 Right-click the plugin editor to load a user file. Installed copies live next to `Swara XT.settings`, under `skin_assets/`. They are not stored inside the plugin bundle.
 
@@ -40,3 +40,7 @@ Text keys: `primary_text`, `secondary_text`, `muted_text`, `module_header_text`,
 - A previously installed file that later fails to parse is ignored. The editor draws the built-in mark, decoration, background, or skin colours, and the menu shows “invalid — using built-in”.
 - A colour line with an unknown name or a bad hex value is skipped. The other lines still apply. If none of the lines are valid, the file is not installed.
 - Clear custom, or pick a built-in mark, decoration, background, or colour set, removes that user file.
+
+## Artwork licensing
+
+These examples and decorations retain CC-BY-SA-3.0 licensing. See the accompanying `ATTRIBUTION.md` and `CC-BY-SA-3.0.txt`. The software remains GPL-3.0-or-later.

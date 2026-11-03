@@ -55,8 +55,9 @@ pitch range apply; imports are validated before the active tuning changes.
   ring modulation, delay and feedback variants, looper and pitch processing.
 - **57 factory programs**, including 40 Shruthi patches, and user-preset save/load.
 - Five skins, three interface sizes, custom colours, artwork, decorations and
-  manufacturer marks. Source builds also include a separate **Skin Editor**
-  for palette preview, editing and colour-file save/load.
+  manufacturer marks. Version 1.3.0 packages include skin examples and decorations
+  for direct loading in the synthesizer. The separate **Skin Editor** remains
+  available in source but its application is not distributed.
 - VST3 and Standalone on Windows and Linux; macOS source builds also include AU.
 
 **New to SWARA XT? Read the [Quick Start Manual](docs/QUICKSTART.md).**
