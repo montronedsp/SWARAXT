@@ -87,7 +87,8 @@ Manual archives remain available from [GitHub Releases](https://github.com/montr
 ## Downloads
 
 The latest published release is [1.2.3](https://github.com/montronedsp/SWARAXT/releases/tag/v1.2.3).
-The feature descriptions above follow current source.
+The current source targets **1.3.0 (unreleased)**. The feature descriptions above
+follow current source; download links still refer to published releases.
 
 ### Linux
 
@@ -165,4 +166,4 @@ SWARA XT is an independent project and is not an official Mutable Instruments pr
 
 ---
 
-**SWARA XT 1.2.3 — MontroneDSP**
+**SWARA XT 1.3.0 candidate — MontroneDSP**

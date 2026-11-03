@@ -1,4 +1,4 @@
-Swara XT 1.2.3
+Swara XT 1.3.0
 MontroneDSP
 
 VST3 — per-user installation:
