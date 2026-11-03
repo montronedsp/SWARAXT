@@ -176,9 +176,19 @@ class ReferencePathTests(unittest.TestCase):
 class GateReportTests(unittest.TestCase):
     """SIMULATED_POLICY_TEST: report formatting, not Windows source/runtime admission."""
     def setUp(self):
-        self.source_guard = mock.patch("desktop.windows_reference_policy.require_frozen_source")
-        self.source_guard.start()
-        self.addCleanup(self.source_guard.stop)
+        # This fixture checks report emission only. Real current admission and
+        # native rejection controls live in test_windows_current_reference.
+        def admit_fixture(root, source, identity, build, manifest):
+            for name, entry in manifest['tests'].items():
+                admit_reference_record(root.parent, name, entry)
+            return manifest
+        for target, options in (
+                ('desktop.windows_current_reference.load_package', {'return_value': {}}),
+                ('desktop.windows_current_reference.context', {'return_value': {}}),
+                ('desktop.windows_current_reference.admit_reference', {'side_effect': admit_fixture})):
+            guard = mock.patch(target, **options)
+            guard.start()
+            self.addCleanup(guard.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.runner = Path(self.tmp.name)
         self.evidence = self.runner / 'evidence'
@@ -221,7 +231,8 @@ class GateReportTests(unittest.TestCase):
         if profile == 'Release':
             commands.extend({'name': name, 'exit_code': 0} for name in (
                 'configure-pluginval', 'build-pluginval', 'pluginval-tool-selftest', 'pluginval',
-                'configure-validator', 'build-validator', 'validator-selftest', 'validator-extensive'))
+                'configure-validator', 'build-validator', 'validator-selftest', 'validator-extensive',
+                'windows-native-reference-controls'))
             data['vst3sdk_tool'] = {'source_sha': SDK_SHA, 'binary_sha256': 'b' * 64}
             data['external_validators'] = {'vst3sdk_binary_sha256': 'b' * 64, 'sha256': 'a' * 64}
             data['pluginval_source'] = {
@@ -232,6 +243,8 @@ class GateReportTests(unittest.TestCase):
             }
             (directory / 'pluginval.log').write_text('Num plugins found: 1\nStrictness level: 10\nv1.2.3\nSUCCESS\n')
             (directory / 'validator-extensive.log').write_text('Result: 100 tests passed, 0 tests failed\n')
+        (reference / 'manifest.json').write_text(json.dumps(data['native_audio_reference']))
+        data['native_audio_reference_manifest_sha256'] = sha(reference / 'manifest.json')
         (directory / 'report.json').write_text(json.dumps(data))
 
     def files(self):
@@ -254,7 +267,7 @@ class GateReportTests(unittest.TestCase):
         self.assertNotIn('open(', inspect.getsource(gate))
 
     def test_failed_gate_emits_no_success_report(self):
-        record = next((self.evidence / 'msvc-Release' / 'native-reference').glob('*.json'))
+        record = self.evidence / 'msvc-Release' / 'native-reference' / (next(iter(TESTS)) + '.json')
         record.write_bytes(b'tampered')
         before = self.files()
         buffer = io.StringIO()

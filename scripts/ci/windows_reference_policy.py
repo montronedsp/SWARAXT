@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 MontroneDSP
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Windows policy preflight. Current MSVC references require native qualification.
+"""Preserved historical frozen policy and shared strict path/JSON helpers.
 
-No Linux fingerprint is a Windows authority. The legacy path is admissible only
-for its exact frozen drivers/headers; a current tree with changed fixtures fails
-before cloning/building/executing that reference path.
+Current native Windows admission lives in windows_current_reference.py. This
+module retains the old source identity and rejection controls as historical
+provenance; its frozen preflight is not the current Windows qualification gate.
 """
 import hashlib
 import json
