@@ -3,7 +3,7 @@
 ## Requirements
 
 - CMake 3.22 or newer
-- A C++17 compiler (Visual Studio 2022 on Windows; GCC/Clang on Linux/macOS)
+- A C++17 compiler (Visual Studio 2022 on Windows; GCC/Clang on Linux; Apple Clang on macOS)
 - Git
 - The exact platform JUCE pin below at `.cache/JUCE` (or set `SWARAXT_JUCE_DIR`)
 - The pinned Shruthi and avrlib submodules
@@ -87,7 +87,7 @@ Or:
 
 ## macOS
 
-Official formats in this tree are VST3 and Standalone (no AU target in CMake).
+macOS source builds include VST3 and AU, plus Standalone when enabled.
 
 ```bash
 cmake --preset mac-release

@@ -1,35 +1,26 @@
-# Roadmap
+# SWARA XT roadmap
 
-This roadmap describes broad priorities from October 2026 through at least
-October 2027. It is a planning guide, not a promise of particular release
-dates or features.
+The 1.3.0 stabilization is feature-frozen. The following priorities guide later
+development; phases indicate direction rather than delivery dates.
 
-## Ongoing priorities
+## Short term — post 1.3.0
 
-- Preserve stable, deterministic behavior through focused regression tests,
-  parity checks, and release validation.
-- Maintain the VST3 and Standalone builds across supported host, compiler, and
-  platform environments.
-- Refine sequencer/arpeggiator workflow, oscillator and modulation usability,
-  and preset/content maintenance when changes are supported by evidence.
-- Investigate measurable performance and CPU improvements without casually
-  changing established Shruthi-derived behavior.
-- Improve documentation, build reproducibility, provenance, licensing, and
-  validation coverage.
-- Improve practical accessibility and interface clarity where the existing UI
-  architecture supports it.
+- **Filter calibration consolidation.** Evaluate Paper and Eagle for sound,
+  musical usefulness, correctness and user value, with a view to one clearly
+  defined calibration if the comparison supports it.
+- **Sequencer random generators.** Explore additional pitch, rhythm, probability
+  and pattern-generation modes, with reproducible variations where useful.
+- **Skin Editor improvements.** Refine editing, controls, validation, visual
+  consistency and colour-file saving/loading.
 
-## Near and medium horizon
+## Medium term
 
-Over the next year, the project expects to focus on stability fixes, host and
-cross-platform compatibility, user-visible workflow polish, and maintenance of
-the current factory content and release process. Work is prioritized by
-reproducible defects, user impact, and available maintainer capacity.
+- **Performance optimization.** Profile DSP, voices, filters, modulation, GUI and
+  memory use, then address measured bottlenecks while preserving sound and compatibility.
+- **Signature artist presets.** Develop distinctive, expressive collections with
+  selected artists, with agreed attribution and distribution permissions.
 
-## Non-goals
+## Long term / exploration
 
-SWARA XT does not intend to become a network service, account system, cloud
-collaboration product, DAW, or general-purpose sample workstation. This roadmap
-does not promise a major rewrite of the Shruthi-derived source engine, a
-hardware-calibrated emulation claim, new commercial commitments, a specific
-plugin-format expansion, or localization in this period.
+- **iOS adaptation.** Evaluate AUv3, touch interaction, performance, preset
+  compatibility, host behavior and platform build/distribution requirements.
