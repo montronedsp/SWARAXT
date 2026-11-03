@@ -2,22 +2,62 @@
 
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=montronedsp_SWARAXT&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=montronedsp_SWARAXT) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15241/badge)](https://www.bestpractices.dev/projects/15241)
 
-**SWARA XT** is an open-source monophonic software synthesizer by MontroneDSP, derived in part from the Mutable Instruments Shruthi firmware.
-
-It combines a digital dual-oscillator voice with a resonant four-pole low-pass filter, modulation matrix, envelopes, LFOs, sequencer/arpeggiator, presets, and a scalable themed interface.
+**SWARA XT** is an open-source synthesizer by MontroneDSP, built around a
+Shruthi-derived monophonic voice. Two digital oscillators, nonlinear filtering
+and a twelve-slot modulation matrix give it a distinctive range of basses,
+leads and evolving textures. Its sixteen-step sequencer and microtuning system
+bring rhythm and pitch structure into the instrument itself.
 
 ## Features
 
-- Two digital oscillator sources with multiple oscillator models
-- Source mixer, sub oscillator, and noise
-- Resonant four-pole low-pass filter
-- Two envelopes and two LFOs
-- Free-running and host-synchronised modulation
-- Sequencer and arpeggiator
-- 12-slot modulation matrix
-- Factory and user presets
-- Multiple interface skins and sizes
-- VST3 and Standalone formats
+### Synthesis and filters
+
+The HD voice renderer runs at the native Shruthi rate, with multiple oscillator
+models, source mixing, a sub-oscillator and noise. The Classic path combines an
+IR3109-inspired nonlinear four-pole low-pass filter and VCA, with **High**,
+**Normal** and **Eco** quality settings.
+
+The experimental **Dual SVF** offers Section 1, Serial and Parallel routing,
+LP/BP/HP responses, Paper/Eagle calibration and separate Section 2 controls.
+Follow, Independent and Relative modes set how the second section relates to
+the first. Its front-panel controls are manual and session-local; a fresh
+instance starts with Classic. Bank changes use a brief fade through silence.
+
+### Modulation and sequencing
+
+Two envelopes, two LFOs and dedicated filter ENV/LFO controls work alongside
+twelve bipolar modulation routes. The paged matrix presents three routes at
+a time, with a clear zero-depth indication and sources including envelopes,
+LFOs, velocity, note and Mod Wheel.
+
+The sequencer/arpeggiator provides sixteen steps, rests, ties, velocity and
+controller values, host synchronization, sequence randomization and
+**Sequence Lock**. Pitch modes are **LEGACY**, **LINEAR**, **SCALE** and
+**QUANTIZED CV**. Optional MIDI output carries LEGACY notes or the nearest
+12-TET notes from QUANTIZED CV; LINEAR and SCALE drive the internal voice.
+
+### Microtuning
+
+The shared tuning system includes **37 factory tunings**: equal divisions,
+just intonation, Pythagorean scales, historical temperaments and non-octave
+systems such as Bohlen–Pierce. Import Scala **.scl** files with an optional
+**.kbm** keyboard mapping, or load **.swt** tables. Imported tuning data travels
+with saved projects and user presets.
+
+SCALE sequences play signed scale degrees; QUANTIZED CV snaps continuous
+pitch to the active tuning. **INPUT TUNE** applies that same tuning to MIDI
+input in TUNED or QUANTIZED mode. Keyboard mappings and the voice's playable
+pitch range apply; imports are validated before the active tuning changes.
+
+### Effects, presets and customization
+
+- Sixteen DSP-board effects plus **Off**, including distortion, crush, comb,
+  ring modulation, delay and feedback variants, looper and pitch processing.
+- **57 factory programs**, including 40 Shruthi patches, and user-preset save/load.
+- Five skins, three interface sizes, custom colours, artwork, decorations and
+  manufacturer marks. Source builds also include a separate **Skin Editor**
+  for palette preview, editing and colour-file save/load.
+- VST3 and Standalone on Windows and Linux; macOS source builds also include AU.
 
 **New to SWARA XT? Read the [Quick Start Manual](docs/QUICKSTART.md).**
 
@@ -45,6 +85,9 @@ This installs:
 Manual archives remain available from [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases).
 
 ## Downloads
+
+The latest published release is [1.2.3](https://github.com/montronedsp/SWARAXT/releases/tag/v1.2.3).
+The feature descriptions above follow current source.
 
 ### Linux
 
@@ -77,18 +120,16 @@ Platform-specific compatibility may depend on the operating system, host, and lo
 
 ## Building
 
-Building SWARA XT requires CMake 3.22 or newer, a C++17-compatible compiler, the exact platform JUCE revision listed below, Git, and the pinned Shruthi source used by the project.
+Source builds require CMake 3.22+, a C++17 compiler, Git and the pinned Shruthi
+submodules. Use Visual Studio 2022 on Windows, GCC/Clang on Linux or Apple Clang on macOS.
 
-Linux requires official JUCE 9.0.4 at `3fb5cbc0340758596dac39f7c8de47d562b4896e`.
-Windows and macOS retain JUCE 9.0.1 at `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8`.
-Pass the immutable checkout with `-DSWARAXT_JUCE_DIR=/path/to/JUCE`.
-Linux CMake verifies its revision and source identity, generates the ChannelType/WAVE
-compatibility sources inside the build tree, and retains the MIDI player reserve policy.
-Do not prepatch the input JUCE checkout. Linux VST3 links isolate the SharedCode
-archive's bundled implementation symbols while retaining the required plugin exports.
+| Platform | JUCE revision |
+|---|---|
+| Linux | 9.0.4 — `3fb5cbc0340758596dac39f7c8de47d562b4896e` |
+| Windows / macOS | 9.0.1 — `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` |
 
-
-See [BUILDING.md](BUILDING.md) for build instructions.
+Set `SWARAXT_JUCE_DIR` to the matching pristine checkout. See
+[BUILDING.md](BUILDING.md) for dependencies, presets and platform instructions.
 
 ## License
 
