@@ -127,9 +127,17 @@ native qualification or release approval.
 
 Before any hosted Windows qualification run, verify the actual `windows-2022`
 runner's selected `cl.exe` identity against the current Windows reference
-package. Its qualified compiler is MSVC 19.38.33145.0 / v143 14.38.33130, with
-SHA-256 `d66e441c8ef64b7f52553beafcbd0c53decff0b0ba4e0896a7e0671d72a198c9`.
-A runner label alone cannot establish that identity. Keep the compiler checks
-in `scripts/ci/windows_current_reference.py`; a mismatch requires review,
-not a bypass or automatic reference regeneration. Existing Windows evidence
-remains bound to its original source revision.
+admission in `scripts/ci/windows_current_reference.py`. Fresh hosted qualification
+admits standard MSVC 19.44.35229.0 / toolset 14.44.35207, SHA-256
+`fe251ef50a1545b1b0835ee17b1e785459712b38d79e45b5c1d3d28970a36619`.
+Use the normal Visual Studio environment; no old-toolset installation is needed.
+The preflight records and verifies the actual compiler version, path and hash;
+native compile commands and the final gate independently enforce the same hash.
+A runner label alone cannot establish that identity. A mismatch requires review,
+not a bypass or automatic reference regeneration.
+
+The immutable 72-case Windows audio package keeps its original MSVC 19.38
+provenance and all expected values. Admitting the hosted compiler permits fresh
+execution; it does not prove those audio results. Release, Debug, ASan, native
+host/validators and the final gate must pass on the new candidate. Existing
+Windows evidence remains bound to its original source revision.

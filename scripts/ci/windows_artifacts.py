@@ -276,7 +276,7 @@ def admit_profile(root, source, identity):
     require(proof == a['native_proof'] and set(proof) == {'compile_commands_sha256', 'compiler_sha256',
             'juce_sha', 'cmake_cache_sha256', 'configuration', 'translation_units', 'cpp_exception_unwinding',
             'asan_all_units', 'juce_pristine', 'executables'}, 'Missing native build-provenance proof')
-    require(proof['compiler_sha256'] == package['compiler_sha256']
+    require(proof['compiler_sha256'] == current.ADMITTED_COMPILER_SHA256
             and proof['juce_sha'] == package['reference_juce_sha'] and proof['juce_pristine'] is True
             and proof['cpp_exception_unwinding'] is True and type(proof['translation_units']) is int
             and proof['translation_units'] >= 10 and valid_hash(proof['cmake_cache_sha256'])
