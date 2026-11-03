@@ -17,6 +17,7 @@ from native_reference import WINDOWS_BASELINE_SHA, TESTS, validate_windows_outpu
 import current_reference
 import windows_reference_policy
 import windows_current_reference
+import windows_artifacts
 from reference_metadata import apply as apply_reference_metadata
 from linux_dependency import apply as apply_linux_dependency
 from pluginval_source import (apply as apply_pluginval_source, SOURCE_SHA as PLUGINVAL_SHA,
@@ -514,6 +515,11 @@ class Campaign(Evidence):
             if self.output(['git', 'status', '--porcelain'], SOURCE):
                 raise RuntimeError('Source checkout changed during qualification')
             self.report['decision'] = 'PASS'
+            if self.system == 'Windows':
+                self.save()
+                identity = windows_current_reference.context(SOURCE, self.report['source_sha'],
+                    self.env['SWARAXT_NATIVE_PROFILE'], self.report['run_id'])
+                windows_artifacts.export(self.root, SOURCE, identity, build)
         except BaseException as error:
             self.report.update(decision='FAIL', failure=str(error))
             raise
@@ -596,7 +602,10 @@ def gate(system, evidence, context=None):
         'trusted_root': os.environ['RUNNER_TEMP']}
     evidence = contained_runner_path(evidence, True, context['trusted_root'])
     if system == 'Windows':
-        windows_current_reference.load_package(SOURCE)
+        result = windows_artifacts.admit_matrix(evidence, SOURCE, context['source_sha'], context['run_id'],
+            {'preflight': os.environ.get('PREFLIGHT_RESULT'), 'native': os.environ.get('NATIVE_RESULT')})
+        sys.stdout.write(json.dumps(result, indent=2) + '\n')
+        return
     expected = set(LINUX_PROFILES if system == 'Linux' else WINDOWS_PROFILES)
     results = {}
     for path in evidence.rglob('report.json'):

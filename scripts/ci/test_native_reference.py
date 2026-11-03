@@ -178,17 +178,18 @@ class GateReportTests(unittest.TestCase):
     def setUp(self):
         # This fixture checks report emission only. Real current admission and
         # native rejection controls live in test_windows_current_reference.
-        def admit_fixture(root, source, identity, build, manifest):
-            for name, entry in manifest['tests'].items():
-                admit_reference_record(root.parent, name, entry)
-            return manifest
-        for target, options in (
-                ('desktop.windows_current_reference.load_package', {'return_value': {}}),
-                ('desktop.windows_current_reference.context', {'return_value': {}}),
-                ('desktop.windows_current_reference.admit_reference', {'side_effect': admit_fixture})):
-            guard = mock.patch(target, **options)
-            guard.start()
-            self.addCleanup(guard.stop)
+        def admit_fixture(evidence, source, candidate, run_id, jobs):
+            # Formatting-only seam. Full current artifact/provenance controls
+            # exercise the real verifier in test_windows_artifacts.
+            for report in evidence.glob('*/report.json'):
+                data = json.loads(report.read_text())
+                for name, entry in data['native_audio_reference']['tests'].items():
+                    admit_reference_record(report.parent, name, entry)
+            return {'decision': 'WINDOWS_PORTABLE_GATE_PASS', 'source_sha': candidate,
+                    'run_id': run_id, 'profiles': {c + '-' + p: 'PASS' for c, p in WINDOWS_PROFILES}}
+        guard = mock.patch('desktop.windows_artifacts.admit_matrix', side_effect=admit_fixture)
+        guard.start()
+        self.addCleanup(guard.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.runner = Path(self.tmp.name)
         self.evidence = self.runner / 'evidence'
@@ -259,7 +260,7 @@ class GateReportTests(unittest.TestCase):
         report = json.loads(text)
         self.assertTrue(text.endswith('\n'))
         self.assertEqual(text, json.dumps(report, indent=2) + '\n')
-        self.assertEqual(report['decision'], 'NATIVE_CI_MATRIX_PASS')
+        self.assertEqual(report['decision'], 'WINDOWS_PORTABLE_GATE_PASS')
         self.assertEqual(report['source_sha'], self.context['source_sha'])
         self.assertEqual(set(report['profiles']), {'msvc-Release', 'msvc-Debug', 'msvc-asan'})
         self.assertEqual(self.files(), before)
@@ -274,7 +275,7 @@ class GateReportTests(unittest.TestCase):
         with redirect_stdout(buffer):
             with self.assertRaisesRegex(RuntimeError, 'Changed native reference record'):
                 gate('Windows', self.evidence, context=self.context)
-        self.assertNotIn('NATIVE_CI_MATRIX_PASS', buffer.getvalue())
+        self.assertNotIn('WINDOWS_PORTABLE_GATE_PASS', buffer.getvalue())
         self.assertEqual(buffer.getvalue(), '')
         self.assertEqual(self.files(), before)
 
@@ -292,7 +293,7 @@ class GateReportTests(unittest.TestCase):
             parser.parse_args(['gate','--platform','Windows','--evidence',str(self.runner/'missing'),
                                '--output',str(target)])
         self.assertEqual(failure.exception.code,2)
-        self.assertNotIn('NATIVE_CI_MATRIX_PASS',output.getvalue())
+        self.assertNotIn('WINDOWS_PORTABLE_GATE_PASS',output.getvalue())
         self.assertFalse(target.exists())
 
 
