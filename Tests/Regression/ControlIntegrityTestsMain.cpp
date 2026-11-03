@@ -1,3 +1,4 @@
+#include "../Support/TestEnvironment.h"
 // Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
 #include <JuceHeader.h>
 #include "Plugin/PluginProcessor.h"
@@ -47,7 +48,7 @@ void numeric(){
 }
 void text(){
     P p;auto* a=p.getApvts().getParameter(swaraxt::IDs::filterCutoff);
-    for(const auto& pair:std::array<std::pair<const char*,float>,14>{{{"2000",2000},{"2000 Hz",2000},{"2k",2000},{"2 k",2000},{"2khz",2000},{"2 kHz",2000},{"2.5k",2500},{"2.5 kHz",2500},{"10",10},{"20000",20000},{" 2 KHZ ",2000},{"2e3",2000},{"+2k",2000},{"30000",20000}}}){
+    for(const auto& pair:std::array<std::pair<const char*,float>,14>{{{"2000",2000.0f},{"2000 Hz",2000.0f},{"2k",2000.0f},{"2 k",2000.0f},{"2khz",2000.0f},{"2 kHz",2000.0f},{"2.5k",2500.0f},{"2.5 kHz",2500.0f},{"10",10.0f},{"20000",20000.0f},{" 2 KHZ ",2000.0f},{"2e3",2000.0f},{"+2k",2000.0f},{"30000",20000.0f}}}){
         const auto n=a->getValueForText(pair.first);const auto hz=a->convertFrom0to1(n);
         check(std::isfinite(n)&&n>=0&&n<=1&&std::abs(hz-pair.second)<.03f,"production cutoff physical/normalized value");
         const auto back=a->convertFrom0to1(a->getValueForText(a->getText(n,40)));
@@ -68,7 +69,7 @@ Capture render(int dest,int level,int source,int amount,int rows){
     p.engineForTests().reset();p.engineForTests().applyParameters();
     Capture c;juce::AudioBuffer<float>b(2,128);juce::MidiBuffer m;m.ensureSize(2048);
     for(int block=0;block<16;++block){m.clear();if(!block)m.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);p.processBlock(b,m);for(int i=0;i<128;++i){auto v=b.getSample(0,i);check(std::isfinite(v),"mixer finite actual processor audio");c.audio[size_t(block*128+i)]=v;c.peak=std::max(c.peak,double(std::abs(v)));c.rms+=double(v)*v;}}
-    if(const char* folder=std::getenv("SWARA_CONTROL_CAPTURE_DIR")){
+    if(const char* folder=swaraxt::test::environment("SWARA_CONTROL_CAPTURE_DIR")){
         const auto file=juce::File(juce::String(folder)).getChildFile(juce::String(dest)+"-"+juce::String(level)+"-"+juce::String(source)+"-"+juce::String(amount)+"-"+juce::String(rows)+".f32");
         check(file.replaceWithData(c.audio.data(),sizeof(c.audio)),"write private parity capture");
     }
@@ -165,7 +166,7 @@ std::array<float,4096> factoryAudio(int index,bool zeroRow){
     for(int block=0;block<32;++block){midi.clear();if(block==0)midi.addEvent(juce::MidiMessage::noteOn(1,60,juce::uint8(100)),0);if(block==24)midi.addEvent(juce::MidiMessage::noteOff(1,60),0);
         p.processBlock(buffer,midi);for(int i=0;i<128;++i){const auto v=buffer.getSample(0,i);check(std::isfinite(v),"factory audio finite");output[size_t(block*128+i)]=v;}
     }
-    if(const char* folder=std::getenv("SWARA_CONTROL_CAPTURE_DIR"))check(juce::File(juce::String(folder)).getChildFile("factory-"+juce::String(index)+"-"+juce::String(int(zeroRow))+".f32").replaceWithData(output.data(),sizeof(output)),"save private factory comparison");
+    if(const char* folder=swaraxt::test::environment("SWARA_CONTROL_CAPTURE_DIR"))check(juce::File(juce::String(folder)).getChildFile("factory-"+juce::String(index)+"-"+juce::String(int(zeroRow))+".f32").replaceWithData(output.data(),sizeof(output)),"save private factory comparison");
     return output;
 }
 void factoryImport(){
@@ -246,7 +247,7 @@ void upstreamParameters(){
     }
 }
 void legacyState(bool write){
-    const char* folder=std::getenv("SWARA_CONTROL_CAPTURE_DIR");if(!folder){check(false,"private state fixture folder required");return;}
+    const char* folder=swaraxt::test::environment("SWARA_CONTROL_CAPTURE_DIR");if(!folder){check(false,"private state fixture folder required");return;}
     for(int value:{0,1,32,63,64,96,127}){
         pump();P p;const auto file=juce::File(juce::String(folder)).getChildFile("state-"+juce::String(value)+".bin");juce::MemoryBlock bytes;
         if(write){set(p,swaraxt::IDs::mixSub,float(value));set(p,swaraxt::IDs::mixNoise,float(value));p.getStateInformation(bytes);check(file.replaceWithData(bytes.getData(),bytes.getSize()),"save real baseline state payload");}
@@ -270,7 +271,7 @@ void parity(){
             p.processBlock(audio,midi);for(int i=0;i<n;++i){const float v=audio.getSample(0,i);check(std::isfinite(v),"unaffected path finite audio");output[size_t(offset+i)]=v;energy+=double(v)*v;}
         }
         check(energy>1.e-6,"unaffected comparison contains audible content");
-        if(const char* folder=std::getenv("SWARA_CONTROL_CAPTURE_DIR")){
+        if(const char* folder=swaraxt::test::environment("SWARA_CONTROL_CAPTURE_DIR")){
             const auto name="parity-"+juce::String(int(rate))+"-"+juce::String(block)+"-"+juce::String(bank)+"-"+juce::String(quality)+"-"+juce::String(fx)+".f32";
             check(juce::File(juce::String(folder)).getChildFile(name).replaceWithData(output.data(),sizeof(output)),"save private independent binary comparison");
         }

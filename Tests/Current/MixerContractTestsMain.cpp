@@ -29,7 +29,7 @@ Capture currentMixedCapture(int dest,int level,const int (&amounts)[4]) {
         }
     }
     result.dst=p.engineForTests().shruthiPart().voice().debug_destination14(uint8_t(dest));
-    if(const char* folder=std::getenv("SWARA_CONTROL_CAPTURE_DIR")) {
+    if(const char* folder=swaraxt::test::environment("SWARA_CONTROL_CAPTURE_DIR")) {
         juce::String name="mixed-"+juce::String(dest)+"-"+juce::String(level);
         for(int amount:amounts)name+="-"+juce::String(amount);
         check(juce::File(juce::String(folder)).getChildFile(name+".f32").replaceWithData(result.audio.data(),sizeof(result.audio)),"save mixed-row private capture");

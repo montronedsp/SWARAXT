@@ -468,6 +468,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(SwaraXTDualSvfHeadlessTests PROPERTIES LABELS "headless;audio-reference" TIMEOUT 300)
     target_link_options(SwaraXTDualSvfHeadlessTests PRIVATE
         "-Wl,--wrap=_ZN4juce9ComponentC1Ev" "-Wl,--wrap=_ZN4juce9ComponentC2Ev")
+elseif(MSVC)
+    swaraxt_add_plugin_console_test(SwaraXTDualSvfHeadlessTests Filter/DualSvfWindowsHeadlessTestsMain.cpp)
+    set_source_files_properties(Filter/DualSvfWindowsHeadlessTestsMain.cpp PROPERTIES COMPILE_DEFINITIONS SWARAXT_DUAL_SVF_HEADLESS=1)
+    target_compile_definitions(SwaraXTDualSvfHeadlessTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+    swaraxt_enable_warnings_as_errors(SwaraXTDualSvfHeadlessTests)
+    set_tests_properties(SwaraXTDualSvfHeadlessTests PROPERTIES LABELS "headless;audio-reference" TIMEOUT 300)
 endif()
 
 swaraxt_add_plugin_console_test(SwaraXTShruthiFactoryPresetTests Presets/ShruthiFactoryPresetTestsMain.cpp)
