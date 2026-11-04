@@ -15,6 +15,13 @@
 #include <cstring>
 #include <filesystem>
 
+#if JUCE_WINDOWS
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 bool SwaraXtAudioProcessor::importTuningFile(const juce::File& file, const juce::File& keyboard,
                                             juce::String& error)
 {
@@ -770,7 +777,22 @@ bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
 #endif
     if (overwrite)
     {
+#if JUCE_WINDOWS
+        // ReplaceFileW rejects symlinks. Rename the complete same-directory
+        // temporary over the entry itself, without a copy/delete fallback.
+        bool published = false;
+        for (int attempt = 0; attempt < 5 && ! published; ++attempt)
+        {
+            published = MoveFileExW(temporary.getFile().getFullPathName().toWideCharPointer(),
+                                    target.getFullPathName().toWideCharPointer(),
+                                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+            if (! published)
+                juce::Thread::sleep(100);
+        }
+        if (! published)
+#else
         if (! temporary.overwriteTargetFileWithTemporary())
+#endif
         {
             error = "Could not write the preset safely.";
             return false;
