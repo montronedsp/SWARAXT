@@ -17,7 +17,6 @@
 #include <cstdio>
 #include <thread>
 #include <map>
-#include "../Support/PresetFileDiagnostic.h"
 
 namespace swaraxt {
 struct SequencerMidiTestAccess {
@@ -290,33 +289,19 @@ void files(){
     check(p.saveUserPreset("Valid.name",false,error),"ordinary embedded dots remain valid");
     const auto outside=dir.getSiblingFile(dir.getFileName()+"-outside");
     check(outside.replaceWithText("outside sentinel"),"isolated symlink target fixture");
-    if(outside.createSymbolicLink(dir.getChildFile("Link.swaraxtpreset"),false)){
+    const auto link=dir.getChildFile("Link.swaraxtpreset");
+    const bool linkCreated=outside.createSymbolicLink(link,false);
+#if JUCE_WINDOWS
+    check(linkCreated,"Windows symbolic-link fixture must execute");
+#endif
+    if(linkCreated){
         check(!p.saveUserPreset("Link",false,error)&&outside.loadFileAsString()=="outside sentinel","create-only cannot follow or overwrite a symlink");
-#if JUCE_WINDOWS && !defined(SWARA_CONTROL_BASELINE)
-        presetFileDiagnostic::Capture capture{dir, {}};
-        if(presetFileDiagnostic::enabled()) {
-            presetFileDiagnostic::emit("link_before",presetFileDiagnostic::file(dir.getChildFile("Link.swaraxtpreset")));
-            presetFileDiagnostic::emit("outside_before",presetFileDiagnostic::file(outside));
-            p.setStatePublicationHook(presetFileDiagnostic::Capture::hook,&capture);
-        }
-#endif
         const bool linkSaved=p.saveUserPreset("Link",true,error);
-#if JUCE_WINDOWS && !defined(SWARA_CONTROL_BASELINE)
-        if(presetFileDiagnostic::enabled()) {
-            const auto lastError=GetLastError();
-            p.setStatePublicationHook(nullptr,nullptr);
-            auto* result=new juce::DynamicObject;
-            result->setProperty("saved",linkSaved);result->setProperty("error",error);result->setProperty("post_save_last_error",static_cast<int>(lastError));
-            presetFileDiagnostic::emit("save_result",juce::var(result));
-            presetFileDiagnostic::emit("link_after",presetFileDiagnostic::file(dir.getChildFile("Link.swaraxtpreset")));
-            presetFileDiagnostic::emit("outside_after",presetFileDiagnostic::file(outside));
-            for(const auto& temporary:capture.temporaries) presetFileDiagnostic::emit("temporary_after_save",presetFileDiagnostic::file(temporary));
-            const auto probeDirectory=dir.getChildFile("win32-replacement-probe");
-            check(probeDirectory.createDirectory().wasOk(),"owned native diagnostic directory");
-            for(const auto* operation:{"ReplaceFileW","MoveFileExW","std_filesystem_rename"}) presetFileDiagnostic::probe(probeDirectory,operation);
-        }
-#endif
-        check(linkSaved&&outside.loadFileAsString()=="outside sentinel","overwrite replaces link entry and preserves outside target");
+        const bool outsidePreserved=outside.loadFileAsString()=="outside sentinel";
+        if(!linkSaved||!outsidePreserved)std::printf("Symlink overwrite: saved=%d outsidePreserved=%d error=%s\n",int(linkSaved),int(outsidePreserved),error.toRawUTF8());
+        check(linkSaved&&outsidePreserved,"overwrite replaces link entry and preserves outside target");
+        check(!link.isSymbolicLink(),"published preset replaces the symbolic-link entry");
+        P linkReader;check(linkReader.loadPresetEntry({"Link",link,-1,false},error),"replaced link contains a complete loadable preset");
     }else std::puts("NOT_RUN: symlink fixture unavailable on this filesystem/account");
     check(outside.deleteFile(),"remove own outside target fixture");
     set(p,swaraxt::IDs::osc1Param,17);check(p.saveUserPreset("Keep",false,error),"fresh save");const auto target=dir.getChildFile("Keep.swaraxtpreset");const auto first=target.loadFileAsString();
