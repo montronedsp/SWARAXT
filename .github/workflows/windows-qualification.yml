@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 MontroneDSP
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Windows VST3 qualification
-run-name: SWARA XT Windows qualification ${{ inputs.source_sha }}
+run-name: SWARA XT Windows ${{ inputs.preset_files_mode || 'qualification' }} ${{ inputs.source_sha }}
 on:
   workflow_dispatch:
     inputs:
@@ -9,6 +9,11 @@ on:
         description: Exact reviewed revision, must match the selected ref
         required: true
         type: string
+      preset_files_mode:
+        description: Temporary focused preset filesystem diagnostic; qualification remains the default
+        type: choice
+        default: qualification
+        options: [qualification, diagnose, verify]
   workflow_call:
     inputs:
       source_sha:
@@ -54,6 +59,7 @@ jobs:
           cd scripts/ci
           python -m unittest test_common test_native_reference test_windows_artifacts
   native:
+    if: inputs.preset_files_mode != 'diagnose' && inputs.preset_files_mode != 'verify'
     needs: preflight
     runs-on: windows-2022
     timeout-minutes: 350
@@ -120,8 +126,51 @@ jobs:
             ${{ runner.temp }}/swara-native/swaraxt-*.sha256
           if-no-files-found: error
           retention-days: 14
+  preset-files:
+    if: inputs.preset_files_mode == 'diagnose' || inputs.preset_files_mode == 'verify'
+    needs: preflight
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(inputs.preset_files_mode == 'diagnose' && '["Release"]' || '["Release","Debug","asan"]') }}
+    env:
+      REVIEWED_SHA: ${{ inputs.source_sha }}
+      PROFILE: ${{ matrix.profile }}
+      PRESET_FILES_MODE: ${{ inputs.preset_files_mode }}
+    steps:
+      - name: Preserve LF checkout identity
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Pinned build frontends
+        shell: bash
+        run: |
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+          python -m pip install --only-binary :all: --require-hashes -r scripts/ci/requirements-frontend.txt
+      - name: Existing filesystem target only
+        shell: bash
+        run: python scripts/ci/windows_preset_files.py --profile "$PROFILE" --mode "$PRESET_FILES_MODE" --root "$RUNNER_TEMP/preset-files"
+      - name: Focused evidence including original failure
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: preset-files-${{ matrix.profile }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/preset-files/*.json
+            ${{ runner.temp }}/preset-files/*.log
+            ${{ runner.temp }}/preset-files/*.xml
+            ${{ runner.temp }}/preset-files/build/compile_commands.json
+          if-no-files-found: warn
+          retention-days: 14
   qualification-gate:
-    if: always()
+    if: ${{ always() && inputs.preset_files_mode != 'diagnose' && inputs.preset_files_mode != 'verify' }}
     needs: [preflight, native]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
