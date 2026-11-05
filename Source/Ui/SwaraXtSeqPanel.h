@@ -119,6 +119,8 @@ class SeqPanel : public juce::Component,
     void updateModeEmphasis();
     void timerCallback() override;
     void refreshSequenceControls();
+    void refreshStepButtons(const SequenceSnapshot& snapshot);
+    void refreshPitchModeControls(const SequenceSnapshot& snapshot, uint8_t dataA);
     void writeSelectedStep(uint8_t dataA, uint8_t dataB);
     void sequenceStateChanged() override;
     void handleAsyncUpdate() override;

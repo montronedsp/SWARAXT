@@ -4,6 +4,7 @@
 #include "Ui/SwaraXtSeqPanel.h"
 #include "Ui/SwaraXtTypography.h"
 
+#include "Engine/SequencerMidiRoute.h"
 #include "Plugin/PluginProcessor.h"
 #include "Tuning/ScalePitch.h"
 
@@ -475,6 +476,30 @@ void SeqPanel::refreshSequenceControls()
                                                         juce::dontSendNotification);
     selectors_[kPattern]->refreshDescription();
 
+    refreshStepButtons(snapshot);
+
+    const auto selected = snapshot.steps[static_cast<size_t>(selectedStep_)];
+    const uint8_t dataA = SequenceSnapshot::dataA(selected);
+    const uint8_t dataB = SequenceSnapshot::dataB(selected);
+    pitchModeBox_.setSelectedId(snapshot.pitchMode + 1, juce::dontSendNotification);
+    if (processor_ != nullptr)
+    {
+        const int active = processor_->activeBuiltinTuning();
+        tuningBox_.setSelectedId(active >= 0 ? active + 1 : 100, juce::dontSendNotification);
+        tuningBox_.setTooltip("Active tuning: " + processor_->activeTuningName());
+    }
+    refreshPitchModeControls(snapshot, dataA);
+    velocity_.slider().setValue((dataB & 0x70) >> 4, juce::dontSendNotification);
+    controller_.slider().setValue(dataB & 0x0f, juce::dontSendNotification);
+    event_.combo().setSelectedItemIndex((dataA & 0x80) == 0 ? 0 : ((dataB & 0x80) != 0 ? 2 : 1),
+                                        juce::dontSendNotification);
+    event_.refreshDescription();
+    refreshingSequenceControls_ = false;
+    updateModeEmphasis();
+}
+
+void SeqPanel::refreshStepButtons(const SequenceSnapshot& snapshot)
+{
     for (int i = 0; i < SequenceSnapshot::kNumSteps; ++i)
     {
         const auto packed = snapshot.steps[static_cast<size_t>(i)];
@@ -493,19 +518,15 @@ void SeqPanel::refreshSequenceControls()
             + ", velocity " + juce::String((b >> 4) & 7) + ", value " + juce::String(b & 15));
         button.setToggleState(i == selectedStep_, juce::dontSendNotification);
     }
+}
 
-    const auto selected = snapshot.steps[static_cast<size_t>(selectedStep_)];
-    const uint8_t dataA = SequenceSnapshot::dataA(selected);
-    const uint8_t dataB = SequenceSnapshot::dataB(selected);
-    pitchModeBox_.setSelectedId(snapshot.pitchMode + 1, juce::dontSendNotification);
-    if (processor_ != nullptr)
+void SeqPanel::refreshPitchModeControls(const SequenceSnapshot& snapshot, uint8_t dataA)
+{
+    const auto route = swaraxt::routeFromStoredPitchMode(snapshot.pitchMode);
+
+    if (route == swaraxt::SequencerPitchRoute::linear)
     {
-        const int active = processor_->activeBuiltinTuning();
-        tuningBox_.setSelectedId(active >= 0 ? active + 1 : 100, juce::dontSendNotification);
-        tuningBox_.setTooltip("Active tuning: " + processor_->activeTuningName());
-    }
-    if (snapshot.pitchMode == 1)
-    {
+        // Linear CV.
         note_.setLabel("CV");
         note_.slider().setRange(0.0, 127.0, 0.01);
         note_.slider().textFromValueFunction = [](double value) {
@@ -526,16 +547,18 @@ void SeqPanel::refreshSequenceControls()
         midiOutButton_.setTooltip(
             "MIDI OUT is on, but LINEAR does not emit notes. External notes from the previous mode are released.");
     }
-    else if (snapshot.pitchMode == 3)
+    else if (route == swaraxt::SequencerPitchRoute::quantizedCv)
     {
+        // Quantized CV: shares CV slider setup with Linear CV.
         note_.setLabel("CV");
         note_.slider().setRange(0.0, 127.0, 0.01);
         note_.slider().textFromValueFunction = [](double value) {
             return juce::String(value, 2);
         };
-        const auto units = snapshot.freePitch[static_cast<size_t>(selectedStep_)];
-        note_.slider().setValue(units / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone),
+        note_.slider().setValue(snapshot.freePitch[static_cast<size_t>(selectedStep_)]
+                                    / static_cast<double>(swaraxt::FreeCvPitch::kUnitsPerSemitone),
                                 juce::dontSendNotification);
+        const auto units = snapshot.freePitch[static_cast<size_t>(selectedStep_)];
         juce::String quantized = "no scale pitch";
         if (processor_ != nullptr)
         {
@@ -559,8 +582,9 @@ void SeqPanel::refreshSequenceControls()
         midiOutButton_.setTooltip(
             "QUANTIZED CV emits the nearest 12-TET MIDI note of the tuned frequency. Exact Scala pitch is internal only.");
     }
-    else if (snapshot.pitchMode == 2)
+    else if (route == swaraxt::SequencerPitchRoute::scale)
     {
+        // Scale.
         note_.setLabel("DEGREE");
         note_.slider().setRange(-swaraxt::SequenceState::kScaleDegreeLimit,
                                 swaraxt::SequenceState::kScaleDegreeLimit, 1.0);
@@ -581,6 +605,9 @@ void SeqPanel::refreshSequenceControls()
     }
     else
     {
+        // Legacy-style presentation. Invalid stored modes (route == invalid) fall back here
+        // visually but remain MIDI-silent per the routing policy; they never become
+        // Legacy note emitters.
         note_.setLabel("NOTE");
         note_.slider().setRange(0.0, 127.0, 1.0);
         note_.slider().textFromValueFunction = nullptr;
@@ -597,13 +624,6 @@ void SeqPanel::refreshSequenceControls()
         midiOutButton_.setTooltip(
             "Send LEGACY sequencer notes to the host MIDI output. LINEAR and SCALE stay silent.");
     }
-    velocity_.slider().setValue((dataB & 0x70) >> 4, juce::dontSendNotification);
-    controller_.slider().setValue(dataB & 0x0f, juce::dontSendNotification);
-    event_.combo().setSelectedItemIndex((dataA & 0x80) == 0 ? 0 : ((dataB & 0x80) != 0 ? 2 : 1),
-                                        juce::dontSendNotification);
-    event_.refreshDescription();
-    refreshingSequenceControls_ = false;
-    updateModeEmphasis();
 }
 
 void SeqPanel::writeSelectedStep(uint8_t dataA, uint8_t dataB)
