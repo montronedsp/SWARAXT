@@ -12,7 +12,16 @@
 #pragma warning(disable : 4100)
 #endif
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 #include "../../../../../third_party/shruthi-1/midi/midi.h"
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #ifdef _MSC_VER
 #pragma warning(pop)

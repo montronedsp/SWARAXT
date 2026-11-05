@@ -37,7 +37,7 @@ namespace shruthi {
 
 #define BEGIN_SAMPLE_LOOP \
   uint24c_t phase; \
-  uint24_t phase_increment_int; \
+  [[maybe_unused]] uint24_t phase_increment_int; \
   phase_increment_int.integral = phase_increment_.integral; \
   phase_increment_int.fractional = phase_increment_.fractional; \
   phase.integral = phase_.integral; \
@@ -142,17 +142,17 @@ void Oscillator::RenderSimpleWavetable(uint8_t* buffer) {
     uint8_t sample = InterpolateTwoTables(
         wave_1, wave_2,
         phase.integral, gain_1, gain_2);
-    // To produce pulse width-modulated variants, we shift (saw) or set to
-    // a constant (triangle) a portion of the waveform within an increasingly
-    // large fraction of the period. Note that this is pure waveshapping - the
-    // phase information is not used to determine when/where to shift.
-    //
-    //     /|            /|          /\             /\
-    //    / |           / |         /  \           /  \
-    //   /  |    =>  /|/  |        /    \  =>  ___/    \
-    //  /   |       /     |/      /      \
-    // /    |/                   /        \
-    //
+    /* To produce pulse width-modulated variants, we shift (saw) or set to
+     * a constant (triangle) a portion of the waveform within an increasingly
+     * large fraction of the period. Note that this is pure waveshapping - the
+     * phase information is not used to determine when/where to shift.
+     *
+     *     /|            /|          /\             /\
+     *    / |           / |         /  \           /  \
+     *   /  |    =>  /|/  |        /    \  =>  ___/    \
+     *  /   |       /     |/      /      \
+     * /    |/                   /        \
+     */
     if (sample < parameter_) {
       if (shape_ == WAVEFORM_SAW) {
         // Add a discontinuity.
