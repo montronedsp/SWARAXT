@@ -171,7 +171,7 @@ class Oscillator {
       return;
     }
 
-    uint8_t index = shape_ > WAVEFORM_VOWEL ? WAVEFORM_WAVETABLE_1 : shape_;
+    uint8_t index = shape_ > WAVEFORM_VOWEL ? static_cast<uint8_t>(WAVEFORM_WAVETABLE_1) : shape_;
     switch (index) {
       case WAVEFORM_NONE: RenderSilence(buffer); break;
       case WAVEFORM_SAW: RenderSimpleWavetable(buffer); break;
