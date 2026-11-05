@@ -336,6 +336,7 @@ class SwaraXtEngine {
     };
 
     void renderInternalBlock();
+    void fillInternalQueue(bool checkDormant);
     float processSelectedFilterSample(float mixer, float vcaTarget) noexcept;
     float selectedFilterVca() const noexcept;
     bool selectedFilterTailActive() const noexcept;
@@ -381,6 +382,7 @@ class SwaraXtEngine {
     void flushSequencerMidi(juce::MidiBuffer& output, int numSamples) noexcept;
     void releaseHeldSequencerNotes(uint64_t sample) noexcept;
     void forceFlushSequencerMidiRelease(uint64_t sample) noexcept;
+    void retryHeldSequencerMidiRelease() noexcept;
     int sequencerMidiLeadSamples() const noexcept;
     int outputMidiChannel() const noexcept;
     uint8_t heldOutputChannel(uint8_t external) const noexcept;
