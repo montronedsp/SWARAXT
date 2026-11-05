@@ -76,7 +76,6 @@ class SwaraXtEngine {
     static constexpr int kAudioBlockSize = 40;
     static constexpr int kMaxPendingMidi = 512;
 
-#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
 #if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
     struct ManualSwitchSample {
         float raw = 0, gain = 1, output = 0;
@@ -85,6 +84,7 @@ class SwaraXtEngine {
         bool processed = false;
     };
 #endif
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
     struct DebugBlockCapture {
         float rawOsc1[kAudioBlockSize] {};
         float rawOsc2[kAudioBlockSize] {};
