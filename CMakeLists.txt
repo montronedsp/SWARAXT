@@ -103,6 +103,10 @@ set(SWARAXT_PLUGIN_SOURCES
 set(SWARAXT_UI_SOURCES
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtLookAndFeel.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtPanels.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtPanelWidgets.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtOscillatorPanel.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtModPanel.cpp"
+    "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtSeqPanel.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtDualSvfPanel.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtBoardPanel.cpp"
     "${CMAKE_SOURCE_DIR}/Source/Ui/SwaraXtSkin.cpp"
