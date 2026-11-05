@@ -994,7 +994,7 @@ void SwaraXtEngine::renderInternalBlock()
                 filtered = 0.0f;
             const float vcaGain = selectedFilterVca();
             vcaCvState_ = vcaGain;
-#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS && defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
             capture.manualSwitch[i] = manualSwitchSample_;
 #endif
             const float out = filtered * nextMasterGain() * nextQualityGain();
@@ -1024,7 +1024,7 @@ void SwaraXtEngine::renderInternalBlock()
             const float vcaGain = selectedFilterVca();
             vcaCvState_ = vcaGain;
             processed[index] = std::isfinite(filtered) ? filtered : 0.0f;
-#if defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
+#if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS && defined(SWARAXT_ENABLE_MANUAL_SWITCH_TESTS)
             capture.manualSwitch[i] = manualSwitchSample_;
 #endif
 #if SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS
