@@ -903,6 +903,21 @@ bool SwaraXtEngine::selectedFilterTailActive() const noexcept
     return filter_.instrumentTailActive();
 }
 
+void SwaraXtEngine::fillInternalQueue(bool checkDormant)
+{
+    int guard = 0;
+    while ((!checkDormant || !dormant_) && !drainingToDormant_
+           && internalQueue_.size() < internalQueue_.queueTargetSize())
+    {
+        if (guard >= 16)
+        {
+            break;
+        }
+        ++guard;
+        renderInternalBlock();
+    }
+}
+
 void SwaraXtEngine::renderInternalBlock()
 {
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
@@ -1243,26 +1258,7 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     }
     if (retrySequencerMidiRelease_)
     {
-        retrySequencerMidiRelease_ = false;
-        // One bounded pass per callback. Retain the original channel until an
-        // Off is admitted; never release a pitch that has acquired a new owner.
-        for (uint8_t note = 0; note < 128; ++note)
-        {
-            if (heldMidi_[note] == 0 || externalOwners_[note] != 0)
-                continue;
-            if (enqueueScheduledMidi(hostBlockOrigin_, false, note, 0, heldOutputChannel(note)))
-            {
-                heldMidi_[note] = 0;
-                heldMidiChannel_[note] = 0;
-            }
-            else
-            {
-                // A full all-Off queue cannot admit any other release until
-                // it drains later in this callback. Keep the rest for retry.
-                retrySequencerMidiRelease_ = true;
-                break;
-            }
-        }
+        retryHeldSequencerMidiRelease();
     }
     auto midiCursor = midi.cbegin();
     const auto midiEnd = midi.cend();
@@ -1300,27 +1296,11 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
     auto* left = buffer.getWritePointer(0, startSample);
     float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1, startSample) : nullptr;
 
-    int guard = 0;
     dispatchMidiThrough(startSample);
     updateDormantWakeState();
 
-    const auto queueTarget = [&]() {
-        return internalQueue_.queueTargetSize();
-    };
-
     renderHostCursor_ = 0;
-    while (! dormant_ && ! drainingToDormant_
-           && internalQueue_.size() < queueTarget())
-    {
-        if (guard >= 16)
-        {
-            ++guard;
-            break;
-        }
-
-        ++guard;
-        renderInternalBlock();
-    }
+    fillInternalQueue(true);
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -1356,19 +1336,7 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
             }
         }
 
-        guard = 0;
-        while (! drainingToDormant_
-               && internalQueue_.size() < queueTarget())
-        {
-            if (guard >= 16)
-            {
-                ++guard;
-                break;
-            }
-
-            ++guard;
-            renderInternalBlock();
-        }
+        fillInternalQueue(false);
 
         float sample = 0.0f;
         if (internalQueue_.size() >= internalQueue_.minimumReadableSize())
@@ -1605,6 +1573,30 @@ void SwaraXtEngine::forceFlushSequencerMidiRelease(uint64_t sample) noexcept
     }
     scheduledMidiCount_ = kept;
     releaseHeldSequencerNotes(sample);
+}
+
+void SwaraXtEngine::retryHeldSequencerMidiRelease() noexcept
+{
+    retrySequencerMidiRelease_ = false;
+    // One bounded pass per callback. Retain the original channel until an
+    // Off is admitted; never release a pitch that has acquired a new owner.
+    for (uint8_t note = 0; note < 128; ++note)
+    {
+        if (heldMidi_[note] == 0 || externalOwners_[note] != 0)
+            continue;
+        if (enqueueScheduledMidi(hostBlockOrigin_, false, note, 0, heldOutputChannel(note)))
+        {
+            heldMidi_[note] = 0;
+            heldMidiChannel_[note] = 0;
+        }
+        else
+        {
+            // A full all-Off queue cannot admit any other release until
+            // it drains later in this callback. Keep the rest for retry.
+            retrySequencerMidiRelease_ = true;
+            break;
+        }
+    }
 }
 
 void SwaraXtEngine::flushSequencerMidi(juce::MidiBuffer& output, int numSamples) noexcept
