@@ -639,8 +639,22 @@ class FixtureAdmissionTestsLinux(unittest.TestCase):
 
     def test_positive_original_source_accepted(self):
         """Positive control: original pre-Mission-06 source accepted directly."""
-        original = subprocess.check_output(
-            ['git', '-C', str(self.source), 'show', 'f608479:Tests/AudioRegression/AudioRegressionTestsMain.cpp']
+        # Reconstruct the historical source via the same reverse transformation
+        # that checked_file applies, then verify it is accepted without further
+        # transformation (direct hash match).
+        data = (self.source / self.RELATIVE).read_bytes()
+        normalized = data.replace(b'\r\n', b'\n')
+        original = normalized.replace(
+            b'struct FilterCapture {\n    std::vector<float> input;\n    std::vector<float> output;\n};',
+            b'struct FilterCapture {\n    std::vector<float> input;\n    std::vector<float> stage1;\n    std::vector<float> stage2;\n    std::vector<float> stage3;\n    std::vector<float> stage4;\n    std::vector<float> output;\n};'
+        )
+        original = original.replace(
+            b'    FilterCapture capture;\n    capture.input = source;\n    capture.output.reserve(source.size());\n    for (float s : source)\n    {\n        capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\n    }\n    return capture;\n',
+            b'    FilterCapture capture;\n    capture.input = source;\n    capture.stage1.reserve(source.size());\n    capture.stage2.reserve(source.size());\n    capture.stage3.reserve(source.size());\n    capture.stage4.reserve(source.size());\n    capture.output.reserve(source.size());\n    for (float s : source)\n    {\n        const float y = filter.processSample(s);\n        capture.stage1.push_back(filter.lastStageOutput(0));\n        capture.stage2.push_back(filter.lastStageOutput(1));\n        capture.stage3.push_back(filter.lastStageOutput(2));\n        capture.stage4.push_back(filter.lastStageOutput(3));\n        capture.output.push_back(y);\n    }\n    return capture;\n'
+        )
+        original = original.replace(
+            b'    writeMetricsRow(metrics, "filter_input", measure(lowFilter.input, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "post_filter_low_resonance", measure(lowFilter.output, swaraxt::SwaraXtEngine::kInternalSampleRate));\n',
+            b'    writeMetricsRow(metrics, "filter_input", measure(lowFilter.input, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_1_output", measure(lowFilter.stage1, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_2_output", measure(lowFilter.stage2, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_3_output", measure(lowFilter.stage3, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_4_output", measure(lowFilter.stage4, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "post_filter_low_resonance", measure(lowFilter.output, swaraxt::SwaraXtEngine::kInternalSampleRate));\n'
         )
         self._write_fixture(original)
         current.checked_file(self.tmp_root, self.RELATIVE, self.EXPECTED)
@@ -649,8 +663,8 @@ class FixtureAdmissionTestsLinux(unittest.TestCase):
         """Negative control: changed filter-capture migration statement is rejected."""
         current_data = (self.source / self.RELATIVE).read_bytes()
         modified = current_data.replace(
-            b'filter.processInstrumentSample(s, 1.0f)\n',
-            b'filter.processInstrumentSample(s, 0.5f)\n'
+            b'filter.processInstrumentSample(s, 1.0f)',
+            b'filter.processInstrumentSample(s, 0.5f)'
         )
         self._write_fixture(modified)
         with self.assertRaises(RuntimeError):
@@ -668,7 +682,7 @@ class FixtureAdmissionTestsLinux(unittest.TestCase):
         """Negative control: removed filter call is rejected."""
         current_data = (self.source / self.RELATIVE).read_bytes()
         modified = current_data.replace(
-            b'capture.output.push_back(filter.processInstrumentSample(s, 1.0f))\n',
+            b'capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\n',
             b''
         )
         self._write_fixture(modified)
