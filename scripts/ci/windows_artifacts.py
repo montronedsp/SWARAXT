@@ -124,7 +124,7 @@ def validate_results(report, payload, identity, source):
             and 'Unauthorized Windows reference mutation' in negative, 'Missing native reference negative proof')
     if profile == 'msvc-Release':
         require(commands.get('windows-native-reference-controls') == 0
-                and re.search(r'Ran 24 tests\b', payload['windows-native-reference-controls.log'].decode())
+                and re.search(r'Ran 30 tests\b', payload['windows-native-reference-controls.log'].decode())
                 and re.search(r'\nOK\s*$', payload['windows-native-reference-controls.log'].decode()),
                 'Missing native negative-control proof')
         # Retain the existing full gate's validator source and result contracts.
