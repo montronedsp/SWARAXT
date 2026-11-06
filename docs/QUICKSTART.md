@@ -320,4 +320,4 @@ CPU/quality trade-off, and **MIDI Channel**):
 
 ---
 
-SWARA XT 1.3.0 — MontroneDSP
+SWARA XT 1.3.1 — MontroneDSP

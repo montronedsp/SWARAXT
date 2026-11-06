@@ -438,11 +438,11 @@ class Campaign(Evidence):
         shutil.copytree(bundle, stage / bundle.name)
         files = {p.relative_to(stage).as_posix(): sha(p) for p in sorted(stage.rglob('*')) if p.is_file()}
         manifest = {k: self.report[k] for k in ('source_sha', 'run_id', 'platform', 'architecture', 'compiler', 'profile', 'juce_sha')}
-        manifest.update(version='1.3.0', formats=['VST3'], standalone=False, files=files,
+        manifest.update(version='1.3.1', formats=['VST3'], standalone=False, files=files,
                         dependency_overlay=self.report['dependency_overlay'],
                         distribution='UNSIGNED_CANDIDATE; full workflow gate required')
         (stage / 'provenance.json').write_text(json.dumps(manifest, indent=2) + '\n')
-        name = 'swaraxt-' + self.system.lower() + '-' + self.args.compiler + '-vst3-1.3.0'
+        name = 'swaraxt-' + self.system.lower() + '-' + self.args.compiler + '-vst3-1.3.1'
         archive = Path(shutil.make_archive(str(self.root / name), 'zip', stage))
         (self.root / (name + '.sha256')).write_text(sha(archive) + '  ' + archive.name + '\n')
         self.report['candidate'] = {'archive': archive.name, 'sha256': sha(archive), 'manifest': manifest}
@@ -673,7 +673,7 @@ def gate(system, evidence, context=None):
                     if commands.get(name) != 0:
                         raise RuntimeError('Missing successful external validator: ' + name)
                 text = (path.parent / 'pluginval.log').read_text(errors='replace')
-                if not all(marker in text for marker in ('Num plugins found: 1', 'Strictness level: 10', 'v1.3.0', 'SUCCESS')):
+                if not all(marker in text for marker in ('Num plugins found: 1', 'Strictness level: 10', 'v1.3.1', 'SUCCESS')):
                     raise RuntimeError('Incomplete pluginval product/stress validation')
                 result = re.search(r'Result: (\d+) tests passed, (\d+) tests failed',
                     (path.parent / 'validator-extensive.log').read_text(errors='replace'))

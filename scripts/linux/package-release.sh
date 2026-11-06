@@ -20,7 +20,7 @@ if [[ -z "${version}" ]]; then
     exit 1
 fi
 source "${script_dir}/validate-package.sh"
-[[ "$version" == "1.3.0" ]] || { echo "This release requires PROJECT_VERSION 1.3.0" >&2; exit 1; }
+[[ "$version" == "1.3.1" ]] || { echo "This release requires PROJECT_VERSION 1.3.1" >&2; exit 1; }
 [[ -d "${skin_examples}" ]] || {
     echo "Skin Examples folder missing at ${skin_examples}" >&2
     exit 1

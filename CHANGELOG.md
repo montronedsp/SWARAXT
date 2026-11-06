@@ -1,6 +1,16 @@
 # Changelog
 
-## 1.3.0 — Unreleased
+## 1.3.1 — 2026-11-06
+
+- Sequencer GUI source consolidation: shared widgets, oscillator/modulation/sequencer panels in dedicated translation units.
+- Realtime engine consolidation: bounded queue-fill loop and held MIDI-release retry extracted from process().
+- Shruthi-port compiler-warning cleanup: unused-variable annotation, comment-block correction, explicit cast, scoped diagnostic suppressions.
+- Diagnostic macro isolation: manual-switch capture gated behind debug-taps guard.
+- Removal of redundant Classic filter cascade; production path through Ir3109BoardCore only.
+- Restoration of native-runtime and production regression coverage.
+- Corrected Compact pitch-mode references and invalid-mode fallback documentation.
+
+## 1.3.0 — 2026-11-04
 
 - Align product and qualification package metadata for the feature-frozen 1.3.0 candidate.
 - Native release qualification remains required before publication.

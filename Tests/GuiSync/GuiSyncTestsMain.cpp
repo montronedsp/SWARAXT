@@ -437,8 +437,8 @@ void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
            "product lockup preserves canonical geometry with the refined group offset");
     expect(editor.presetBoundsForTests().getCentreX() == 535,
            "preset name leaves room for navigation and Save within the center column");
-    expect(juce::String(SWARAXT_VERSION_STRING) == "1.3.0",
-           "GUI and build metadata report SWARA XT 1.3.0");
+    expect(juce::String(SWARAXT_VERSION_STRING) == "1.3.1",
+           "GUI and build metadata report SWARA XT 1.3.1");
 
     for (int oscillator = 0; oscillator < 2; ++oscillator)
     {

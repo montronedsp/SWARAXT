@@ -1,9 +1,9 @@
 # SWARA XT roadmap
 
-The 1.3.0 stabilization is feature-frozen. The following priorities guide later
+The 1.3.1 stabilization is feature-frozen. The following priorities guide later
 development; phases indicate direction rather than delivery dates.
 
-## Short term — post 1.3.0
+## Short term — post 1.3.1
 
 - **Filter calibration consolidation.** Evaluate Paper and Eagle for sound,
   musical usefulness, correctness and user value, with a view to one clearly

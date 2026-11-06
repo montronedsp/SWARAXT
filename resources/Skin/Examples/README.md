@@ -1,6 +1,6 @@
 # Custom skin artwork
 
-SWARA XT 1.3.0 packages include these examples and the `Decorations/` SVG collection. Load them directly through the synthesizer editor context menus; the separate Skin Editor application is not included.
+SWARA XT 1.3.1 packages include these examples and the `Decorations/` SVG collection. Load them directly through the synthesizer editor context menus; the separate Skin Editor application is not included.
 
 Right-click the plugin editor to load a user file. Installed copies live next to `Swara XT.settings`, under `skin_assets/`. They are not stored inside the plugin bundle.
 

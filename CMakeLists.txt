@@ -7,7 +7,7 @@ if(APPLE)
         "macOS architectures")
 endif()
 
-project(SwaraXT VERSION 1.3.0 LANGUAGES C CXX)
+project(SwaraXT VERSION 1.3.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
