@@ -271,8 +271,12 @@ endif()
 add_test(NAME AvrlibHdVowelTests COMMAND AvrlibHdVowelTests)
 
 # HD VCF parity: kFaithful must be bit-identical to the live engine's
-# swaraxt::SwaraXtFilter for the same committed params across a grid of
-# Shruthi-derived control values; also pins the updateFilterFromShruthi scaling.
+# swaraxt::SwaraXtFilter::processSample() for the same committed params across
+# a grid of Shruthi-derived control values; also pins the mapping helpers.
+# Covers the legacy processSample() / processCore() cascade only; the
+# production processInstrumentSample() path is covered by
+# SwaraXTIR3109SolverTests, SwaraXTIR3109BoardTests, SwaraXTAudioParityTests
+# and SwaraXTDspFxIntegratedExactParityTests.
 add_executable(AvrlibHdFilterParityTests
     avrlib_hd/FilterParityTestsMain.cpp
 )
