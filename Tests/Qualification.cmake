@@ -174,8 +174,6 @@ set_tests_properties(SwaraXTSonicQualityTests SwaraXTSonicQualityExtended PROPER
     FAIL_REGULAR_EXPRESSION "NEEDS_REVIEW [1-9][0-9]*")
 set_tests_properties(SwaraXTDcDormancyTests SwaraXTIdleCpuTests SwaraXTMidiInputTuningTests
     SwaraXTIR3109BoardTests PROPERTIES LABELS extended TIMEOUT 1800)
-# The aggregate filter target duplicates the seven focused modes; retain it as
-# an extended consistency run instead of paying for both in the quick gate.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME SwaraXTFactoryGeneratorTests COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/Presets/FactoryGeneratorTests.py")

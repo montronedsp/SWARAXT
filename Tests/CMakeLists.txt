@@ -552,6 +552,36 @@ target_sources(SwaraXTCorrectnessTests PRIVATE ${SWARAXT_CLASSIC_OSCILLATOR_SOUR
 swaraxt_add_plugin_console_test(SwaraXTArchitectureControlTests Architecture/FilterControlTests.cpp)
 target_compile_definitions(SwaraXTArchitectureControlTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
 
+# Smoothing audit tests exercise the production instrument path
+# (processInstrumentSample) across quality transitions, master ramps,
+# cutoff/resonance jumps and matrix/LFO changes. The legacy direct-filter
+# quality-click test was removed with the redundant processSample() cascade.
+swaraxt_add_plugin_console_test(SwaraXTSmoothingAuditTests Smoothing/SmoothingAuditTestsMain.cpp)
+target_compile_definitions(SwaraXTSmoothingAuditTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+swaraxt_enable_warnings_as_errors(SwaraXTSmoothingAuditTests)
+set_tests_properties(SwaraXTSmoothingAuditTests PROPERTIES TIMEOUT 120)
+
+# Native Shruthi runtime unit tests (removed during Mission 06 GUI panel cleanup;
+# these test the native shruthi::Part, avrlib::Random and HostAudioRing runtime,
+# not the GUI filter path).
+add_executable(SwaraXTTests
+    SwaraXtTestsMain.cpp
+    ${SWARAXT_SHRUTHI_SOURCES}
+    ${SWARAXT_CLASSIC_OSCILLATOR_SOURCE}
+    ${SWARAXT_HOST_SOURCES}
+)
+set_target_properties(SwaraXTTests PROPERTIES OUTPUT_NAME SwaraXTUnitTests)
+swaraxt_configure_shruthi_target(SwaraXTTests)
+swaraxt_enable_warnings(SwaraXTTests)
+add_test(NAME SwaraXTUnitTests COMMAND SwaraXTTests)
+
+# Cutoff parameter-contract tests (production path via processInstrumentSample,
+# not the removed legacy processSample() cascade).
+swaraxt_add_plugin_console_test(SwaraXTCutoffContractTests Filter/CutoffContractTestsMain.cpp)
+target_compile_definitions(SwaraXTCutoffContractTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
+swaraxt_enable_warnings_as_errors(SwaraXTCutoffContractTests)
+set_tests_properties(SwaraXTCutoffContractTests PROPERTIES TIMEOUT 60)
+
 add_executable(SwaraXTIR3109BoardTests Architecture/Ir3109BoardTests.cpp)
 target_include_directories(SwaraXTIR3109BoardTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
 swaraxt_enable_warnings(SwaraXTIR3109BoardTests)
