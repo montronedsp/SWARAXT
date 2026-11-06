@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // HD VCF unit tests under the strict -Werror gate. The facade delegates to the
-// swaraxt::SwaraXtFilter model, so the tests pin the mapping, the faithful/HD
-// mode budgets, determinism and the finite-output safety contract.
+// swaraxt::SwaraXtFilter model via its legacy processSample() interface, so the
+// tests pin the mapping, the faithful/HD mode budgets, determinism and the
+// finite-output safety contract. These tests cover the legacy processSample()
+// / processCore() cascade only; they do not exercise the production
+// processInstrumentSample() / Ir3109BoardCore::process() path.
 
 #include "avrlib_hd/filter.h"
 

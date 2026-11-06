@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // HdFilter parity: faithful mode must be bit-identical to the live engine's
-// use of swaraxt::SwaraXtFilter for the same committed parameters across a grid
-// of Shruthi-derived control values, and the mapping helpers must reproduce the
-// optional facade's explicit extra offsets exactly.
+// use of swaraxt::SwaraXtFilter::processSample() for the same committed
+// parameters across a grid of Shruthi-derived control values, and the mapping
+// helpers must reproduce the optional facade's explicit extra offsets exactly.
+// This covers the legacy processSample() / processCore() cascade only. It does
+// not cover the production processInstrumentSample() path, which drives
+// Ir3109BoardCore::process(); that path is protected by
+// SwaraXTIR3109SolverTests, SwaraXTIR3109BoardTests, SwaraXTAudioParityTests
+// and SwaraXTDspFxIntegratedExactParityTests.
 
 #include "avrlib_hd/filter.h"
 

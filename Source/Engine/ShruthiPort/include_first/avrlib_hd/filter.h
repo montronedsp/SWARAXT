@@ -47,7 +47,10 @@ struct FilterParams {
 class HdFilter {
  public:
   enum class Mode {
-    kFaithful,  // plugin-default quality budget (normal). Bit-identical audio.
+    kFaithful,  // plugin-default quality budget (normal). Bit-identical to the
+                // live engine's legacy SwaraXtFilter::processSample() path
+                // (processCore cascade). Does not cover the production
+                // processInstrumentSample() / Ir3109BoardCore::process() path.
     kHd,        // highest quality budget (high): full oversampling + 8 solver iters.
   };
 
