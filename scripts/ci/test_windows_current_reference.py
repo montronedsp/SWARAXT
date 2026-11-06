@@ -254,9 +254,10 @@ class FixtureAdmissionTests(unittest.TestCase):
     def test_negative_missing_process_call(self):
         """Negative control: removed filter call is rejected."""
         current = (SOURCE / self.RELATIVE).read_bytes()
-        target = b'capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\r\n'
-        self.assertEqual(current.count(target), 1, 'Expected filter call to occur exactly once')
-        modified = current.replace(target, b'')
+        normalized = current.replace(b'\r\n', b'\n')
+        target = b'        capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\n'
+        self.assertEqual(normalized.count(target), 1, 'Expected filter call to occur exactly once')
+        modified = normalized.replace(target, b'')
         self._write_fixture(modified)
         with self.assertRaises(RuntimeError):
             policy.checked_fixture(self.tmp_root, self.RELATIVE, self.EXPECTED)
