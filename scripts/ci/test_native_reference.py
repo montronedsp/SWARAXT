@@ -611,5 +611,75 @@ class PackageAuthenticationTests(unittest.TestCase):
                       inspect.getsource(native_reference.historical_windows_main))
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'Fixture admission tests require Linux')
+class FixtureAdmissionTestsLinux(unittest.TestCase):
+    """Positive and negative controls for AudioRegressionTestsMain.cpp fixture admission on Linux.
+
+    Verifies that the Mission 06 source-fixture migration is authenticated
+    strictly: only the exact reviewed PR #22 transformation is accepted.
+    """
+
+    RELATIVE = 'Tests/AudioRegression/AudioRegressionTestsMain.cpp'
+    EXPECTED = '9c27e06bf0dd56185f49d92fa316da51cd10abe9e76a071e7085c2751dc04592'
+
+    def setUp(self):
+        self.source = Path(__file__).resolve().parents[2]
+        self.tmp = tempfile.TemporaryDirectory(prefix='swara-fixture-')
+        self.addCleanup(self.tmp.cleanup)
+        self.tmp_root = Path(self.tmp.name)
+
+    def _write_fixture(self, content: bytes):
+        target = self.tmp_root / self.RELATIVE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+
+    def test_positive_current_source_accepted(self):
+        """Positive control: current post-Mission-06 source accepted via reverse transformation."""
+        current.checked_file(self.source, self.RELATIVE, self.EXPECTED)
+
+    def test_positive_original_source_accepted(self):
+        """Positive control: original pre-Mission-06 source accepted directly."""
+        original = subprocess.check_output(
+            ['git', '-C', str(self.source), 'show', 'f608479:Tests/AudioRegression/AudioRegressionTestsMain.cpp']
+        )
+        self._write_fixture(original)
+        current.checked_file(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_changed_filter_call(self):
+        """Negative control: changed filter-capture migration statement is rejected."""
+        current_data = (self.source / self.RELATIVE).read_bytes()
+        modified = current_data.replace(
+            b'filter.processInstrumentSample(s, 1.0f)\n',
+            b'filter.processInstrumentSample(s, 0.5f)\n'
+        )
+        self._write_fixture(modified)
+        with self.assertRaises(RuntimeError):
+            current.checked_file(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_single_char_change(self):
+        """Negative control: unrelated parameter change is rejected."""
+        current_data = (self.source / self.RELATIVE).read_bytes()
+        modified = current_data.replace(b'8000.0f', b'8001.0f', 1)
+        self._write_fixture(modified)
+        with self.assertRaises(RuntimeError):
+            current.checked_file(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_missing_process_call(self):
+        """Negative control: removed filter call is rejected."""
+        current_data = (self.source / self.RELATIVE).read_bytes()
+        modified = current_data.replace(
+            b'capture.output.push_back(filter.processInstrumentSample(s, 1.0f))\n',
+            b''
+        )
+        self._write_fixture(modified)
+        with self.assertRaises(RuntimeError):
+            current.checked_file(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_modified_expected_checksum(self):
+        """Negative control: modified historical expected checksum is rejected."""
+        with self.assertRaises(RuntimeError):
+            current.checked_file(self.source, self.RELATIVE, '0' * 64)
+
+
 if __name__ == '__main__':
     unittest.main()
