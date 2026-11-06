@@ -155,6 +155,75 @@ class NativeWindowsReferenceTests(unittest.TestCase):
     def test_19_nonzero_exit(self):
         self.reject_output(self.text, 'nonzero process exit', code=1)
 
+
+@unittest.skipUnless(os.name == 'nt', 'Fixture admission tests require Windows')
+class FixtureAdmissionTests(unittest.TestCase):
+    """Positive and negative controls for AudioRegressionTestsMain.cpp fixture admission.
+
+    Verifies that the Mission 06 source-fixture migration is authenticated
+    strictly: only the exact reviewed PR #22 transformation is accepted.
+    """
+
+    RELATIVE = 'Tests/AudioRegression/AudioRegressionTestsMain.cpp'
+    EXPECTED = '9c27e06bf0dd56185f49d92fa316da51cd10abe9e76a071e7085c2751dc04592'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix='swara-fixture-')
+        self.addCleanup(self.tmp.cleanup)
+        self.tmp_root = Path(self.tmp.name)
+
+    def _write_fixture(self, content: bytes):
+        target = self.tmp_root / self.RELATIVE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+
+    def test_positive_current_source_accepted(self):
+        """Positive control: current post-Mission-06 source accepted via reverse transformation."""
+        policy.checked_fixture(SOURCE, self.RELATIVE, self.EXPECTED)
+
+    def test_positive_original_source_accepted(self):
+        """Positive control: original pre-Mission-06 source accepted directly."""
+        original = subprocess.check_output(
+            ['git', '-C', str(SOURCE), 'show', 'f608479:Tests/AudioRegression/AudioRegressionTestsMain.cpp']
+        )
+        self._write_fixture(original)
+        policy.checked_fixture(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_changed_filter_call(self):
+        """Negative control: changed filter-capture migration statement is rejected."""
+        current = (SOURCE / self.RELATIVE).read_bytes()
+        modified = current.replace(
+            b'filter.processInstrumentSample(s, 1.0f)',
+            b'filter.processInstrumentSample(s, 0.5f)'
+        )
+        self._write_fixture(modified)
+        with self.assertRaises(RuntimeError):
+            policy.checked_fixture(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_single_char_change(self):
+        """Negative control: unrelated parameter change is rejected."""
+        current = (SOURCE / self.RELATIVE).read_bytes()
+        modified = current.replace(b'8000.0f', b'8001.0f', 1)
+        self._write_fixture(modified)
+        with self.assertRaises(RuntimeError):
+            policy.checked_fixture(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_missing_process_call(self):
+        """Negative control: removed filter call is rejected."""
+        current = (SOURCE / self.RELATIVE).read_bytes()
+        modified = current.replace(
+            b'capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\r\n',
+            b''
+        )
+        self._write_fixture(modified)
+        with self.assertRaises(RuntimeError):
+            policy.checked_fixture(self.tmp_root, self.RELATIVE, self.EXPECTED)
+
+    def test_negative_modified_expected_checksum(self):
+        """Negative control: modified historical expected checksum is rejected."""
+        with self.assertRaises(RuntimeError):
+            policy.checked_fixture(SOURCE, self.RELATIVE, '0' * 64)
+
     def test_20_asan_diagnostic(self):
         self.reject_output(self.text + '\nERROR: AddressSanitizer: heap-buffer-overflow', 'sanitizer/assertion diagnostic')
 

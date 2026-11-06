@@ -53,6 +53,27 @@ def checked_fixture(root, relative, expected):
             b'    const std::filesystem::path out=argc>1 ? argv[1] : "dual-svf-integration-audit";\n')
         if digest(original) == expected:
             return data
+    if relative == 'Tests/AudioRegression/AudioRegressionTestsMain.cpp':
+        # Mission 06 replaced processSample() with processInstrumentSample() and
+        # removed the stage capture fields from FilterCapture. Reverse only these
+        # exact edits, then authenticate every original byte against the fixed
+        # package. Working-tree checkouts may use CRLF line endings; normalize
+        # to LF before hashing to match the immutable reference package.
+        normalized = data.replace(b'\r\n', b'\n')
+        original = normalized.replace(
+            b'struct FilterCapture {\n    std::vector<float> input;\n    std::vector<float> output;\n};',
+            b'struct FilterCapture {\n    std::vector<float> input;\n    std::vector<float> stage1;\n    std::vector<float> stage2;\n    std::vector<float> stage3;\n    std::vector<float> stage4;\n    std::vector<float> output;\n};'
+        )
+        original = original.replace(
+            b'    FilterCapture capture;\n    capture.input = source;\n    capture.output.reserve(source.size());\n    for (float s : source)\n    {\n        capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\n    }\n    return capture;\n',
+            b'    FilterCapture capture;\n    capture.input = source;\n    capture.stage1.reserve(source.size());\n    capture.stage2.reserve(source.size());\n    capture.stage3.reserve(source.size());\n    capture.stage4.reserve(source.size());\n    capture.output.reserve(source.size());\n    for (float s : source)\n    {\n        const float y = filter.processSample(s);\n        capture.stage1.push_back(filter.lastStageOutput(0));\n        capture.stage2.push_back(filter.lastStageOutput(1));\n        capture.stage3.push_back(filter.lastStageOutput(2));\n        capture.stage4.push_back(filter.lastStageOutput(3));\n        capture.output.push_back(y);\n    }\n    return capture;\n'
+        )
+        original = original.replace(
+            b'    writeMetricsRow(metrics, "filter_input", measure(lowFilter.input, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "post_filter_low_resonance", measure(lowFilter.output, swaraxt::SwaraXtEngine::kInternalSampleRate));\n',
+            b'    writeMetricsRow(metrics, "filter_input", measure(lowFilter.input, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_1_output", measure(lowFilter.stage1, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_2_output", measure(lowFilter.stage2, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_3_output", measure(lowFilter.stage3, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "filter_stage_4_output", measure(lowFilter.stage4, swaraxt::SwaraXtEngine::kInternalSampleRate));\n    writeMetricsRow(metrics, "post_filter_low_resonance", measure(lowFilter.output, swaraxt::SwaraXtEngine::kInternalSampleRate));\n'
+        )
+        if digest(original) == expected:
+            return data
     raise RuntimeError('Windows reference checksum mismatch: ' + relative)
 
 
