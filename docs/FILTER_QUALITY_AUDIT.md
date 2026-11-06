@@ -4,13 +4,15 @@
 
 SWARA XT does not use a JUCE stock filter. The production path is a four-pole
 IR3109-style OTA ladder implemented as four TPT one-pole stages with an
-implicit resonance-feedback solver.
+implicit resonance-feedback solver. The production audio path runs through
+`Ir3109BoardCore::process()` which includes the board-core VCA and output
+network before anti-alias decimation.
 
 | Item | Production behaviour |
 |------|----------------------|
-| Class | `SwaraXtFilter` |
-| Stages | `Ir3109Pole` × 4 (passive / active / passive / active load traits) |
-| Resonance | `ResonanceNetwork`: phase splitter, diode-pair `tanh` limiter, feedback into stage 1 |
+| Class | `SwaraXtFilter` (production path via `processInstrumentSample()`) |
+| Stages | `Ir3109Pole` × 4 (passive / active / passive / active load traits) inside `Ir3109BoardCore` |
+| Resonance | `Ir3109BoardCore` internal feedback solver with diode-pair `tanh` limiter |
 | Modes | Low-pass cascade only |
 | Solver | Successive relaxation, up to 8 iterations, residual threshold `1e-9` |
 | Oversampling | Linear interpolation of the filter input, then average of sub-samples |
@@ -31,8 +33,8 @@ arrive through that control-rate path. There is no audio-rate filter FM.
 MIDI / voice
   → Shruthi oscillators and mixer (native block)
   → updateFilterFromShruthi()  (control-rate cutoff / resonance / env)
-  → SwaraXtFilter::processSample()  (4× High, implicit solver if resonance > 0)
-  → VCA
+  → SwaraXtFilter::processInstrumentSample()  (4× High, implicit solver if resonance > 0)
+    → Ir3109BoardCore::process()  (board-core VCA + output network)
   → host SRC / output
 ```
 

@@ -143,7 +143,7 @@ void measureBoardFrequency(Suite& suite, const sonic::BoardTone& tone, const std
     const double schematicRatio = schematic > 0.0 ? measuredGain / schematic : 0.0;
     const double coupledRatio = coupled > 0.0 ? measuredGain / coupled : 0.0;
     auto row = suite.base(test, "frequency_response");
-    row.sourceClass = tone.instrumentPath ? "production-processInstrumentSample" : "diagnostic-processSample";
+    row.sourceClass = "production-processInstrumentSample";
     row.input = "sine " + num(tone.frequencyHz) + " Hz amp " + num(tone.amplitude);
     row.parameters = "cutoff " + num(tone.cutoffHz) + " resonance " + num(tone.resonance)
         + " oversample " + std::to_string(render.oversample);
@@ -151,12 +151,12 @@ void measureBoardFrequency(Suite& suite, const sonic::BoardTone& tone, const std
     row.hostRate = render.sampleRate;
     row.reference = "simplified schematic " + num(schematic) + "; coupling-inclusive linear model " + num(coupled);
     row.observed = "gain " + num(measuredGain) + " (" + num(sonic::db(measuredGain)) + " dB)";
-    const bool schematicCheck = tone.instrumentPath && tone.oversampleOverride == 0
+    const bool schematicCheck = tone.oversampleOverride == 0
         && tone.quality == swaraxt::FilterQuality::normal && tone.resonance == 0.0f
         && tone.amplitude <= sonic::kSchematicCheckAmplitude * 1.01f
         && std::abs(tone.frequencyHz - sonic::kSchematicCheckFrequencyHz) < 0.1
         && std::abs(tone.cutoffHz - 20000.0f) < 0.1f;
-    const bool smallSignal = tone.instrumentPath && tone.oversampleOverride == 0
+    const bool smallSignal = tone.oversampleOverride == 0
         && tone.amplitude <= 1.0e-3f && tone.resonance == 0.0f && tone.frequencyHz <= 4000.0;
     if (!render.finite || levels.nonfinite != 0)
         row.result = sonic::Classification::fail;
@@ -172,11 +172,6 @@ void measureBoardFrequency(Suite& suite, const sonic::BoardTone& tone, const std
     {
         row.result = sonic::Classification::needsReview;
         row.notes = "Residual versus the coupling-inclusive linear model exceeds 5 percent. Screening bound only.";
-    }
-    else if (!tone.instrumentPath)
-    {
-        row.result = sonic::Classification::observed;
-        row.notes = "processSample is the diagnostic core. It is not the production instrument path and the schematic VCA estimate does not apply.";
     }
     else if (smallSignal && std::abs(schematicRatio - 1.0) > 0.05)
     {
@@ -466,9 +461,8 @@ void runQuick(Suite& suite)
     sonic::BoardTone diagnostic = loud;
     diagnostic.resonance = 0.0f;
     diagnostic.amplitude = sonic::kSchematicCheckAmplitude;
-    diagnostic.instrumentPath = false;
     diagnostic.captureSamples = reference.captureSamples;
-    measureBoardFrequency(suite, diagnostic, "diagnostic.processSample.1k", referenceGain);
+    measureBoardFrequency(suite, diagnostic, "diagnostic.processInstrumentSample.1k", referenceGain);
 
     sonic::FxInsert dryInsert;
     const auto dryFx = sonic::renderClassicFxInsert(dryInsert);
