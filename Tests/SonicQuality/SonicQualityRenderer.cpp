@@ -172,9 +172,7 @@ BoardRender renderBoardTone(const BoardTone& tone)
         const float input = static_cast<float>(
             static_cast<double>(tone.amplitude) * std::sin(2.0 * kPi * tone.frequencyHz
                                                            * static_cast<double>(i) / render.sampleRate));
-        const float output = tone.instrumentPath
-            ? filter.processInstrumentSample(input, tone.vcaTarget)
-            : filter.processSample(input);
+        const float output = filter.processInstrumentSample(input, tone.vcaTarget);
         if (!std::isfinite(output))
             render.finite = false;
         if (i >= tone.warmupSamples)

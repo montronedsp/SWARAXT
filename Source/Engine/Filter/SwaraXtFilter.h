@@ -6,7 +6,6 @@
 #include "Engine/Filter/Circuit/Ir3109Pole.h"
 #include "Engine/Filter/Circuit/Ir3109BoardCore.h"
 #include "Engine/Filter/Circuit/Ir3109Types.h"
-#include "Engine/Filter/Circuit/ResonanceNetwork.h"
 #include "Engine/Filter/Control/CutoffMapper.h"
 #include "Engine/Filter/FilterQuality.h"
 #include "Engine/Filter/FilterRateConverter.h"
@@ -37,31 +36,10 @@ class SwaraXtFilter {
  public:
     struct Trace
     {
-        double filterInput = 0.0;
-        double stageState[4] {};
-        double stageOutput[4] {};
-        double resonanceFeedbackSignal = 0.0;
-        double phaseSplitInvertedPath = 0.0;
-        double phaseSplitNonInvertedPath = 0.0;
-        double diodeLimiterOutput = 0.0;
-        double postResonanceMix = 0.0;
-        double rawFilterOutputBeforeRecentering = 0.0;
-        double recenteredFilterOutput = 0.0;
-        double postFilterVcaInput = 0.0;
         double finalPluginOutput = 0.0;
-        double solverResidual = 0.0;
-        int solverIterations = 0;
-        int solverFallbacks = 0;
-        bool solverConverged = true;
     };
 
-    SwaraXtFilter()
-        : stage1_(kPassiveStage1Traits),
-          stage2_(kActiveStage2Traits),
-          stage3_(kPassiveStage3Traits),
-          stage4_(kActiveStage4Traits)
-    {
-    }
+    SwaraXtFilter() = default;
 
     void prepare(double hostSampleRate) noexcept
     {
@@ -75,11 +53,6 @@ class SwaraXtFilter {
 
     void reset() noexcept
     {
-        stage1_.reset();
-        stage2_.reset();
-        stage3_.reset();
-        stage4_.reset();
-        resonance_.reset();
         rateConverter_.reset();
         boardCore_.reset();
         instrumentVcaGain_ = 0;
@@ -87,10 +60,8 @@ class SwaraXtFilter {
         controlDelay_.fill(targetControl_);
         controlHead_ = 0;
         controlsNeedPrime_ = true;
-        activeControl_.cutoff = -1;
         if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
         {
-            selfOscMetric_ = 0.0f;
             trace_ = {};
         }
     }
@@ -147,37 +118,12 @@ class SwaraXtFilter {
     {
         solverIterationLimit_ = iterations < 1 ? 1 : (iterations > 8 ? 8 : iterations);
     }
-    float lastStageOutput(int stage) const noexcept
-    {
-        switch (stage)
-        {
-            case 0: return static_cast<float>(stage1_.output() / levels_.pluginFullScaleToVolts);
-            case 1: return static_cast<float>(stage2_.output() / levels_.pluginFullScaleToVolts);
-            case 2: return static_cast<float>(stage3_.output() / levels_.pluginFullScaleToVolts);
-            case 3: return static_cast<float>(stage4_.output() / levels_.pluginFullScaleToVolts);
-            default: return 0.0f;
-        }
-    }
-
-    bool isSelfOscillating() const noexcept
-    {
-#if SWARAXT_FILTER_DIAGNOSTICS
-        return selfOscMetric_ > 0.05f;
-#else
-        return false;
-#endif
-    }
-
-    float processSample(float in) noexcept
-    {
-        return processWithControls(in, false, 1);
-    }
 
     // Complete analog path: VCA and output network are before anti-alias
     // decimation. The input coupling/network always precedes the filter core.
     float processInstrumentSample(float in, float vcaTarget) noexcept
     {
-        return processWithControls(in, true, vcaTarget);
+        return processWithControls(in, vcaTarget);
     }
     float instrumentVcaControl() const noexcept { return instrumentVcaGain_; }
     bool instrumentTailActive() const noexcept { return instrumentFlushRemaining_ > 0; }
@@ -188,7 +134,7 @@ class SwaraXtFilter {
     }
 
 private:
-    float processWithControls(float in, bool instrument, float vcaTarget) noexcept
+    float processWithControls(float in, float vcaTarget) noexcept
     {
         const float input = clampFinite(in, -4.0f, 4.0f);
         auto target = targetControl_;
@@ -208,28 +154,15 @@ private:
         const auto control = oversampleFactor_ > 1 ? controlDelay_[controlHead_] : target;
         controlDelay_[controlHead_] = target;
         controlHead_ = (controlHead_ + 1) % controlDelay_.size();
-        if (control.cutoff != activeControl_.cutoff || control.resonance != activeControl_.resonance) {
-            stage1_.setCutoffHz(control.cutoff);
-            stage2_.setCutoffHz(control.cutoff);
-            stage3_.setCutoffHz(control.cutoff);
-            stage4_.setCutoffHz(control.cutoff);
-            resonance_.setAmount(control.resonance);
-        }
-        activeControl_ = control;
-        if (instrument) {
-            boardCore_.setTargets(control.cutoff, control.resonance, control.vca, control.boardCutoffCvVolts);
-        }
+        boardCore_.setTargets(control.cutoff, control.resonance, control.vca, control.boardCutoffCvVolts);
         const float out = clampFinite(rateConverter_.process(input,
-            [this, instrument, control](float sample) noexcept {
-                if (!instrument) return processCore(sample);
+            [this, control](float sample) noexcept {
                 return boardCore_.process(sample * control.drive, solverIterationLimit_);
             }), -8.0f, 8.0f);
-        if (instrument) {
-            instrumentVcaGain_ = static_cast<float>(boardCore_.vcaControl());
-            const bool active = vcaTarget > 0 || control.vca > 0 || instrumentVcaGain_ > 1.e-8f
-                || boardCore_.outputTailActive();
-            instrumentFlushRemaining_ = active ? FilterRateConverter::kSpan : std::max(0, instrumentFlushRemaining_ - 1);
-        }
+        instrumentVcaGain_ = static_cast<float>(boardCore_.vcaControl());
+        const bool active = vcaTarget > 0 || control.vca > 0 || instrumentVcaGain_ > 1.e-8f
+            || boardCore_.outputTailActive();
+        instrumentFlushRemaining_ = active ? FilterRateConverter::kSpan : std::max(0, instrumentFlushRemaining_ - 1);
         if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
             trace_.finalPluginOutput = out;
         return out;
@@ -239,16 +172,10 @@ public:
     void processBlock(float* samples, int n) noexcept
     {
         for (int i = 0; i < n; ++i)
-            samples[i] = processSample(samples[i]);
+            samples[i] = processInstrumentSample(samples[i], 1);
     }
 
  private:
-    struct CascadeResult
-    {
-        double state[4] {};
-        double output[4] {};
-    };
-
     static int chooseOversampleFactor(double hostHz) noexcept
     {
         if (hostHz <= 48000.0 + 1.0)
@@ -277,10 +204,6 @@ public:
         oversampleFactor_ = clamped;
         rateConverter_.prepare(clamped);
         const double fs = hostSampleRate_ * static_cast<double>(oversampleFactor_);
-        stage1_.setSampleRate(fs);
-        stage2_.setSampleRate(fs);
-        stage3_.setSampleRate(fs);
-        stage4_.setSampleRate(fs);
         boardCore_.prepare(fs);
     }
 
@@ -296,178 +219,14 @@ public:
     {
         const double modOct = static_cast<double>(params_.matrixCutoffOctaves);
         const double musical = mapper_.mapCutoffHz(params_.cutoffHz,
-                                                   params_.keyTrack,
-                                                   params_.noteNumber,
-                                                   modOct);
+                                                    params_.keyTrack,
+                                                    params_.noteNumber,
+                                                    modOct);
         const double stageHz = mapper_.stageCutoffFromMusicalCutoff(musical);
         targetControl_ = {stageHz, params_.resonance, params_.drive};
         targetControl_.boardCutoffCvVolts = params_.boardCutoffCvVolts;
     }
 
-    CascadeResult evaluateCascade(double inputVolts) const noexcept
-    {
-        Ir3109Pole::State p1 = stage1_.snapshot();
-        Ir3109Pole::State p2 = stage2_.snapshot();
-        Ir3109Pole::State p3 = stage3_.snapshot();
-        Ir3109Pole::State p4 = stage4_.snapshot();
-        return runCascadePreview(inputVolts, p1, p2, p3, p4);
-    }
-
-    CascadeResult commitCascade(double inputVolts) noexcept
-    {
-        CascadeResult result;
-        result.output[0] = stage1_.process(inputVolts);
-        result.output[1] = stage2_.process(result.output[0]);
-        result.output[2] = stage3_.process(result.output[1]);
-        result.output[3] = stage4_.process(result.output[2]);
-        result.state[0] = stage1_.integrator();
-        result.state[1] = stage2_.integrator();
-        result.state[2] = stage3_.integrator();
-        result.state[3] = stage4_.integrator();
-        return result;
-    }
-
-    CascadeResult runCascadePreview(double inputVolts,
-                                    Ir3109Pole::State& p1,
-                                    Ir3109Pole::State& p2,
-                                    Ir3109Pole::State& p3,
-                                    Ir3109Pole::State& p4) const noexcept
-    {
-        CascadeResult result;
-        p1 = stage1_.preview(inputVolts, p1);
-        result.output[0] = p1.output;
-        p2 = stage2_.preview(result.output[0], p2);
-        result.output[1] = p2.output;
-        p3 = stage3_.preview(result.output[1], p3);
-        result.output[2] = p3.output;
-        p4 = stage4_.preview(result.output[2], p4);
-        result.output[3] = p4.output;
-        result.state[0] = p1.integrator;
-        result.state[1] = p2.integrator;
-        result.state[2] = p3.integrator;
-        result.state[3] = p4.integrator;
-        return result;
-    }
-
-    ResonanceNetwork::Evaluation solveFeedback(double inputVolts, Trace& localTrace) const noexcept
-    {
-        if (resonance_.feedbackGain() == 0.0)
-        {
-            if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
-            {
-                localTrace.solverResidual = 0.0;
-                localTrace.solverIterations = 0;
-                localTrace.solverFallbacks = 0;
-                localTrace.solverConverged = true;
-            }
-            return {};
-        }
-
-        ResonanceNetwork::Evaluation network = resonance_.evaluate(stage4_.output());
-        double estimate = stage4_.output();
-        double previous = estimate;
-        if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
-        {
-            localTrace.solverResidual = 0.0;
-            localTrace.solverIterations = 0;
-            localTrace.solverFallbacks = 0;
-            localTrace.solverConverged = true;
-        }
-
-        for (int iter = 0; iter < solverIterationLimit_; ++iter)
-        {
-            network = resonance_.evaluate(estimate);
-            const CascadeResult preview = evaluateCascade(inputVolts + network.feedback);
-            const double next = preview.output[3];
-            const double residual = next - estimate;
-            previous = estimate;
-            estimate += residual * 0.72;
-            if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
-            {
-                localTrace.solverResidual = std::abs(residual);
-                localTrace.solverIterations = iter + 1;
-            }
-
-            if (! std::isfinite(estimate))
-            {
-                estimate = previous;
-                if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
-                {
-                    localTrace.solverFallbacks = 1;
-                    localTrace.solverConverged = false;
-                }
-                break;
-            }
-
-            if (std::abs(residual) < 1.0e-9)
-                break;
-        }
-
-        if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
-        {
-            if (localTrace.solverResidual > 1.0e-5)
-                localTrace.solverConverged = false;
-        }
-
-        return resonance_.evaluate(estimate);
-    }
-
-    float processCore(float inPlugin) noexcept
-    {
-        Trace localTrace;
-        const double drive = clampFinite(static_cast<double>(activeControl_.drive), 0.25, 4.0);
-        const double inV = static_cast<double>(inPlugin) * levels_.pluginFullScaleToVolts * drive;
-
-        CascadeResult cascade;
-        ResonanceNetwork::Evaluation appliedNetwork {};
-        ResonanceNetwork::Evaluation outputNetwork {};
-        double rawOutV = 0.0;
-        if (resonance_.feedbackGain() == 0.0)
-        {
-            cascade = commitCascade(inV);
-            rawOutV = cascade.output[3];
-        }
-        else
-        {
-            appliedNetwork = solveFeedback(inV, localTrace);
-            const double stageInput = inV + appliedNetwork.feedback;
-            cascade = commitCascade(stageInput);
-            outputNetwork = resonance_.process(cascade.output[3]);
-            rawOutV = cascade.output[3] + outputNetwork.outputContribution;
-        }
-        float out = static_cast<float>(rawOutV / levels_.pluginFullScaleToVolts);
-        out = clampFinite(out, -8.0f, 8.0f);
-
-        if constexpr (SWARAXT_FILTER_DIAGNOSTICS != 0)
-        {
-            localTrace.filterInput = inV;
-            for (int i = 0; i < 4; ++i)
-            {
-                localTrace.stageState[i] = cascade.state[i];
-                localTrace.stageOutput[i] = cascade.output[i];
-            }
-            localTrace.resonanceFeedbackSignal = appliedNetwork.feedback;
-            localTrace.phaseSplitInvertedPath = appliedNetwork.phaseSplitInverted;
-            localTrace.phaseSplitNonInvertedPath = appliedNetwork.phaseSplitNonInverted;
-            localTrace.diodeLimiterOutput = appliedNetwork.diodeLimiterOutput;
-            localTrace.postResonanceMix = inV + appliedNetwork.feedback;
-            localTrace.rawFilterOutputBeforeRecentering = rawOutV;
-            localTrace.recenteredFilterOutput = rawOutV;
-            localTrace.postFilterVcaInput = out;
-            localTrace.finalPluginOutput = out;
-            trace_ = localTrace;
-
-            const float absOut = std::fabs(out);
-            selfOscMetric_ = selfOscMetric_ * 0.995f + absOut * 0.005f;
-        }
-        return out;
-    }
-
-    Ir3109Pole stage1_;
-    Ir3109Pole stage2_;
-    Ir3109Pole stage3_;
-    Ir3109Pole stage4_;
-    ResonanceNetwork resonance_;
     CutoffMapper mapper_;
     CircuitLevelCalibration levels_ {};
     SwaraXtFilterParams params_ {};
@@ -481,7 +240,7 @@ public:
         float resonance = 0, drive = 1, vca = 0;
         double boardCutoffCvVolts = -1;
     };
-    Control targetControl_{}, activeControl_{};
+    Control targetControl_{};
     std::array<Control, FilterRateConverter::kInputDelay> controlDelay_{};
     size_t controlHead_ = 0;
     bool controlsNeedPrime_ = true;
@@ -489,168 +248,6 @@ public:
     Ir3109BoardCore boardCore_;
     float instrumentVcaGain_ = 0;
     int instrumentFlushRemaining_ = 0;
-    float selfOscMetric_ = 0.0f;
-};
-
-// Offline double-precision reference with higher oversampling and independent
-// state variables. It intentionally does not delegate to SwaraXtFilter.
-class Ir3109ReferenceModel {
- public:
-    using Trace = SwaraXtFilter::Trace;
-
-    struct Features
-    {
-        bool stageAsymmetry = true;
-        bool currentLimits = false;
-        bool slew = false;
-        bool diodes = true;
-        bool phaseSplitter = true;
-        bool outputContribution = true;
-    };
-
-    void prepare(double sampleRate) noexcept
-    {
-        sampleRate_ = sampleRate > 1.0 ? sampleRate : 44100.0;
-        reset();
-        updateCoefficients();
-    }
-
-    void reset() noexcept
-    {
-        states_.fill(0.0);
-        previousInput_ = 0.0;
-        trace_ = {};
-    }
-
-    void setFeatures(const Features& f) noexcept { features_ = f; }
-
-    void setParams(const SwaraXtFilterParams& p) noexcept
-    {
-        params_ = p;
-        updateCoefficients();
-    }
-
-    double process(double input) noexcept
-    {
-        constexpr int kReferenceOversample = 16;
-        double sum = 0.0;
-        for (int os = 0; os < kReferenceOversample; ++os)
-        {
-            const double t = static_cast<double>(os + 1) / static_cast<double>(kReferenceOversample);
-            const double xPlugin = previousInput_ + (input - previousInput_) * t;
-            sum += processCore(xPlugin, sampleRate_ * static_cast<double>(kReferenceOversample));
-        }
-        previousInput_ = input;
-        trace_.finalPluginOutput = sum / static_cast<double>(kReferenceOversample);
-        return trace_.finalPluginOutput;
-    }
-
-    const Trace& trace() const noexcept { return trace_; }
-
- private:
-    double poleStep(double input, double& state, double sampleRate, int stage) const noexcept
-    {
-        const double g = std::tan(kPi * clampFinite(stageCutoffHz_, 1.0, sampleRate * 0.45) / sampleRate);
-        const double softness = features_.stageAsymmetry
-            ? (stage == 1 || stage == 3 ? 0.98 : 1.06)
-            : 1.0;
-        const double attenuation = kOtaDifferentialInputAttenuation / softness;
-        const double diff = input - state;
-        const double shaped = std::tanh((diff * attenuation) / (2.0 * kOtaThermalVoltageVolts))
-                            * (2.0 * kOtaThermalVoltageVolts) / attenuation;
-        const double v = shaped / (1.0 + g);
-        const double y = state + g * v;
-        state = y + g * v;
-        return y;
-    }
-
-    double cascadePreview(double input, const std::array<double, 4>& sourceStates, double sampleRate) const noexcept
-    {
-        std::array<double, 4> s = sourceStates;
-        double x = input;
-        for (int stage = 0; stage < 4; ++stage)
-            x = poleStep(x, s[static_cast<size_t>(stage)], sampleRate, stage + 1);
-        return x;
-    }
-
-    ResonanceNetwork::Evaluation referenceNetwork(double stage4) const noexcept
-    {
-        const double amount = clampFinite(static_cast<double>(params_.resonance), 0.0, 1.0);
-        const double gain = std::pow(amount, 1.35) * 4.45;
-        const double inverted = features_.phaseSplitter ? -stage4 : stage4;
-        const double nonInverted = features_.phaseSplitter ? stage4 * 0.85 : stage4;
-        const double limited = features_.diodes ? 1.35 * std::tanh(inverted / 1.35) : inverted;
-        const double output = features_.outputContribution ? nonInverted * amount * amount * 0.10 : 0.0;
-        return { inverted, nonInverted, limited, limited * gain, output };
-    }
-
-    double processCore(double inputPlugin, double sampleRate) noexcept
-    {
-        Trace local;
-        const double drive = clampFinite(static_cast<double>(params_.drive), 0.25, 4.0);
-        const double inV = inputPlugin * levels_.pluginFullScaleToVolts * drive;
-
-        double estimate = states_[3];
-        ResonanceNetwork::Evaluation network = referenceNetwork(estimate);
-        for (int iter = 0; iter < 12; ++iter)
-        {
-            network = referenceNetwork(estimate);
-            const double next = cascadePreview(inV + network.feedback, states_, sampleRate);
-            const double residual = next - estimate;
-            estimate += residual * 0.75;
-            local.solverResidual = std::abs(residual);
-            local.solverIterations = iter + 1;
-            if (std::abs(residual) < 1.0e-10)
-                break;
-        }
-
-        network = referenceNetwork(estimate);
-        double x = inV + network.feedback;
-        for (int stage = 0; stage < 4; ++stage)
-        {
-            x = poleStep(x, states_[static_cast<size_t>(stage)], sampleRate, stage + 1);
-            local.stageState[stage] = states_[static_cast<size_t>(stage)];
-            local.stageOutput[stage] = x;
-        }
-
-        const ResonanceNetwork::Evaluation outputNetwork = referenceNetwork(x);
-        const double raw = x + outputNetwork.outputContribution;
-        const double out = clampFinite(raw / levels_.pluginFullScaleToVolts, -8.0, 8.0);
-
-        local.filterInput = inV;
-        local.resonanceFeedbackSignal = network.feedback;
-        local.phaseSplitInvertedPath = network.phaseSplitInverted;
-        local.phaseSplitNonInvertedPath = network.phaseSplitNonInverted;
-        local.diodeLimiterOutput = network.diodeLimiterOutput;
-        local.postResonanceMix = inV + network.feedback;
-        local.rawFilterOutputBeforeRecentering = raw;
-        local.recenteredFilterOutput = raw;
-        local.postFilterVcaInput = out;
-        local.finalPluginOutput = out;
-        local.solverConverged = local.solverResidual < 1.0e-5;
-        trace_ = local;
-        return out;
-    }
-
-    void updateCoefficients() noexcept
-    {
-        const double modOct = static_cast<double>(params_.matrixCutoffOctaves);
-        const double musical = mapper_.mapCutoffHz(params_.cutoffHz,
-                                                   params_.keyTrack,
-                                                   params_.noteNumber,
-                                                   modOct);
-        stageCutoffHz_ = mapper_.stageCutoffFromMusicalCutoff(musical);
-    }
-
-    CutoffMapper mapper_;
-    CircuitLevelCalibration levels_ {};
-    SwaraXtFilterParams params_ {};
-    Features features_ {};
-    Trace trace_ {};
-    std::array<double, 4> states_ {};
-    double sampleRate_ = 44100.0;
-    double stageCutoffHz_ = 1000.0;
-    double previousInput_ = 0.0;
 };
 
 }  // namespace swaraxt

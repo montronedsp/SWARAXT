@@ -20,7 +20,6 @@ struct BoardTone
     swaraxt::FilterQuality quality = swaraxt::FilterQuality::normal;
     int warmupSamples = 4096;
     int captureSamples = 2048;
-    bool instrumentPath = true;
     int oversampleOverride = 0;
     float vcaTarget = 1.0f;
 };

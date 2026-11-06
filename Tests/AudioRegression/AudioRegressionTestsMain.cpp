@@ -400,10 +400,6 @@ std::vector<float> renderShruthiSource(ShruthiRuntime& runtime,
 
 struct FilterCapture {
     std::vector<float> input;
-    std::vector<float> stage1;
-    std::vector<float> stage2;
-    std::vector<float> stage3;
-    std::vector<float> stage4;
     std::vector<float> output;
 };
 
@@ -420,19 +416,10 @@ FilterCapture runFilterCapture(const std::vector<float>& source, float resonance
 
     FilterCapture capture;
     capture.input = source;
-    capture.stage1.reserve(source.size());
-    capture.stage2.reserve(source.size());
-    capture.stage3.reserve(source.size());
-    capture.stage4.reserve(source.size());
     capture.output.reserve(source.size());
     for (float s : source)
     {
-        const float y = filter.processSample(s);
-        capture.stage1.push_back(filter.lastStageOutput(0));
-        capture.stage2.push_back(filter.lastStageOutput(1));
-        capture.stage3.push_back(filter.lastStageOutput(2));
-        capture.stage4.push_back(filter.lastStageOutput(3));
-        capture.output.push_back(y);
+        capture.output.push_back(filter.processInstrumentSample(s, 1.0f));
     }
     return capture;
 }
@@ -569,10 +556,6 @@ void runSignalChain()
     writeMetricsRow(metrics, "noise_source_zero", measure(zeroNoise, swaraxt::SwaraXtEngine::kInternalSampleRate));
     writeMetricsRow(metrics, "noise_source_only", measure(noise, swaraxt::SwaraXtEngine::kInternalSampleRate));
     writeMetricsRow(metrics, "filter_input", measure(lowFilter.input, swaraxt::SwaraXtEngine::kInternalSampleRate));
-    writeMetricsRow(metrics, "filter_stage_1_output", measure(lowFilter.stage1, swaraxt::SwaraXtEngine::kInternalSampleRate));
-    writeMetricsRow(metrics, "filter_stage_2_output", measure(lowFilter.stage2, swaraxt::SwaraXtEngine::kInternalSampleRate));
-    writeMetricsRow(metrics, "filter_stage_3_output", measure(lowFilter.stage3, swaraxt::SwaraXtEngine::kInternalSampleRate));
-    writeMetricsRow(metrics, "filter_stage_4_output", measure(lowFilter.stage4, swaraxt::SwaraXtEngine::kInternalSampleRate));
     writeMetricsRow(metrics, "post_filter_low_resonance", measure(lowFilter.output, swaraxt::SwaraXtEngine::kInternalSampleRate));
     writeMetricsRow(metrics, "post_resonance_high_resonance", measure(highFilter.output, swaraxt::SwaraXtEngine::kInternalSampleRate));
     writeMetricsRow(metrics, "post_vca", measure(postVca, swaraxt::SwaraXtEngine::kInternalSampleRate));
