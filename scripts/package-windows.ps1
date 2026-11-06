@@ -19,7 +19,7 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 if ($version -ne "1.3.1") { throw "This release requires PROJECT_VERSION 1.3.1" }
 function Assert-PackageDocumentation([string]$Directory) {
     $readme = Get-Content -Raw (Join-Path $Directory "README.txt")
-    if ($readme -notmatch '^Swara XT 1\.3\.0\r?\n' -or
+    if ($readme -notmatch '^Swara XT 1\.3\.1\r?\n' -or
         $readme -notmatch '(?m)^Source repository: https://github\.com/montronedsp/SWARAXT\r?$') {
         throw "Package README version or source repository is incorrect"
     }

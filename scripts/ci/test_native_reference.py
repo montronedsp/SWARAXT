@@ -681,10 +681,10 @@ class FixtureAdmissionTestsLinux(unittest.TestCase):
     def test_negative_missing_process_call(self):
         """Negative control: removed filter call is rejected."""
         current_data = (self.source / self.RELATIVE).read_bytes()
-        modified = current_data.replace(
-            b'capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\n',
-            b''
-        )
+        normalized = current_data.replace(b'\r\n', b'\n')
+        target = b'        capture.output.push_back(filter.processInstrumentSample(s, 1.0f));\n'
+        self.assertEqual(normalized.count(target), 1, 'Expected filter call to occur exactly once')
+        modified = normalized.replace(target, b'')
         self._write_fixture(modified)
         with self.assertRaises(RuntimeError):
             current.checked_file(self.tmp_root, self.RELATIVE, self.EXPECTED)

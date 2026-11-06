@@ -87,7 +87,7 @@ Manual archives remain available from [GitHub Releases](https://github.com/montr
 
 ## Downloads
 
-The latest published release is [1.2.3](https://github.com/montronedsp/SWARAXT/releases/tag/v1.2.3).
+The latest published release is [1.3.0](https://github.com/montronedsp/SWARAXT/releases/tag/v1.3.0).
 The current source targets **1.3.1**. The feature descriptions above
 follow current source; download links still refer to published releases.
 
@@ -102,7 +102,7 @@ The current public Windows x64 package is available from
 
 ### macOS
 
-No macOS archive is published with the current 1.2.3 GitHub release; see
+No macOS archive is published with the current 1.3.0 GitHub release; see
 [BUILDING.md](BUILDING.md) to build the current source locally.
 
 ## Performance

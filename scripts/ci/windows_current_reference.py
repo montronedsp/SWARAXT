@@ -34,20 +34,27 @@ def encode(value):
 def checked(root, relative, expected):
     data = paths.trusted_file(root, relative).read_bytes()
     if not isinstance(expected, str) or not re.fullmatch('[0-9a-f]{64}', expected) or digest(data) != expected:
+        if relative == PACKAGE_FILE:
+            # Working-tree checkouts may use CRLF line endings; normalize
+            # to LF before hashing to match the immutable reference package.
+            normalized = data.replace(b'\r\n', b'\n')
+            if digest(normalized) == expected:
+                return normalized
         raise RuntimeError('Windows reference checksum mismatch: ' + relative)
     return data
 
 
 def checked_fixture(root, relative, expected):
     data = paths.trusted_file(root, relative).read_bytes()
-    if digest(data) == expected:
+    normalized = data.replace(b'\r\n', b'\n')
+    if digest(normalized) == expected:
         return data
     if relative == 'Tests/Filter/DualSvfIntegrationAuditMain.cpp':
         # Linux current-header dispatch and absolute output paths do not change
         # the approved Windows render/check body. Reverse only these exact
         # edits, then authenticate every original byte against the fixed package.
-        original = data.replace(b'#if defined(_MSC_VER) || defined(__linux__)\n',
-                                b'#if defined(_MSC_VER)\n')
+        original = normalized.replace(b'#if defined(_MSC_VER) || defined(__linux__)\n',
+                                      b'#if defined(_MSC_VER)\n')
         original = original.replace(
             b'    const auto out=std::filesystem::absolute(argc>1 ? argv[1] : "dual-svf-integration-audit");\n',
             b'    const std::filesystem::path out=argc>1 ? argv[1] : "dual-svf-integration-audit";\n')
@@ -59,7 +66,6 @@ def checked_fixture(root, relative, expected):
         # exact edits, then authenticate every original byte against the fixed
         # package. Working-tree checkouts may use CRLF line endings; normalize
         # to LF before hashing to match the immutable reference package.
-        normalized = data.replace(b'\r\n', b'\n')
         original = normalized.replace(
             b'struct FilterCapture {\n    std::vector<float> input;\n    std::vector<float> output;\n};',
             b'struct FilterCapture {\n    std::vector<float> input;\n    std::vector<float> stage1;\n    std::vector<float> stage2;\n    std::vector<float> stage3;\n    std::vector<float> stage4;\n    std::vector<float> output;\n};'
