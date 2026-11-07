@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Windows build and package
+run-name: SWARA XT Windows build/package ${{ inputs.source_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact release revision
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: swaraxt-windows-build-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  build-package:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      REVIEWED_SHA: ${{ inputs.source_sha }}
+    steps:
+      - name: Preserve LF checkout identity
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Verify revision
+        shell: powershell
+        run: |
+          if ("${{ env.REVIEWED_SHA }}" -ne "$(git rev-parse HEAD)") { throw "SHA mismatch" }
+      - uses: ilammy/msvc-dev-cmd@v1.13.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Install pinned build frontend
+        shell: powershell
+        run: python -m pip install --only-binary :all: --require-hashes -r scripts/ci/requirements-frontend.txt
+      - name: Checkout pinned JUCE 9.0.1
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path ".cache" | Out-Null
+          git -C .cache init JUCE
+          git -C .cache/JUCE remote add origin https://github.com/juce-framework/JUCE.git
+          git -C .cache/JUCE fetch --depth 1 origin e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8
+          git -C .cache/JUCE checkout FETCH_HEAD
+      - name: Configure and build Windows release
+        shell: powershell
+        run: |
+          cmake --preset win-release
+          cmake --build --preset win-release --config Release
+      - name: Package Windows distribution
+        shell: powershell
+        run: |
+          ./scripts/package-windows.ps1 `
+            -Config Release `
+            -BuildDirectory "build/win-release" `
+            -OutputDirectory "artifacts/final-1.3.1"
+      - name: Upload Windows package
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: windows-package-${{ github.sha }}
+          path: |
+            artifacts/final-1.3.1/SwaraXT-Windows-x64-v1.3.1.zip
+            artifacts/final-1.3.1/checksums-v1.3.1.txt
+          if-no-files-found: error
+          retention-days: 30
