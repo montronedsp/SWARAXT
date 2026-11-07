@@ -15,9 +15,9 @@ on:
         required: true
         type: string
 permissions:
-  contents: write
+  contents: read
 concurrency:
-  group: swaraxt-windows-build-${{ github.sha }}
+  group: swaraxt-windows-build-${{ inputs.source_sha }}
   cancel-in-progress: false
 jobs:
   build-package:
@@ -31,33 +31,50 @@ jobs:
         run: git config --global core.autocrlf false
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - name: Verify revision
-        shell: powershell
+      - name: Verify source and initialize pinned submodules
+        shell: bash
         run: |
-          if ("${{ env.REVIEWED_SHA }}" -ne "$(git rev-parse HEAD)") { throw "SHA mismatch" }
-      - uses: ilammy/msvc-dev-cmd@v1.13.0
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$REVIEWED_SHA"
+          git -c url.https://github.com/.insteadOf=git://github.com/ submodule update --init --recursive
+          git submodule status --recursive
+          if git submodule status --recursive | grep -Eq '^[+U-]'; then
+            echo "Submodule revision mismatch" >&2
+            exit 1
+          fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
       - name: Install pinned build frontend
-        shell: powershell
-        run: python -m pip install --only-binary :all: --require-hashes -r scripts/ci/requirements-frontend.txt
+        shell: pwsh
+        run: |
+          python -m pip install --only-binary :all: --require-hashes -r scripts/ci/requirements-frontend.txt
       - name: Checkout pinned JUCE 9.0.1
-        shell: powershell
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force -Path ".cache" | Out-Null
+          juce_sha=e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8
+          mkdir -p .cache
           git -C .cache init JUCE
-          git -C .cache/JUCE remote add origin https://github.com/juce-framework/JUCE.git
-          git -C .cache/JUCE fetch --depth 1 origin e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8
-          git -C .cache/JUCE checkout FETCH_HEAD
+          git -C .cache/JUCE fetch --depth 1 https://github.com/juce-framework/JUCE.git "$juce_sha"
+          git -C .cache/JUCE checkout --detach FETCH_HEAD
+          test "$(git -C .cache/JUCE rev-parse HEAD)" = "$juce_sha"
+          test -z "$(git -C .cache/JUCE status --porcelain --untracked-files=all --ignored)"
       - name: Configure and build Windows release
-        shell: powershell
+        shell: pwsh
         run: |
-          cmake --preset win-release
-          cmake --build --preset win-release --config Release
+          cmake --preset win-release -T 'host=x64,version=14.44.35207' -DSWARA_BUILD_STANDALONE=ON -DSWARA_BUILD_SKIN_EDITOR=OFF
+          if ($LASTEXITCODE -ne 0) { throw "Windows release configuration failed" }
+          $compilerConfig = @(Get-ChildItem build/win-release/CMakeFiles -Recurse -Filter CMakeCXXCompiler.cmake)
+          if ($compilerConfig.Count -ne 1) { throw "Unable to identify the selected C++ compiler" }
+          $compiler = [regex]::Match((Get-Content -Raw $compilerConfig[0].FullName), 'set\(CMAKE_CXX_COMPILER "([^"]+)"\)').Groups[1].Value
+          if ((Get-FileHash -LiteralPath $compiler).Hash -ne 'fe251ef50a1545b1b0835ee17b1e785459712b38d79e45b5c1d3d28970a36619') {
+            throw "The selected compiler differs from the qualified MSVC compiler"
+          }
+          cmake --build --preset win-release --parallel 2
       - name: Package Windows distribution
-        shell: powershell
+        shell: pwsh
         run: |
           ./scripts/package-windows.ps1 `
             -Config Release `
@@ -66,7 +83,7 @@ jobs:
       - name: Upload Windows package
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: windows-package-${{ github.sha }}
+          name: windows-package-${{ inputs.source_sha }}
           path: |
             artifacts/final-1.3.1/SwaraXT-Windows-x64-v1.3.1.zip
             artifacts/final-1.3.1/checksums-v1.3.1.txt
