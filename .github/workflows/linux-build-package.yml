@@ -25,18 +25,20 @@ jobs:
     timeout-minutes: 120
     env:
       REVIEWED_SHA: ${{ inputs.source_sha }}
+      APPROVED_SOURCE_SHA: c4098234a81fa3ee9623b4836e3fd313dbc68efc
     steps:
-      - name: Preserve LF checkout identity
+      - name: Authorize the release source and preserve LF checkout identity
         shell: bash
-        run: git config --global core.autocrlf false
+        run: |
+          test "$REVIEWED_SHA" = "$APPROVED_SOURCE_SHA"
+          git config --global core.autocrlf false
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ env.APPROVED_SOURCE_SHA }}
           persist-credentials: false
       - name: Verify source and initialize pinned submodules
         shell: bash
         run: |
-          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$REVIEWED_SHA"
           git -c url.https://github.com/.insteadOf=git://github.com/ submodule update --init --recursive
           git submodule status --recursive
