@@ -41,6 +41,15 @@ using namespace avrlib;
 
 namespace shruthi {
 
+namespace {
+uint8_t TransposeSequencerNote(uint8_t note, int8_t transposition) {
+  int16_t transposed = static_cast<int16_t>(note) + transposition;
+  while (transposed < 0) transposed += 12;
+  while (transposed > 127) transposed -= 12;
+  return static_cast<uint8_t>(transposed);
+}
+}  // namespace
+
 void Part::Init(HostAudioRing& audio_out,
                 avrlib::Random& random,
                 MidiDispatcher& midi_dispatcher,
@@ -706,8 +715,7 @@ void Part::ClockSequencer() {
       int8_t transposition = pressed_keys_.size() ?
           pressed_keys_.most_recent_note().note - 60 : seq_transposition_;
       seq_transposition_ = transposition;
-      int8_t note = step.note() + transposition;
-      while (note < 0) note += 12;
+      const uint8_t note = TransposeSequencerNote(step.note(), transposition);
       if (!step.legato()) {
         StopSequencerArpeggiatorNotes();
         InternalNoteOn(note, step.velocity());
@@ -1160,9 +1168,7 @@ void Part::clockSequencerScale(uint8_t step_index) {
   int8_t transposition = pressed_keys_.size() ?
       pressed_keys_.most_recent_note().note - 60 : seq_transposition_;
   seq_transposition_ = transposition;
-  int8_t note = step.note() + transposition;
-  while (note < 0) note += 12;
-  const uint8_t identity = static_cast<uint8_t>(note);
+  const uint8_t identity = TransposeSequencerNote(step.note(), transposition);
   int degree = scale_degrees_[step_index & 15];
   const auto* tuning = static_cast<const swaraxt::tuning::PublishedTuning*>(scale_tuning_);
   if (pressed_keys_.size() && tuning != nullptr)
@@ -1199,9 +1205,7 @@ void Part::clockSequencerQuantizedCv(uint8_t step_index) {
   int8_t transposition = pressed_keys_.size() ?
       pressed_keys_.most_recent_note().note - 60 : seq_transposition_;
   seq_transposition_ = transposition;
-  int8_t note = step.note() + transposition;
-  while (note < 0) note += 12;
-  const uint8_t identity = static_cast<uint8_t>(note);
+  const uint8_t identity = TransposeSequencerNote(step.note(), transposition);
   const int32_t units = swaraxt::FreeCvPitch::clampUnits(
       free_cv_units_[step_index & 15]
       + static_cast<int32_t>(transposition) * swaraxt::FreeCvPitch::kUnitsPerSemitone);
@@ -1242,9 +1246,7 @@ void Part::clockSequencerFreeCv(uint8_t step_index) {
   int8_t transposition = pressed_keys_.size() ?
       pressed_keys_.most_recent_note().note - 60 : seq_transposition_;
   seq_transposition_ = transposition;
-  int8_t note = step.note() + transposition;
-  while (note < 0) note += 12;
-  const uint8_t identity = static_cast<uint8_t>(note);
+  const uint8_t identity = TransposeSequencerNote(step.note(), transposition);
   const int32_t units = free_cv_units_[step_index & 15]
       + static_cast<int32_t>(transposition) * swaraxt::FreeCvPitch::kUnitsPerSemitone;
   const uint16_t pitch = swaraxt::FreeCvPitch::toVoicePitch(units);
