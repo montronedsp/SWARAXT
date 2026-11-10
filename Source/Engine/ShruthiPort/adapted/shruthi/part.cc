@@ -48,6 +48,9 @@ uint8_t TransposeSequencerNote(uint8_t note, int8_t transposition) {
   while (transposed > 127) transposed -= 12;
   return static_cast<uint8_t>(transposed);
 }
+uint8_t ClampArpeggiatorRange(uint8_t range) {
+  return range < 1 ? 1 : (range > 4 ? 4 : range);
+}
 }  // namespace
 
 void Part::Init(HostAudioRing& audio_out,
@@ -525,9 +528,10 @@ void Part::Start(bool internal) {
   arp_seq_running_ = true;
   arp_previous_note_ = 0;
   seq_transposition_ = 0;
+  const uint8_t arp_range = ClampArpeggiatorRange(sequencer_settings_.arp_range);
   if (sequencer_settings_.arp_direction == ARPEGGIO_DIRECTION_DOWN) {
     arp_note_ = pressed_keys_.size() - 1;
-    arp_octave_ = sequencer_settings_.arp_range - 1;
+    arp_octave_ = arp_range - 1;
     arp_direction_ = -1;
   } else {
     arp_note_ = 0;
@@ -593,8 +597,9 @@ void Part::ClockArpeggiator() {
   uint8_t num_notes = pressed_keys_.size();
   if (sequencer_settings_.mode() == SEQUENCER_MODE_ARP &&
       has_note && num_notes) {
+    const uint8_t arp_range = ClampArpeggiatorRange(sequencer_settings_.arp_range);
     // Update arepggiator note/octave counter.
-    if (num_notes == 1 && sequencer_settings_.arp_range == 1) {
+    if (num_notes == 1 && arp_range == 1) {
       // This is a corner case for the Up/down pattern code.
       // Get it out of the way.
       arp_note_ = 0;
@@ -604,8 +609,8 @@ void Part::ClockArpeggiator() {
         uint8_t random_byte = random_ != nullptr ? random_->state_msb() : 0;
         arp_octave_ = random_byte & 0xf;
         arp_note_ = (random_byte & 0xf0) >> 4;
-        while (arp_octave_ >= sequencer_settings_.arp_range) {
-          arp_octave_ -= sequencer_settings_.arp_range;
+        while (arp_octave_ >= arp_range) {
+          arp_octave_ -= arp_range;
         }
         while (arp_note_ >= num_notes) {
           arp_note_ -= num_notes;
@@ -618,17 +623,17 @@ void Part::ClockArpeggiator() {
             arp_note_ = arp_direction_ > 0 ? 0 : num_notes - 1;
           }
           wrapped = false;
-          if (arp_octave_ >= sequencer_settings_.arp_range || arp_octave_ < 0) {
+          if (arp_octave_ >= arp_range || arp_octave_ < 0) {
             arp_octave_ = arp_direction_ > 0
                 ? 0
-                : sequencer_settings_.arp_range - 1;
+                : arp_range - 1;
             if (sequencer_settings_.arp_direction == \
                 ARPEGGIO_DIRECTION_UP_DOWN) {
               arp_direction_ = -arp_direction_;
               arp_note_ = arp_direction_ > 0 ? 1 : num_notes - 2;
               arp_octave_ = arp_direction_ > 0
                   ? 0
-                  : sequencer_settings_.arp_range - 1;
+                  : arp_range - 1;
               wrapped = true;
             }
           }
