@@ -916,7 +916,7 @@ void Part::ProcessBlockInternal(bool render_audio) {
       swing_amount_ = static_cast<int8_t>(S8U8MulShift8(
           static_cast<int8_t>(ResourcesManager::Lookup<int16_t, uint8_t>(
               LUT_RES_GROOVE_SWING + sequencer_settings_.seq_groove_template,
-              arp_seq_step_)),
+              arp_seq_step_ & 0x0f)),
           sequencer_settings_.seq_groove_amount) >> 1);
       Clock(true);
       clock_.Update(sequencer_settings_.seq_tempo);
