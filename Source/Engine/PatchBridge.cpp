@@ -162,7 +162,7 @@ void PatchBridge::applyCacheToEngine(const ParameterCache& cache)
         seq->seq_groove_template = 0;
     seq->seq_groove_amount = static_cast<uint8_t>(ParameterCache::loadInt(cache.seqSwing));
     seq->arp_pattern = static_cast<uint8_t>(ParameterCache::loadInt(cache.arpPattern));
-    seq->arp_range = static_cast<uint8_t>(ParameterCache::loadInt(cache.arpOctaves));
+    seq->arp_range = static_cast<uint8_t>(juce::jlimit(1, 4, ParameterCache::loadInt(cache.arpOctaves)));
     seq->arp_clock_division = static_cast<uint8_t>(juce::jlimit(0, 11, ParameterCache::loadInt(cache.arpGate)));
     part_->SetGatePercent(static_cast<uint8_t>(
         juce::jlimit(5, 100, ParameterCache::loadInt(cache.seqGate))));
