@@ -136,6 +136,7 @@ void parityTests()
                 ++cases;
             }
     std::cout << "Filter/DCA/16 FX/5 routes/control histories: " << cases << " PASS, max diff=0\n";
+    std::cout << "Delay FX use the corrected >= ring overlay, not the firmware strict > guard cell.\n";
 }
 }
 int main()
