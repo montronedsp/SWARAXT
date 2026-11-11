@@ -426,7 +426,8 @@ target_compile_definitions(SwaraXTRestoreCompletionTests PRIVATE
     SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS=1 SWARAXT_ENABLE_STATE_PUBLICATION_TESTS=1
     SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS=1)
 if(SWARAXT_DIAGNOSTICS_MODULE AND DIAG_SANITIZER STREQUAL "rtsan")
-    set_property(SOURCE Presets/HostStateSafetyTestsMain.cpp Presets/RestoreCompletionTestsMain.cpp APPEND PROPERTY
+    set_property(SOURCE Presets/HostStateSafetyTestsMain.cpp Presets/RestoreCompletionTestsMain.cpp
+        Sequencer/SequencerMidiTestsMain.cpp APPEND PROPERTY
         COMPILE_DEFINITIONS SWARAXT_HOST_RESTORE_RTSAN=1)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SWARAXT_DIAGNOSTICS_MODULE AND DIAG_SANITIZER STREQUAL "tsan")
@@ -548,6 +549,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 endif()
 target_compile_definitions(SwaraXTSequencerMidiTests PRIVATE SWARAXT_ENABLE_MIDI_SCHEDULER_TESTS=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+add_test(NAME SwaraXTSequencerMidi-post-render COMMAND SwaraXTSequencerMidiTests --post-render)
+set_tests_properties(SwaraXTSequencerMidi-post-render PROPERTIES TIMEOUT 120 LABELS "sequencer-safety;host-state")
 swaraxt_add_plugin_console_test(SwaraXTDirectScalaTests Tuning/DirectScalaTestsMain.cpp)
 target_compile_definitions(SwaraXTDirectScalaTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_add_plugin_console_test(SwaraXTDspControlRegressionTests Regression/DspControlRegressionTestsMain.cpp)
