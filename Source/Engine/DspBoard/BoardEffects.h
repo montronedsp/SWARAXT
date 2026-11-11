@@ -4,6 +4,7 @@
 #include "BoardArithmetic.h"
 
 namespace swaraxt::board {
+void delayWrapTests();
 enum class Effect : std::int8_t {
     off = -1, distortion = 0, crush, combPositive, combNegative, ringMod,
     delay, delayFeedback, delayDub, crushDelayFeedback, crushDelayDub,
@@ -25,6 +26,7 @@ class BoardEffects {
 public:
     void reset(bool offsetBinarySilence = false) noexcept;
     void process(Block&, Effect, std::uint8_t cv1, std::uint8_t cv2, std::uint8_t tempo) noexcept;
+    friend void delayWrapTests();
     bool hasRecordedLoop() const noexcept { return recordedLoop_; }
 private:
     void distortion(Block&, std::uint8_t, std::uint8_t) noexcept;

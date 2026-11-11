@@ -137,8 +137,9 @@ void BoardEffects::delay(Block& b, Effect effect, std::uint8_t time, std::uint8_
         ++delayCounter_;
         sample = clip12(add(sample, S16U8MulShift8(raw ? delayed_ : delayOutput_, amount)));
     }
-    // Preserve the source's guard-cell behavior at exactly 1280 (strict >).
-    while (delayPtr_ > 1280) delayPtr_ = static_cast<std::uint16_t>(delayPtr_ - 1280);
+    // The active ring is 1280 samples. Index 1280 is only a guard cell.
+    // The inherited strict '>' left the pointer on that cell for the next block.
+    while (delayPtr_ >= 1280) delayPtr_ = static_cast<std::uint16_t>(delayPtr_ - 1280);
 }
 void BoardEffects::loopRecord(Block& b, std::uint8_t time) noexcept
 {
