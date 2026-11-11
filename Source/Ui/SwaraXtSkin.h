@@ -120,6 +120,10 @@ class SkinUserSvg {
     static constexpr int maxSvgBytes = 256 * 1024;
     static constexpr int maxPngBytes = 4 * 1024 * 1024;
     static constexpr int maxImageEdge = 8192;
+    // JUCE expands a decoded PNG to 4 bytes per pixel. 16 MiB covers a plugin
+    // background at the sizes this UI actually uses, and rejects an 8192² bomb.
+    static constexpr int maxDecodedImageBytes = 16 * 1024 * 1024;
+    static bool pngDeclaredSizeAllowed(const juce::File& file) noexcept;
 
     static juce::File directory();
     static juce::File manufacturerMarkFile();
