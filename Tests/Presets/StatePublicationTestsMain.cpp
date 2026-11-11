@@ -159,7 +159,7 @@ void reentrantSavesAndMetadata()
     Processor reference;
     reference.setStateInformation(previous.getData(), static_cast<int>(previous.getSize()));
     reference.prepareToPlay(48000, 64);
-    reference.setCurrentProgram(1);
+    expect(reference.loadPresetEntry({ {}, {}, 1, true }, error), "reference explicit factory selection loads");
     expect(decode(save(processor)).isEquivalentTo(decode(save(reference))) && ! files.file("SavedA").exists(),
            "recursive rejection leaves the same complete final state as the non-reentrant transaction");
 }

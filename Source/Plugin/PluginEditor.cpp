@@ -194,6 +194,19 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     applySkin(skinId_, false);
     refreshPresetList();
     applyGuiSize(guiSize_, false);
+    designSurface_.addChildComponent(restoreNotificationLabel_);
+    designSurface_.addChildComponent(dismissRestoreNotification_);
+    restoreNotificationLabel_.setFont(lookAndFeel_.font(swaraxt::ui::TextRole::aboutBody));
+    restoreNotificationLabel_.setJustificationType(juce::Justification::centredLeft);
+    restoreNotificationLabel_.setColour(juce::Label::backgroundColourId, juce::Colour(0xffffe2a8));
+    restoreNotificationLabel_.setColour(juce::Label::textColourId, juce::Colour(0xff231b10));
+    restoreNotificationLabel_.setTitle("Project sound warning");
+    dismissRestoreNotification_.onClick = [this] {
+        processor_.acknowledgeRestoreNotification(displayedRestoreNotification_);
+        refreshRestoreNotification();
+    };
+    resized();
+    refreshRestoreNotification();
     startTimerHz(4);
 }
 
@@ -233,6 +246,9 @@ void SwaraXtAudioProcessorEditor::resized()
     mainPanel_.setBounds(0, 0, swaraxt::ui::GuiGeometry::designWidth,
                          swaraxt::ui::GuiGeometry::designHeight);
     mainPanel_.reflow();
+    const int warningY = swaraxt::ui::GuiGeometry::designHeight - 68;
+    restoreNotificationLabel_.setBounds(12, warningY, swaraxt::ui::GuiGeometry::designWidth - 108, 56);
+    dismissRestoreNotification_.setBounds(swaraxt::ui::GuiGeometry::designWidth - 92, warningY + 14, 80, 28);
 }
 
 void SwaraXtAudioProcessorEditor::paintDesignSurface(juce::Graphics& g)
@@ -789,8 +805,51 @@ void SwaraXtAudioProcessorEditor::showPresetError(const juce::String& message)
                                            "Preset error", message);
 }
 
+void SwaraXtAudioProcessorEditor::refreshRestoreNotification()
+{
+    const auto notification = processor_.restoreNotification();
+    if (notification.revision == displayedRestoreNotification_.revision
+        && notification.result == displayedRestoreNotification_.result)
+        return;
+    displayedRestoreNotification_ = notification;
+    using Result = SwaraXtAudioProcessor::RestoreResult;
+    juce::String message;
+    switch (notification.result)
+    {
+        case Result::success: break;
+        case Result::defaultTuning:
+            message = "The project's tuning could not be loaded. Standard tuning is in use. Keep the original project file and check the tuning.";
+            break;
+        case Result::invalid:
+            message = "The project's saved sound was not loaded. Keep the original file. Load a known preset or recover an earlier project copy.";
+            break;
+        case Result::reentrant:
+        case Result::tuningBusy:
+        case Result::tuningUnavailable:
+            message = "The saved sound could not be loaded while the instrument was busy. Keep the original project file and try the operation again.";
+            break;
+        case Result::preparationFailed:
+            message = "There was not enough memory to load the saved sound. Keep the original project file. Free memory, then try the operation again.";
+            break;
+        case Result::incomplete:
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+            message = "The saved sound was loaded, but some controls could not refresh. Keep the original project file and reopen the instrument window.";
+            break;
+#endif
+        case Result::uncertain:
+            message = "The saved sound could not be loaded completely. Sound and settings may differ. Keep the original project file and reopen a copy.";
+            break;
+    }
+    restoreNotificationLabel_.setText(message, juce::dontSendNotification);
+    restoreNotificationLabel_.setVisible(message.isNotEmpty());
+    dismissRestoreNotification_.setVisible(message.isNotEmpty());
+    restoreNotificationLabel_.toFront(false);
+    dismissRestoreNotification_.toFront(false);
+}
+
 void SwaraXtAudioProcessorEditor::timerCallback()
 {
+    refreshRestoreNotification();
     mainPanel_.refreshExperimentalSvf();
     const int index = presetSelector_.getSelectedId() - 1;
     const bool identityMatches = index >= 0 && index < static_cast<int>(presetEntries_.size())

@@ -198,7 +198,7 @@ void testRepeatedEditorOpenClose()
     expect(diff == 0.0f, "repeated editor open/close leaves state unchanged");
 }
 
-void testExplicitProgramChangeAfterPrepare()
+void testExplicitPresetSelectionAfterPrepare()
 {
     SwaraXtAudioProcessor processor;
     customizeSound(processor);
@@ -207,11 +207,13 @@ void testExplicitProgramChangeAfterPrepare()
     SwaraXtAudioProcessor restored;
     restoreState(restored, saved);
     restored.prepareToPlay(48000.0, 512);
-    restored.setCurrentProgram(1);
+    juce::String error;
+    expect(restored.loadPresetEntry({ {}, {}, 1, true }, error),
+           "explicit preset selection after prepare succeeds");
 
     const float cutoff = swaraxt::getParameterValue(restored.getApvts(), swaraxt::IDs::filterCutoff);
     expect(std::abs(cutoff - 3500.0f) < 0.1f,
-           "explicit setCurrentProgram after prepare loads target factory preset");
+           "explicit preset selection after prepare loads target factory preset");
 
     restoreState(restored, saved);
     const float diff = maxParameterDifference(processor, restored);
@@ -542,7 +544,7 @@ int main(int argc, char* argv[])
     testHostProgramReassertDoesNotReload();
     testEditorOpenAfterRestore();
     testRepeatedEditorOpenClose();
-    testExplicitProgramChangeAfterPrepare();
+    testExplicitPresetSelectionAfterPrepare();
     testMultiplePresetRoundtrips();
     testCustomizedFactoryPresetRestore();
     testAudioEquivalence();
