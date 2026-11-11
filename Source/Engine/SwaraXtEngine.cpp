@@ -429,7 +429,7 @@ void SwaraXtEngine::prepareHostClock(const HostTransportSnapshot& transport, int
 
     if (! transport.isPlaying)
     {
-        if (hostTransportWasPlaying_)
+        if (hostTransportWasPlaying_ || part_.running())
             part_.Stop(false, true);
         // Collapse pending Offs into this block and release anything still held.
         // A lead-scheduled Off can otherwise outlive the stop callback while the
