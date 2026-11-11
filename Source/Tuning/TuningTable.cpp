@@ -220,17 +220,8 @@ double centsForDegree(const TuningSnapshot& snapshot, int degree) noexcept
 {
     const int period = snapshot.formalPeriod > 0 ? static_cast<int>(snapshot.formalPeriod) : 1;
     int periodIndex = 0;
-    int inside = degree;
-    if (inside >= 0)
-    {
-        periodIndex = inside / period;
-        inside %= period;
-    }
-    else
-    {
-        periodIndex = -(((-inside) + period - 1) / period);
-        inside = degree - periodIndex * period;
-    }
+    int inside = 0;
+    splitSignedPeriod(degree, period, periodIndex, inside);
     double cents = static_cast<double>(periodIndex) * snapshot.periodCents;
     if (inside > 0)
     {
@@ -476,14 +467,16 @@ double TuningSnapshot::hzForDegree(int degree) const noexcept
     if (referenceMidiNote < 0 || referenceMidiNote >= kMidiNotes || ! assigned(referenceMidiNote))
         return 0.0;
     const double cents = centsForDegree(*this, degree) - centsForDegree(*this, midiDegree[referenceMidiNote]);
-    return referenceHz * std::pow(2.0, cents / 1200.0);
+    const double hz = referenceHz * std::pow(2.0, cents / 1200.0);
+    return std::isfinite(hz) && hz > 0.0 ? hz : 0.0;
 }
 
 double TuningSnapshot::equalHzFromCvSemitones(double semitonesFromMidi0, double referenceNote, double referenceHz) noexcept
 {
     if (! std::isfinite(semitonesFromMidi0) || ! std::isfinite(referenceNote) || ! finitePositive(referenceHz))
         return 0.0;
-    return referenceHz * std::pow(2.0, (semitonesFromMidi0 - referenceNote) / 12.0);
+    const double hz = referenceHz * std::pow(2.0, (semitonesFromMidi0 - referenceNote) / 12.0);
+    return std::isfinite(hz) && hz > 0.0 ? hz : 0.0;
 }
 
 int TuningSnapshot::nearestMappedMidi(double hz) const noexcept

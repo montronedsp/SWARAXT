@@ -66,17 +66,8 @@ struct PublishedTuning {
     {
         const int period = formalPeriod > 0 ? static_cast<int>(formalPeriod) : 1;
         int periodIndex = 0;
-        int inside = degree;
-        if (inside >= 0)
-        {
-            periodIndex = inside / period;
-            inside %= period;
-        }
-        else
-        {
-            periodIndex = -(((-inside) + period - 1) / period);
-            inside = degree - periodIndex * period;
-        }
+        int inside = 0;
+        splitSignedPeriod(degree, period, periodIndex, inside);
         double cents = static_cast<double>(periodIndex) * periodCents;
         if (inside > 0)
         {

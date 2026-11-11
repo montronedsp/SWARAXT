@@ -6,6 +6,7 @@
 #include <JuceHeader.h>
 
 #include "Engine/FreeCvPitch.h"
+#include "Tuning/TuningTable.h"
 
 #include <algorithm>
 #include <array>
@@ -147,17 +148,8 @@ class SequenceState {
     {
         const int period = view.formalPeriod > 0 ? view.formalPeriod : 1;
         int periodIndex = 0;
-        int inside = degree;
-        if (inside >= 0)
-        {
-            periodIndex = inside / period;
-            inside %= period;
-        }
-        else
-        {
-            periodIndex = -(((-inside) + period - 1) / period);
-            inside = degree - periodIndex * period;
-        }
+        int inside = 0;
+        tuning::splitSignedPeriod(degree, period, periodIndex, inside);
         double cents = static_cast<double>(periodIndex) * view.periodCents;
         if (inside > 0 && view.degreeCount > 0)
         {

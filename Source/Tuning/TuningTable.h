@@ -18,6 +18,18 @@ inline constexpr int kMaxDegrees = 2048;
 inline constexpr int kMidiNotes = 128;
 inline constexpr int kNameBytes = 64;
 
+// Floor-divide a signed degree by a positive period without negating INT_MIN.
+// `inside` is in [0, period). `periodIndex` is the corresponding floor quotient.
+inline void splitSignedPeriod(int degree, int period, int& periodIndex, int& inside) noexcept
+{
+    const long long span = period > 0 ? static_cast<long long>(period) : 1ll;
+    const long long value = static_cast<long long>(degree);
+    const long long index = value >= 0 ? value / span
+                                        : -(((-value) + span - 1) / span);
+    periodIndex = static_cast<int>(index);
+    inside = static_cast<int>(value - index * span);
+}
+
 struct TuningSnapshot {
     uint16_t degreeCount = 0;       // pitches strictly inside one period
     uint16_t formalPeriod = 0;      // scale degrees per period (usually degreeCount)
