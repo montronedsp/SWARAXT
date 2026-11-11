@@ -4,6 +4,7 @@
 #include "Ui/SwaraXtSkin.h"
 
 #include <BinaryData.h>
+#include <cstring>
 
 namespace swaraxt::ui {
 
@@ -310,6 +311,8 @@ std::unique_ptr<juce::Drawable> parseSvgBytes(const void* data, size_t size)
 
 std::unique_ptr<juce::Drawable> drawableFromPng(const juce::File& file)
 {
+    if (! SkinUserSvg::pngDeclaredSizeAllowed(file))
+        return nullptr;
     const auto image = juce::ImageFileFormat::loadFrom(file);
     if (! image.isValid() || image.getWidth() < 1 || image.getHeight() < 1)
         return nullptr;
@@ -433,6 +436,37 @@ bool SkinUserSvg::install(const juce::File& source, const juce::File& destinatio
         return false;
     }
     return copyReplacing(source, destination, error);
+}
+
+bool SkinUserSvg::pngDeclaredSizeAllowed(const juce::File& file) noexcept
+{
+    const auto bytes = file.getSize();
+    if (bytes <= 0 || bytes > maxPngBytes)
+        return false;
+    juce::FileInputStream input(file);
+    if (input.failedToOpen())
+        return false;
+    unsigned char header[24] {};
+    if (input.read(header, sizeof(header)) != static_cast<int>(sizeof(header)))
+        return false;
+    static constexpr unsigned char signature[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
+    if (std::memcmp(header, signature, 8) != 0)
+        return false;
+    const auto be32 = [](const unsigned char* p) noexcept {
+        return (static_cast<std::uint32_t>(p[0]) << 24)
+             | (static_cast<std::uint32_t>(p[1]) << 16)
+             | (static_cast<std::uint32_t>(p[2]) << 8)
+             | static_cast<std::uint32_t>(p[3]);
+    };
+    if (be32(header + 8) != 13 || std::memcmp(header + 12, "IHDR", 4) != 0)
+        return false;
+    const auto width = be32(header + 16);
+    const auto height = be32(header + 20);
+    if (width == 0 || height == 0 || width > static_cast<std::uint32_t>(maxImageEdge)
+        || height > static_cast<std::uint32_t>(maxImageEdge))
+        return false;
+    const auto pixels = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
+    return pixels <= static_cast<std::uint64_t>(maxDecodedImageBytes) / 4u;
 }
 
 bool SkinUserSvg::installBackground(const juce::File& source, juce::String& error)
