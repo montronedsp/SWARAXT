@@ -694,6 +694,9 @@ int midiAllocationHook(int type, void*, size_t, int, long, const unsigned char*,
 }
 #endif
 void checkedProcess(SwaraXtAudioProcessor& p, juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi)
+#if defined(SWARAXT_HOST_RESTORE_RTSAN)
+    [[clang::nonblocking]]
+#endif
 {
 #if defined(_MSC_VER) && defined(_DEBUG)
     trackingMidiAllocations = true;
@@ -1033,11 +1036,88 @@ void testReleaseResourcesExternalNote()
     std::printf("release/reprepare real output outstanding=%d\n", ledger.stuck());
     expect(ledger.stuck() == 0, "resource release retains external release responsibility until next callback");
 }
+
+void testHostRenderReprepare()
+{
+    for (const double rate : {44100.0, 48000.0})
+        for (const int mode : {shruthi::SEQUENCER_MODE_SEQ, shruthi::SEQUENCER_MODE_ARP})
+            for (const bool release : {false, true})
+                for (const bool midiOut : {false, true})
+                {
+                    SwaraXtAudioProcessor p;
+                    HostPlayHead host;
+                    p.setPlayHead(&host);
+                    const int size = rate == 44100.0 ? 512 : 64;
+                    p.prepareToPlay(rate, size);
+                    armLegacyHeldNote(p);
+                    setInt(p, swaraxt::IDs::seqMode, mode);
+                    setInt(p, swaraxt::IDs::seqClockMode, 1);
+                    setInt(p, swaraxt::IDs::seqGate, 100);
+                    setBool(p, swaraxt::IDs::seqMidiOut, midiOut);
+                    juce::AudioBuffer<float> audio(2, size);
+                    juce::MidiBuffer midi;
+                    midi.ensureSize(swaraxt::kMidiOutputReserveBytes);
+                    OpenTracker ledger;
+                    float beforePeak = 0;
+                    for (int block = 0; block < static_cast<int>(rate / size); ++block)
+                    {
+                        host.ppq = 2.0 * block * size / rate;
+                        midi.clear();
+                        if (block == 0)
+                            midi.addEvent(juce::MidiMessage::noteOn(1, 60, juce::uint8(100)), 0);
+                        checkedProcess(p, audio, midi);
+                        beforePeak = std::max(beforePeak, audio.getMagnitude(0, size));
+                        for (const auto& event : notesIn(midi)) ledger.onEvent(event);
+                    }
+                    expect(beforePeak > 1.0e-5f, "post-render fixture actually produced audio");
+                    expect(p.engineForTests().shruthiPart().running(), "sequencer runs before render re-prepare");
+                    p.setNonRealtime(true);
+                    if (release) p.releaseResources();
+                    p.prepareToPlay(rate, size);
+                    p.setNonRealtime(false);
+                    host.playing = false;
+                    host.ppq = 0;
+                    float finalPeak = 0;
+                    const auto clocks = p.engineForTests().hostClockEventCountForTests();
+                    for (int block = 0; block < static_cast<int>(6.0 * rate / size); ++block)
+                    {
+                        midi.clear();
+                        checkedProcess(p, audio, midi);
+                        for (const auto& event : notesIn(midi))
+                        {
+                            expect(! event.noteOn, "stopped HOST callback emits no new generated note");
+                            ledger.onEvent(event);
+                        }
+                        if (block >= static_cast<int>(5.0 * rate / size))
+                            finalPeak = std::max(finalPeak, audio.getMagnitude(0, size));
+                    }
+                    const auto& part = p.engineForTests().shruthiPart();
+                    expect(! part.running(), "HOST stop after re-prepare stops the firmware sequencer");
+                    expect(part.generated_note_count_for_tests() == 0, "HOST stop retires generated identities");
+                    expect(part.voice().amplitude_envelope_dead(), "HOST stop releases the retained voice");
+                    expect(finalPeak < 1.0e-6f, "post-render HOST voice and filter settle to silence");
+                    expect(ledger.stuck() == 0, "post-render re-prepare retains matching external note releases");
+                    expect(p.engineForTests().hostClockEventCountForTests() == clocks,
+                           "stopped transport processes no HOST clock ticks");
+                    std::printf("post-render rate=%.0f block=%d mode=%d release=%d midiOut=%d peak=%.9g running=%d outstanding=%d\n",
+                                rate, size, mode, release, midiOut, finalPeak, part.running(), ledger.stuck());
+                    host.playing = true;
+                    midi.clear();
+                    checkedProcess(p, audio, midi);
+                    expect(p.engineForTests().shruthiPart().running(), "subsequent HOST play resumes normally");
+                    p.setPlayHead(nullptr);
+                }
+}
 }
 
-int main()
+int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juce;
+    if (argc == 2 && juce::String(argv[1]) == "--post-render")
+    {
+        testHostRenderReprepare();
+        return failures == 0 ? 0 : 1;
+    }
 #if defined(_MSC_VER) && defined(_DEBUG)
     const auto previousHook = _CrtSetAllocHook(midiAllocationHook);
 #endif
