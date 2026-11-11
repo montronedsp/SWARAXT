@@ -509,6 +509,10 @@ target_compile_definitions(SwaraXTArpAutomationRaceTests PRIVATE
     SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_enable_warnings_as_errors(SwaraXTArpAutomationRaceTests)
 set_tests_properties(SwaraXTArpAutomationRaceTests PROPERTIES TIMEOUT 90 LABELS "headless;parameter-authority")
+swaraxt_add_plugin_console_test(SwaraXTMidiCcNrpnAuthorityTests Sequencer/MidiCcNrpnAuthorityTestsMain.cpp)
+target_compile_definitions(SwaraXTMidiCcNrpnAuthorityTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+swaraxt_enable_warnings_as_errors(SwaraXTMidiCcNrpnAuthorityTests)
+set_tests_properties(SwaraXTMidiCcNrpnAuthorityTests PROPERTIES TIMEOUT 90 LABELS "headless;parameter-authority")
 # Headless listener handoff/lifetime contracts; no editor or file chooser.
 juce_add_console_app(SwaraXTSequenceNotificationTests PRODUCT_NAME "SwaraXTSequenceNotificationTests")
 juce_generate_juce_header(SwaraXTSequenceNotificationTests)
