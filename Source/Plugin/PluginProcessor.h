@@ -41,6 +41,7 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
+    bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
     double getTailLengthSeconds() const override;
 
     int getNumPrograms() override
@@ -106,6 +107,9 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
 
     std::vector<PresetEntry> getPresetEntries() const;
     bool loadPresetEntry(const PresetEntry& entry, juce::String& error);
+    // User preset files are read only up to this size. Host setStateInformation
+    // is a separate, already-bounded buffer and does not use this ceiling.
+    static constexpr juce::int64 maxUserPresetFileBytes = 1024 * 1024;
     bool saveUserPreset(const juce::String& name, bool overwrite, juce::String& error);
     juce::String currentPresetName() const;
     bool currentPresetIsUser() const;
