@@ -31,6 +31,25 @@ bool sameSequencePayload(const SequenceSnapshot& a, const SequenceSnapshot& b) n
         && a.steps == b.steps && a.freePitch == b.freePitch && a.scaleDegree == b.scaleDegree;
 }
 
+bool isTransientPerformanceController(uint8_t controller) noexcept
+{
+    switch (controller)
+    {
+        case midi::kHoldPedal:
+        case midi::kModulationWheelMsb:
+        case midi::kModulationWheelJoystickMsb:
+        case midi::kFootPedalMsb:
+        case midi::kVolume:
+        case midi::kAssignableCcA:
+        case midi::kAssignableCcB:
+        case midi::kAssignableCcC:
+        case midi::kAssignableCcD:
+            return true;
+        default:
+            return false;
+    }
+}
+
 constexpr float kMinimumPanelCutoffHz = 10.0f;
 constexpr float kMaximumPanelCutoffHz = 20000.0f;
 
@@ -756,8 +775,10 @@ void SwaraXtEngine::dispatchMidi(const PendingMidi& event)
             midiDispatcher_.AllNotesOff(channel);
         else if (event.data1 == 121)
             midiDispatcher_.ResetAllControllers(channel);
-        else
+        else if (isTransientPerformanceController(event.data1))
             midiDispatcher_.ControlChange(channel, event.data1, event.data2);
+        // Mapped patch/system CC and NRPN stay with APVTS. Firmware must not
+        // keep hidden persistent octave/raga/patch writes.
     }
     else if (statusHi == 0xE0)
     {
