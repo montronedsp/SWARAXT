@@ -259,8 +259,15 @@ void SwaraXtAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    if (! isPrepared_)
+    // Output MIDI is sequencer-generated only, and only from a prepared render.
+    // An early return must not leave the host's input events in the shared buffer.
+    // Releases already queued by releaseResources stay in the engine until the
+    // next prepared block; this clear does not drop them.
+    if (! isPrepared_ || buffer.getNumSamples() <= 0)
+    {
+        midi.clear();
         return;
+    }
 
     const auto transport = captureHostTransport();
     // Keep restoration excluded through this render. Audio never waits; a failed
@@ -273,13 +280,18 @@ void SwaraXtAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     // controls update. A restore's reset intent requires a complete capture.
     const bool admitted = publication && (captured || !requestEngineReset_.load(std::memory_order_acquire));
     const int numSamples = buffer.getNumSamples();
-    if (numSamples <= 0)
-        return;
 
     // The engine snapshots input before replacing this host-owned MIDI buffer.
     const bool reset = admitted && requestEngineReset_.exchange(false, std::memory_order_acq_rel);
     engine_.process(midi, buffer, 0, numSamples, transport, &midi, admitted,
                     admitted ? &sequence : nullptr, revision, reset);
+}
+
+bool SwaraXtAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+{
+    if (! layouts.inputBuses.isEmpty() || layouts.outputBuses.size() != 1)
+        return false;
+    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
 
 swaraxt::HostTransportSnapshot SwaraXtAudioProcessor::captureHostTransport() noexcept
@@ -677,9 +689,50 @@ bool SwaraXtAudioProcessor::loadPresetEntry(const PresetEntry& entry, juce::Stri
     }
 
     juce::MemoryBlock data;
-    if (! entry.file.loadFileAsData(data))
+    const auto reported = entry.file.getSize();
+    if (reported < 0)
+    {
+        error = "Could not determine the preset file size.";
+        return false;
+    }
+    if (reported == 0)
+    {
+        error = "The preset file is empty.";
+        return false;
+    }
+    if (reported > maxUserPresetFileBytes)
+    {
+        error = "The preset file exceeds the 1 MiB limit.";
+        return false;
+    }
+    juce::FileInputStream stream(entry.file);
+    if (stream.failedToOpen())
     {
         error = "Could not read the preset file.";
+        return false;
+    }
+    const auto length = stream.getTotalLength();
+    if (length < 0)
+    {
+        error = "Could not determine the preset file size.";
+        return false;
+    }
+    if (length == 0)
+    {
+        error = "The preset file is empty.";
+        return false;
+    }
+    if (length > maxUserPresetFileBytes)
+    {
+        error = "The preset file exceeds the 1 MiB limit.";
+        return false;
+    }
+    const auto bytes = static_cast<int>(length);
+    data.setSize(static_cast<size_t>(bytes), false);
+    const auto read = stream.read(data.getData(), bytes);
+    if (read != bytes || stream.getNumBytesRemaining() != 0)
+    {
+        error = "The preset file changed or was truncated while reading.";
         return false;
     }
 
