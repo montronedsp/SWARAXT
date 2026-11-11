@@ -226,9 +226,6 @@ void SwaraXtAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock
     const double rate = sampleRate;
     const int block = samplesPerBlock > 0 ? samplesPerBlock : 512;
 
-    // Host session restore is complete once audio starts; program changes are intentional.
-    hostSessionStateRestored_.store(false, std::memory_order_release);
-
     engine_.prepare(rate, block);
     setLatencySamples(static_cast<int>(std::ceil(
         swaraxt::SwaraXtEngine::kOutputLatencyNativeSamples * rate / swaraxt::SwaraXtEngine::kInternalSampleRate)));
@@ -341,12 +338,8 @@ void SwaraXtAudioProcessor::setCurrentProgram(int index)
 
     if (hostSessionStateRestored_.load(std::memory_order_acquire))
     {
-        // APVTS from setStateInformation is authoritative; sync program index only.
-        ++stateWriterGeneration_;
-        currentProgram_ = clamped;
-        if (currentUserPresetName_.isEmpty())
-            return;
-        currentUserPresetName_.clear();
+        // This callback carries no distinction between selection and host reassertion.
+        // Explicit preset loads provide the operation context that replaces a session.
         return;
     }
 
@@ -385,8 +378,8 @@ bool SwaraXtAudioProcessor::loadFactoryPreset(int index)
     const StateWriterScope writer(*this);
     if (! writer)
         return false;
-    hostSessionStateRestored_.store(false, std::memory_order_release);
     applyFactoryPreset(index);
+    hostSessionStateRestored_.store(false, std::memory_order_release);
     return true;
 }
 
@@ -697,7 +690,8 @@ bool SwaraXtAudioProcessor::loadPresetEntry(const PresetEntry& entry, juce::Stri
         return false;
     }
 
-    return restoreState(decoded, true, entry.name, &error);
+    const auto result = restoreState(decoded, true, entry.name, &error);
+    return result == RestoreResult::success || result == RestoreResult::defaultTuning;
 }
 
 bool SwaraXtAudioProcessor::saveUserPreset(const juce::String& name,
@@ -909,21 +903,82 @@ void SwaraXtAudioProcessor::writeStateInformation(juce::MemoryBlock& destData)
   #endif
 }
 
-void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+SwaraXtAudioProcessor::RestoreNotification SwaraXtAudioProcessor::restoreNotification() const noexcept
 {
-    if (auto xml = getXmlFromBinary(data, sizeInBytes))
-        restoreState(juce::ValueTree::fromXml(*xml), false);
-    else
-        lastRestoreResult_.store(RestoreResult::invalid, std::memory_order_relaxed);
+    const auto value = restoreNotification_.load(std::memory_order_acquire);
+    return { static_cast<RestoreResult>(value & 255u), value >> 8 };
 }
 
-bool SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset,
-                                       const juce::String& presetName, juce::String* error)
+void SwaraXtAudioProcessor::acknowledgeRestoreNotification(RestoreNotification notification) noexcept
+{
+    auto expected = (notification.revision << 8) | static_cast<uint64_t>(notification.result);
+    restoreNotification_.compare_exchange_strong(expected, notification.revision << 8,
+                                                 std::memory_order_acq_rel, std::memory_order_acquire);
+}
+
+void SwaraXtAudioProcessor::publishRestoreNotification(uint64_t revision, RestoreResult result) noexcept
+{
+    auto previous = restoreNotification_.load(std::memory_order_acquire);
+    uint64_t next;
+    do
+    {
+        // Modular ordering also handles counter rollover. Simultaneously active
+        // requests span fewer than half of the 56-bit revision space.
+        if (((revision - (previous >> 8)) & kRestoreRevisionMask) > kRestoreRevisionMask / 2)
+            return;
+        next = (revision << 8) | static_cast<uint64_t>(result);
+    }
+    while (! restoreNotification_.compare_exchange_weak(previous, next,
+                                                        std::memory_order_acq_rel, std::memory_order_acquire));
+}
+
+void SwaraXtAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    const auto revision = (restoreRequestRevision_.fetch_add(1u, std::memory_order_relaxed) + 1u)
+        & kRestoreRevisionMask;
+    juce::ValueTree state;
+    try
+    {
+        auto xml = getXmlFromBinary(data, sizeInBytes);
+        if (xml == nullptr)
+        {
+            lastRestoreResult_.store(RestoreResult::invalid, std::memory_order_relaxed);
+            publishRestoreNotification(revision, RestoreResult::invalid);
+            return;
+        }
+        state = juce::ValueTree::fromXml(*xml);
+    }
+    catch (const std::bad_alloc&)
+    {
+        lastRestoreResult_.store(RestoreResult::preparationFailed, std::memory_order_relaxed);
+        publishRestoreNotification(revision, RestoreResult::preparationFailed);
+        return;
+    }
+    try
+    {
+        publishRestoreNotification(revision, restoreState(state, false));
+    }
+    catch (...)
+    {
+        // Failures outside the supported completion boundary remain uncertain.
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+        constexpr auto result = RestoreResult::uncertain;
+#else
+        constexpr auto result = RestoreResult::incomplete;
+#endif
+        lastRestoreResult_.store(result, std::memory_order_relaxed);
+        publishRestoreNotification(revision, result);
+        throw;
+    }
+}
+
+SwaraXtAudioProcessor::RestoreResult SwaraXtAudioProcessor::restoreState(
+    juce::ValueTree tree, bool fromPreset, const juce::String& presetName, juce::String* error)
 {
     const auto reject = [&](RestoreResult reason, const char* message) {
         lastRestoreResult_.store(reason, std::memory_order_relaxed);
         if (error != nullptr) *error = message;
-        return false;
+        return reason;
     };
     bool mutationStarted = false;
     try
@@ -990,6 +1045,35 @@ bool SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset,
                 tree.removeChild(index, nullptr);
         }
         canonicaliseLegacyModes(tree);
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+        // Complete records in JUCE's adapter order before its commit boundary.
+        std::vector<juce::RangedAudioParameter*> parameters;
+        parameters.reserve(static_cast<size_t>(getParameters().size()));
+        for (auto* parameter : getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(parameter))
+                parameters.push_back(ranged);
+        std::sort(parameters.begin(), parameters.end(), [](const auto* a, const auto* b) {
+            return a->paramID.compare(b->paramID) < 0;
+        });
+        for (auto* ranged : parameters)
+        {
+            bool found = false;
+            for (auto child : tree)
+            {
+                if (child.getProperty("id") != ranged->paramID) continue;
+                if (! child.hasProperty("value"))
+                    child.setProperty("value", ranged->convertFrom0to1(ranged->getDefaultValue()), nullptr);
+                found = true;
+            }
+            if (! found)
+            {
+                juce::ValueTree child("PARAM");
+                child.setProperty("id", ranged->paramID, nullptr);
+                child.setProperty("value", ranged->convertFrom0to1(ranged->getDefaultValue()), nullptr);
+                tree.addChild(child, -1, nullptr);
+            }
+        }
+#endif
         swaraxt::SwaraXtEngine::TuningReservation tuning;
         bool defaultTuning = false;
         if (! preserveSequence)
@@ -1042,27 +1126,69 @@ bool SwaraXtAudioProcessor::restoreState(juce::ValueTree tree, bool fromPreset,
         const auto userName = fromPreset ? presetName
             : (tree.getProperty("presetKind") == "user" ? tree.getProperty("presetName").toString().trim()
                                                       : juce::String {});
-        // Recoverable validation, allocation and admission failures precede mutation.
-        // JUCE replacement/listeners must obey the supported nonthrowing mutation
-        // contract. A mutation-time exception propagates; it is never reported as a
-        // coherent rejection or disguised by a rollback.
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+        const juce::String notificationError = error != nullptr
+            ? juce::String("The sound was loaded, but some controls could not refresh. Reopen the instrument window.")
+            : juce::String {};
+#endif
+        // Validation, allocation and admission preparation precede mutation.
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+        statePublicationPoint(StatePublicationPoint::restorePrepared);
+#endif
         const BulkPublicationScope bulk(*this);
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+        bool notificationFailed = false;
+        try
+        {
+            apvts_.replaceState(tree);
+        }
+        catch (...)
+        {
+            if (apvts_.state != tree) throw;
+            // The pinned boundary finishes adapter connections before propagating
+            // notification errors. Finish the prepared cohort without retrying.
+            notificationFailed = true;
+        }
+        mutationStarted = true;
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+        try { statePublicationPoint(StatePublicationPoint::restoreBeforeSequence); }
+        catch (...) { notificationFailed = true; }
+#endif
+        try { if (! preserveSequence) sequenceState_.store(sequence, true); }
+        catch (...) { notificationFailed = true; }
+#else
         mutationStarted = true;
         apvts_.replaceState(tree);
+#if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+        statePublicationPoint(StatePublicationPoint::restoreBeforeSequence);
+#endif
         if (!preserveSequence) sequenceState_.store(sequence, true);
+#endif
         if (!fromPreset) { setSequenceLocked(locked); setRandomNoteRange(range); }
         setFilterQuality(quality);
         currentProgram_ = programIndex;
         currentUserPresetName_ = userName;
 #if defined(SWARAXT_ENABLE_STATE_PUBLICATION_TESTS)
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+        try { statePublicationPoint(StatePublicationPoint::restoreBeforeTuningPublish); }
+        catch (...) { notificationFailed = true; }
+#else
         statePublicationPoint(StatePublicationPoint::restoreBeforeTuningPublish);
+#endif
 #endif
         tuning.publish();
         hostSessionStateRestored_.store(! fromPreset, std::memory_order_release);
         if (!preserveSequence) requestEngineReset_.store(true, std::memory_order_release);
-        lastRestoreResult_.store(defaultTuning ? RestoreResult::defaultTuning : RestoreResult::success,
-                                 std::memory_order_relaxed);
-        return true;
+        const auto result =
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+            notificationFailed ? RestoreResult::incomplete :
+#endif
+            defaultTuning ? RestoreResult::defaultTuning : RestoreResult::success;
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+        if (notificationFailed && error != nullptr) *error = notificationError;
+#endif
+        lastRestoreResult_.store(result, std::memory_order_relaxed);
+        return result;
     }
     catch (const std::bad_alloc&)
     {

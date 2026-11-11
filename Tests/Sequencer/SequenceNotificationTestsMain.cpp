@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <new>
 #include <thread>
 
 namespace {
@@ -193,6 +194,30 @@ void failedPostAndRecovery()
     state.removeListener(&listener);
 }
 
+void throwingListenerRecovery()
+{
+    State state;
+    struct Throwing final : State::Listener {
+        bool hit = false;
+        void sequenceStateChanged() override { hit = true; throw std::bad_alloc(); }
+    } throwing;
+    Recording listener(state);
+    state.addListener(&throwing);
+    state.addListener(&listener);
+    bool escaped = false;
+    try { state.setScaleDegree(0, 1); }
+    catch (const std::bad_alloc&) { escaped = true; }
+    expect(throwing.hit && escaped, "failed listener delivery remains observable to its caller");
+    expect(state.notificationPendingForTests() && !state.notificationArmedForTests(),
+           "failed delivery retains dirty state and releases drain ownership");
+    state.removeListener(&throwing);
+    std::thread retry([&] { state.setScaleDegree(0, 2); });
+    retry.join();
+    expectSettled(state, listener, 2);
+    expect(listener.calls == 1, "a later publication delivers the newest state after listener failure");
+    state.removeListener(&listener);
+}
+
 void listenerAndOwnerLifetime()
 {
     State state;
@@ -241,6 +266,7 @@ int main()
     publicationDuringListener(true);
     publicationBeforeScheduling();
     failedPostAndRecovery();
+    throwingListenerRecovery();
     listenerAndOwnerLifetime();
     std::printf("Sequence notification contracts: %s (%d failures)\n", failures == 0 ? "PASS" : "FAIL", failures);
     return failures == 0 ? 0 : 1;

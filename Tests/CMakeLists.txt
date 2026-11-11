@@ -417,6 +417,39 @@ swaraxt_add_plugin_console_test(SwaraXTShruthiFactoryPresetTests Presets/Shruthi
 swaraxt_add_plugin_console_test(SwaraXTFilterPresetAuthorityTests Architecture/FilterPresetAuthorityTests.cpp)
 target_compile_definitions(SwaraXTFilterPresetAuthorityTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_add_plugin_console_test(SwaraXTPresetStateRestoreTests Presets/PresetStateRestoreTestsMain.cpp)
+swaraxt_add_plugin_console_test(SwaraXTHostStateSafetyTests Presets/HostStateSafetyTestsMain.cpp)
+target_compile_definitions(SwaraXTHostStateSafetyTests PRIVATE
+    SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS=1 SWARAXT_ENABLE_STATE_PUBLICATION_TESTS=1
+    SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS=1)
+swaraxt_add_plugin_console_test(SwaraXTRestoreCompletionTests Presets/RestoreCompletionTestsMain.cpp)
+target_compile_definitions(SwaraXTRestoreCompletionTests PRIVATE
+    SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS=1 SWARAXT_ENABLE_STATE_PUBLICATION_TESTS=1
+    SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS=1)
+if(SWARAXT_DIAGNOSTICS_MODULE AND DIAG_SANITIZER STREQUAL "rtsan")
+    set_property(SOURCE Presets/HostStateSafetyTestsMain.cpp Presets/RestoreCompletionTestsMain.cpp APPEND PROPERTY
+        COMPILE_DEFINITIONS SWARAXT_HOST_RESTORE_RTSAN=1)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SWARAXT_DIAGNOSTICS_MODULE AND DIAG_SANITIZER STREQUAL "tsan")
+    set_property(SOURCE Presets/HostStateSafetyTestsMain.cpp Presets/RestoreCompletionTestsMain.cpp APPEND PROPERTY
+        COMPILE_DEFINITIONS SWARAXT_HOST_RESTORE_WRAP_NEW=1)
+    target_link_options(SwaraXTHostStateSafetyTests PRIVATE "-Wl,--wrap=_Znwm" "-Wl,--wrap=_Znam")
+    target_link_options(SwaraXTRestoreCompletionTests PRIVATE "-Wl,--wrap=_Znwm" "-Wl,--wrap=_Znam")
+endif()
+swaraxt_enable_warnings_as_errors(SwaraXTHostStateSafetyTests)
+swaraxt_enable_warnings_as_errors(SwaraXTRestoreCompletionTests)
+set_tests_properties(SwaraXTHostStateSafetyTests PROPERTIES TIMEOUT 120)
+set_tests_properties(SwaraXTRestoreCompletionTests PROPERTIES TIMEOUT 120)
+foreach(mode listeners preempt root allocation admission)
+    add_test(NAME SwaraXTRestoreCompletion-${mode} COMMAND SwaraXTRestoreCompletionTests ${mode})
+    set_tests_properties(SwaraXTRestoreCompletion-${mode} PROPERTIES LABELS "host-state;exception" TIMEOUT 45)
+endforeach()
+foreach(phase decode tuning snapshot parameter sequence post metadata)
+    add_test(NAME SwaraXTHostRestoreFault-${phase} COMMAND SwaraXTHostStateSafetyTests fault-${phase})
+    set_tests_properties(SwaraXTHostRestoreFault-${phase} PROPERTIES LABELS "host-state;exception" TIMEOUT 30)
+endforeach()
+set_tests_properties(SwaraXTHostRestoreFault-parameter SwaraXTHostRestoreFault-sequence
+    SwaraXTHostRestoreFault-post SwaraXTHostRestoreFault-metadata PROPERTIES LABELS "host-state;exception;known-defect")
+
 swaraxt_add_plugin_console_test(SwaraXTRestoreTransactionTests Presets/RestoreTransactionTestsMain.cpp)
 target_compile_definitions(SwaraXTRestoreTransactionTests PRIVATE
     SWARAXT_ENABLE_TUNING_OWNERSHIP_TESTS=1 SWARAXT_ENABLE_STATE_PUBLICATION_TESTS=1

@@ -25,6 +25,10 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
 
+    juce::String restoreNotificationTextForTests() const { return restoreNotificationLabel_.getText(); }
+    bool restoreNotificationVisibleForTests() const { return restoreNotificationLabel_.isVisible(); }
+    void refreshRestoreNotificationForTests() { refreshRestoreNotification(); }
+    void dismissRestoreNotificationForTests() { dismissRestoreNotification_.onClick(); }
     void setModuleViewsForTests(bool modulation, bool sequencer);
     swaraxt::ui::MainPanel& mainPanelForTests() noexcept { return mainPanel_; }
     void refreshExperimentalSvfForTests() { mainPanel_.refreshExperimentalSvf(); }
@@ -156,6 +160,7 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void buttonClicked(juce::Button* button) override;
     void comboBoxChanged(juce::ComboBox* combo) override;
     void timerCallback() override;
+    void refreshRestoreNotification();
     void refreshPresetList();
     void promptForPresetName();
     void savePresetWithName(const juce::String& name, bool overwrite);
@@ -194,6 +199,9 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     DesignSurface designSurface_ { *this };
     std::unique_ptr<juce::FileChooser> fileChooser_;
 
+    juce::Label restoreNotificationLabel_;
+    juce::TextButton dismissRestoreNotification_ { "Dismiss" };
+    SwaraXtAudioProcessor::RestoreNotification displayedRestoreNotification_;
     juce::ComboBox presetSelector_;
     juce::TextButton prevPresetButton_ { "<" };
     juce::TextButton nextPresetButton_ { ">" };

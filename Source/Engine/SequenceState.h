@@ -690,14 +690,22 @@ class SequenceState {
         if (! manager->isThisTheMessageThread())
         {
             hub->asyncSchedules.fetch_add(1, std::memory_order_relaxed);
-            if (
+            try
+            {
+                if (
 #if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
-                hub->rejectPosts.load() ||
+                    hub->rejectPosts.load() ||
 #endif
-                ! juce::MessageManager::callAsync(
-                    [hub] { SequenceState::drainListeners(hub); }))
+                    ! juce::MessageManager::callAsync(
+                        [hub] { SequenceState::drainListeners(hub); }))
+                {
+                    hub->armed.store(false, std::memory_order_seq_cst);
+                }
+            }
+            catch (...)
             {
                 hub->armed.store(false, std::memory_order_seq_cst);
+                throw;
             }
             return;
         }
@@ -709,6 +717,7 @@ class SequenceState {
         for (;;)
         {
             hub->pending.store(false, std::memory_order_seq_cst);
+            try
             {
                 const juce::ScopedLock lock(hub->lock);
                 if (hub->alive.load(std::memory_order_acquire))
@@ -720,6 +729,13 @@ class SequenceState {
                         listener.sequenceStateChanged();
                     });
                 }
+            }
+            catch (...)
+            {
+                // Retain failed delivery for the next publication, as with a rejected post.
+                hub->pending.store(true, std::memory_order_seq_cst);
+                hub->armed.store(false, std::memory_order_seq_cst);
+                throw;
             }
             hub->asyncDeliveries.fetch_add(1, std::memory_order_relaxed);
 #if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)

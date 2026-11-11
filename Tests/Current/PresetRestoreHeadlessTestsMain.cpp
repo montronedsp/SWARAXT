@@ -8,7 +8,7 @@ int main() {
     testMalformedStatePreservesParameters();
     testProcessorOnlyRestore();
     testHostProgramReassertDoesNotReload();
-    testExplicitProgramChangeAfterPrepare();
+    testExplicitPresetSelectionAfterPrepare();
     testMultiplePresetRoundtrips();
     testCustomizedFactoryPresetRestore();
     testAudioEquivalence();
