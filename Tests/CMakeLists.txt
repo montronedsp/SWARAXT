@@ -515,6 +515,13 @@ swaraxt_enable_warnings_as_errors(SwaraXTMidiCcNrpnAuthorityTests)
 set_tests_properties(SwaraXTMidiCcNrpnAuthorityTests PROPERTIES TIMEOUT 90 LABELS "headless;parameter-authority")
 swaraxt_add_plugin_console_test(SwaraXTDefensiveHardeningTests Host/DefensiveHardeningTestsMain.cpp)
 target_compile_definitions(SwaraXTDefensiveHardeningTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+set(defensive_test_scratch "${CMAKE_BINARY_DIR}/defensive-hardening-scratch")
+file(MAKE_DIRECTORY "${defensive_test_scratch}")
+set_property(SOURCE Host/DefensiveHardeningTestsMain.cpp APPEND PROPERTY
+    COMPILE_DEFINITIONS SWARAXT_DEFENSIVE_TEST_ROOT="${defensive_test_scratch}")
+set_tests_properties(SwaraXTDefensiveHardeningTests PROPERTIES
+    WORKING_DIRECTORY "${defensive_test_scratch}"
+    ENVIRONMENT "SWARAXT_DEFENSIVE_TEST_DIR=${defensive_test_scratch}")
 swaraxt_enable_warnings_as_errors(SwaraXTDefensiveHardeningTests)
 set_tests_properties(SwaraXTDefensiveHardeningTests PROPERTIES TIMEOUT 120 LABELS "headless;defensive-hardening")
 # Headless listener handoff/lifetime contracts; no editor or file chooser.
