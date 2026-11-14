@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <limits>
 
 namespace {
@@ -301,9 +303,20 @@ void missionPreservation()
 int main()
 {
     setvbuf(stdout, nullptr, _IONBF, 0);
+    const auto* scratch = std::getenv("SWARAXT_DEFENSIVE_TEST_DIR");
+    std::error_code error;
+    const auto directory = scratch != nullptr
+        ? std::filesystem::canonical(scratch, error) : std::filesystem::path{};
+    if (scratch == nullptr || error || directory != std::filesystem::path(SWARAXT_DEFENSIVE_TEST_ROOT))
+    {
+        std::fprintf(stderr, "Invalid or missing defensive test scratch directory.\n");
+        return 2;
+    }
+    std::filesystem::current_path(directory, error);
+    if (error)
+        return 2;
+    std::printf("Defensive test scratch: %s\n", directory.string().c_str());
     juce::ScopedJuceInitialiser_GUI initialise;
-    juce::File("D:/MontroneDSP_Studio/build-worktrees/mission04-defensive-hardening/hostile-inputs")
-        .setAsCurrentWorkingDirectory();
     midiLifecycle();
     busContract();
     presetBounds();
