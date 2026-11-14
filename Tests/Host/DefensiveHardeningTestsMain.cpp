@@ -7,6 +7,7 @@
 #include "Ui/SwaraXtSkin.h"
 #include "shruthi/system_settings.h"
 
+#include <algorithm>
 #include <cmath>
 #include <array>
 #include <cstdint>
@@ -14,6 +15,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <limits>
+#include <vector>
 
 namespace {
 using Processor = SwaraXtAudioProcessor;
@@ -91,6 +93,103 @@ void midiLifecycle()
     midi.addEvent(juce::MidiMessage::noteOn(1, 4, (juce::uint8) 11), 0);
     render(processor, midi, 0);
     expect(midi.getNumEvents() == 0, "a zero-sample block clears incoming MIDI");
+}
+
+void invalidScaleFrequencies()
+{
+    for (const int degree : { -512, 512, 0 })
+    {
+        Processor processor;
+        swaraxt::tuning::TuningSnapshot tuning;
+        swaraxt::tuning::ParseError error;
+        const bool low = degree == 0;
+        const char* scale = low ? "Low\n2\n100.0\n1200.0\n"
+                                : "Wide\n2\n100.0\n10000.0\n";
+        const char* keyboard = low ? "1\n60\n60\n60\n60\n1.0\n2\n0\n"
+                                   : "1\n60\n60\n60\n60\n440.0\n2\n0\n";
+        const bool parsed = swaraxt::tuning::parseScalaAndKeyboard(
+            scale, keyboard, tuning, error, swaraxt::tuning::ScalaSyntax::standard);
+        expect(parsed, "the SCALE boundary fixture is a valid public Scala/KBM import");
+        std::vector<uint8_t> bytes;
+        if (! parsed || ! swaraxt::tuning::writeTuningTable(tuning, bytes, error))
+        {
+            expect(false, "the SCALE boundary fixture encodes without changing the state format");
+            continue;
+        }
+        expect(processor.engineForTests().loadTuningBytes(bytes.data(), bytes.size()),
+               "the SCALE boundary fixture publishes through the production tuning API");
+        auto sequence = processor.sequenceState().snapshot();
+        sequence.length = 1;
+        processor.sequenceState().store(sequence);
+        processor.sequenceState().setPitchMode(2);
+        processor.sequenceState().setScaleDegree(0, degree);
+        processor.sequenceState().setStep(0, static_cast<uint8_t>(0x80 | 60), 0x70);
+        const auto set = [&](const char* id, float value) {
+            auto* parameter = processor.getApvts().getParameter(id);
+            expect(parameter != nullptr, "SCALE boundary parameter exists");
+            if (parameter != nullptr)
+                parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+        };
+        set(swaraxt::IDs::seqMode, static_cast<float>(shruthi::SEQUENCER_MODE_SEQ));
+        set(swaraxt::IDs::seqClockMode, 0.0f);
+        set(swaraxt::IDs::seqTempo, 240.0f);
+        set(swaraxt::IDs::seqGate, 100.0f);
+        set(swaraxt::IDs::env2Attack, 0.0f);
+        set(swaraxt::IDs::env2Decay, 0.0f);
+        set(swaraxt::IDs::env2Sustain, 127.0f);
+        set(swaraxt::IDs::env2Release, 0.0f);
+        set(swaraxt::IDs::dspFxProgram, 0.0f);
+        processor.prepareToPlay(48000.0, 128);
+        juce::AudioBuffer<float> audio(2, 128);
+        juce::MidiBuffer midi;
+        midi.ensureSize(swaraxt::kMidiOutputReserveBytes);
+        callback(processor, audio, midi);
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        float peak = 0.0f;
+        for (int block = 0; block < 512; ++block)
+        {
+            if (block != 0) midi.clear();
+            callback(processor, audio, midi);
+            for (int sample = 0; sample < audio.getNumSamples(); ++sample)
+                peak = std::max(peak, std::abs(audio.getSample(0, sample)));
+        }
+        const double hz = processor.hzForActiveDegree(degree);
+        const auto& part = processor.engineForTests().shruthiPart();
+        expect(processor.engineForTests().appliedSequencerPitchModeForTests() == 2,
+               "the boundary test executes the actual SCALE sequencer path");
+        if (low)
+        {
+            expect(hz == 1.0 && part.voice().pitch_value() == 128 && peak > 0.0f,
+                   "a legitimate positive low-frequency tuning retains the existing voice clamp");
+        }
+        else
+        {
+            expect(hz == 0.0, "an unrepresentable SCALE degree has the invalid-frequency sentinel");
+            expect(part.voice().amplitude_envelope_dead() && peak == 0.0f,
+                   "an invalid SCALE frequency does not start an unintended voice");
+            if (degree == 512)
+            {
+                processor.sequenceState().setScaleDegree(0, 0);
+                processor.sequenceState().setStep(0, static_cast<uint8_t>(0x80 | 60), 0xf0);
+                for (int block = 0; block < 128; ++block)
+                {
+                    midi.clear();
+                    callback(processor, audio, midi);
+                }
+                expect(! part.voice().amplitude_envelope_dead(), "a valid legato SCALE step starts normally");
+                processor.sequenceState().setScaleDegree(0, degree);
+                for (int block = 0; block < 128; ++block)
+                {
+                    midi.clear();
+                    callback(processor, audio, midi);
+                }
+                expect(part.voice().amplitude_envelope_dead(),
+                       "an invalid legato SCALE step releases the preceding generated voice");
+                expect(part.num_notes() == 1, "rejecting an invalid SCALE step preserves its held input key");
+            }
+        }
+    }
 }
 
 void busContract()
@@ -489,6 +588,7 @@ int main(int argc, char** argv)
     presetBounds();
     pngBudget();
     tuningBounds();
+    invalidScaleFrequencies();
     missionPreservation();
     std::printf("Defensive hardening tests: %s (%d failures)\n", failures ? "FAILED" : "PASSED", failures);
     return failures ? 1 : 0;
