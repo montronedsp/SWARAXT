@@ -21,6 +21,7 @@
 #include "shruthi/part.h"
 
 #include <string.h>
+#include <cmath>
 
 #include "Engine/FreeCvPitch.h"
 #include "Engine/MidiInputTuning.h"
@@ -1179,6 +1180,10 @@ void Part::clockSequencerScale(uint8_t step_index) {
   if (pressed_keys_.size() && tuning != nullptr)
     degree += tuning->transpositionDegrees(pressed_keys_.most_recent_note().note);
   const double hz = tuning != nullptr ? tuning->hzForDegree(degree) : 0.0;
+  if (!std::isfinite(hz) || hz <= 0.0) {
+    StopSequencerArpeggiatorNotes();
+    return;
+  }
   const uint16_t pitch = swaraxt::ScalePitch::toVoicePitchFromHz(hz);
   if (!step.legato()) {
     StopSequencerArpeggiatorNotes();
