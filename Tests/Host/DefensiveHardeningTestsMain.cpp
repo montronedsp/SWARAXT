@@ -403,9 +403,58 @@ void missionPreservation()
            "CC82 remains outside the persistent parameter authority");
 }
 
+#if JUCE_LINUX
+void fileRace(const juce::String& mode)
+{
+    const auto directory = juce::File::getCurrentWorkingDirectory();
+    const auto file = directory.getChildFile(mode == "png" ? "race.png" : "race.swaraxtpreset");
+    juce::String error;
+    if (mode == "png")
+    {
+        const auto replacement = directory.getChildFile("replacement.png");
+        const auto write = [](const juce::File& destination, int width, int height) {
+            juce::Image image(juce::Image::ARGB, width, height, true);
+            juce::FileOutputStream stream(destination);
+            juce::PNGImageFormat format;
+            expect(stream.openedOk() && format.writeImageToStream(image, stream), "race PNG fixture writes");
+        };
+        write(file, 8, 8);
+        write(replacement, 2304, 2048);
+        setenv("SWARAXT_RACE_REPLACEMENT", replacement.getFullPathName().toRawUTF8(), 1);
+        setenv("SWARAXT_RACE_PATH", file.getFullPathName().toRawUTF8(), 1);
+        const bool accepted = swaraxt::ui::SkinUserSvg::installBackground(file, error);
+        std::printf("PNG replacement accepted=%d decoded_bytes=%d reload=%d error=%s\n", accepted,
+                    2304 * 2048 * 4, swaraxt::ui::SkinUserSvg::loadBackground() != nullptr, error.toRawUTF8());
+        expect(! accepted, "the decoded pixel budget also holds if the path changes after preflight");
+        swaraxt::ui::SkinUserSvg::clearBackground();
+        replacement.deleteFile();
+    }
+    else
+    {
+        Processor processor;
+        auto* shape = processor.getApvts().getParameter(swaraxt::IDs::osc1Shape);
+        shape->setValueNotifyingHost(shape->convertTo0to1(6.0f));
+        juce::MemoryBlock state;
+        processor.getStateInformation(state);
+        file.replaceWithData(state.getData(), state.getSize());
+        shape->setValueNotifyingHost(shape->convertTo0to1(4.0f));
+        setenv("SWARAXT_RACE_PATH", file.getFullPathName().toRawUTF8(), 1);
+        Processor::PresetEntry entry;
+        entry.file = file;
+        entry.name = "race";
+        const bool accepted = processor.loadPresetEntry(entry, error);
+        std::printf("Preset race=%s accepted=%d error=%s\n", mode.toRawUTF8(), accepted, error.toRawUTF8());
+        expect(! accepted && error.contains("changed or was truncated"), "a changing file is rejected by the bounded reader");
+        expect(std::lround(processor.getApvts().getRawParameterValue(swaraxt::IDs::osc1Shape)->load()) == 4,
+               "a rejected changing preset preserves the working sound");
+    }
+    file.deleteFile();
+}
+#endif
+
 }
 
-int main()
+int main(int argc, char** argv)
 {
     setvbuf(stdout, nullptr, _IONBF, 0);
     const auto* scratch = std::getenv("SWARAXT_DEFENSIVE_TEST_DIR");
@@ -422,6 +471,18 @@ int main()
         return 2;
     std::printf("Defensive test scratch: %s\n", directory.string().c_str());
     juce::ScopedJuceInitialiser_GUI initialise;
+#if JUCE_LINUX
+    if (argc == 2)
+    {
+        const juce::String mode(argv[1]);
+        if (mode != "grow" && mode != "truncate" && mode != "png")
+            return 2;
+        fileRace(mode);
+        return failures ? 1 : 0;
+    }
+#else
+    juce::ignoreUnused(argc, argv);
+#endif
     midiLifecycle();
     pendingMidiReleases();
     busContract();
