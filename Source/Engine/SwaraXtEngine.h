@@ -166,6 +166,7 @@ class SwaraXtEngine {
                  bool adoptControls = true,
                  const SequenceSnapshot* sequence = nullptr,
                  uint32_t revision = 0, bool resetRequested = false);
+    void releaseMidiInput(const juce::MidiBuffer& midi) noexcept;
     void clearSequencerMidiOutput() noexcept;
     bool loadTuningBytes(const uint8_t* data, size_t size);
     bool loadBuiltinTuning(int index);

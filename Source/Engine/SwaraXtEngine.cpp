@@ -795,6 +795,25 @@ void SwaraXtEngine::dispatchMidi(const PendingMidi& event)
     }
 }
 
+void SwaraXtEngine::releaseMidiInput(const juce::MidiBuffer& midi) noexcept
+{
+    for (const auto metadata : midi)
+    {
+        if (metadata.numBytes != 3)
+            continue;
+        PendingMidi event;
+        event.status = metadata.data[0];
+        event.data1 = static_cast<uint8_t>(metadata.data[1] & 0x7f);
+        event.data2 = static_cast<uint8_t>(metadata.data[2] & 0x7f);
+        const auto type = event.status & 0xf0;
+        const bool release = type == 0x80 || (type == 0x90 && event.data2 == 0)
+            || (type == 0xb0 && ((event.data1 == 64 && event.data2 < 64)
+                || event.data1 == 120 || event.data1 == 121 || event.data1 == 123));
+        if (release)
+            dispatchMidi(event);
+    }
+}
+
 void SwaraXtEngine::collectMidiEvents(juce::MidiBufferIterator& cursor,
                                      const juce::MidiBufferIterator& end,
                                      int startSample,

@@ -265,6 +265,8 @@ void SwaraXtAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     // next prepared block; this clear does not drop them.
     if (! isPrepared_ || buffer.getNumSamples() <= 0)
     {
+        if (engineInitialized_)
+            engine_.releaseMidiInput(midi);
         midi.clear();
         return;
     }

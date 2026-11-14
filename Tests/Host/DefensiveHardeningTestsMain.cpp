@@ -192,6 +192,82 @@ void invalidScaleFrequencies()
     }
 }
 
+void incomingReleasesDuringEarlyCallbacks()
+{
+    for (bool midiOut : { false, true })
+        for (int scenario = 0; scenario < 7; ++scenario)
+        {
+            Processor processor;
+            const auto set = [&](const char* id, float value) {
+                auto* parameter = processor.getApvts().getParameter(id);
+                expect(parameter != nullptr, "input-release parameter exists");
+                if (parameter != nullptr)
+                    parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+            };
+            set(swaraxt::IDs::seqMode, 0.0f);
+            set(swaraxt::IDs::midiChannel, 1.0f);
+            set(swaraxt::IDs::seqMidiOut, midiOut ? 1.0f : 0.0f);
+            set(swaraxt::IDs::env2Attack, 0.0f);
+            set(swaraxt::IDs::env2Decay, 0.0f);
+            set(swaraxt::IDs::env2Sustain, 127.0f);
+            set(swaraxt::IDs::env2Release, 0.0f);
+            set(swaraxt::IDs::dspFxProgram, 0.0f);
+            processor.prepareToPlay(48000.0, 128);
+            juce::AudioBuffer<float> audio(2, 128);
+            juce::MidiBuffer midi;
+            midi.ensureSize(swaraxt::kMidiOutputReserveBytes);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+            callback(processor, audio, midi);
+            for (int block = 0; block < 8; ++block)
+            {
+                midi.clear();
+                callback(processor, audio, midi);
+            }
+            auto& part = processor.engineForTests().shruthiPart();
+            expect(part.num_notes() == 1 && ! part.voice().amplitude_envelope_dead(),
+                   "a prepared input Note On establishes a held, sounding voice");
+            if (scenario == 5)
+            {
+                midi.clear();
+                midi.addEvent(juce::MidiMessage::controllerEvent(1, 64, 127), 0);
+                callback(processor, audio, midi);
+            }
+            if (scenario == 3)
+                processor.prepareToPlay(1000.0, 128);
+            else if (scenario != 2)
+                processor.releaseResources();
+            midi.clear();
+            if (scenario == 4)
+                midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(0)), 0);
+            else if (scenario != 0)
+                midi.addEvent(juce::MidiMessage::noteOff(scenario == 6 ? 2 : 1, 60), 0);
+            if (scenario == 5)
+                midi.addEvent(juce::MidiMessage::controllerEvent(1, 64, 0), 1);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 67, static_cast<juce::uint8>(100)), 2);
+            if (scenario == 2)
+            {
+                juce::AudioBuffer<float> empty(2, 0);
+                callback(processor, empty, midi);
+            }
+            else
+            {
+                callback(processor, audio, midi);
+                processor.prepareToPlay(48000.0, 128);
+            }
+            expect(midi.isEmpty(), "early callbacks consume input releases without MIDI passthrough");
+            for (int block = 0; block < 256; ++block)
+            {
+                midi.clear();
+                callback(processor, audio, midi);
+            }
+            const bool released = scenario != 0 && scenario != 6;
+            expect(part.num_notes() == (released ? 0 : 1),
+                   "an early matching release clears the held key; absent/wrong-channel releases preserve it");
+            expect(part.voice().amplitude_envelope_dead() == released,
+                   "an early matching release cannot leave a sounding voice after reprepare");
+        }
+}
+
 void busContract()
 {
     Processor processor;
@@ -285,6 +361,8 @@ void pendingMidiReleases()
         midi.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
         render(processor, midi);
         expect(midi.isEmpty(), "unprepared callbacks do not consume queued generated releases");
+        expect(processor.engineForTests().shruthiPart().num_notes() == 0,
+               "the incoming key release is independent of queued generated MIDI releases");
         processor.prepareToPlay(48000.0, 64);
         midi.clear();
         render(processor, midi, 0);
@@ -584,6 +662,7 @@ int main(int argc, char** argv)
 #endif
     midiLifecycle();
     pendingMidiReleases();
+    incomingReleasesDuringEarlyCallbacks();
     busContract();
     presetBounds();
     pngBudget();
