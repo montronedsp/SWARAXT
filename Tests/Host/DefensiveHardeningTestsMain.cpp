@@ -8,6 +8,7 @@
 #include "shruthi/system_settings.h"
 
 #include <cmath>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -28,10 +29,18 @@ void expect(bool ok, const char* message)
     }
 }
 
+void callback(Processor& processor, juce::AudioBuffer<float>& audio, juce::MidiBuffer& midi) noexcept
+#if defined(__clang__)
+    [[clang::nonblocking]]
+#endif
+{
+    processor.processBlock(audio, midi);
+}
+
 void render(Processor& processor, juce::MidiBuffer& midi, int samples = 64, int channels = 2)
 {
     juce::AudioBuffer<float> audio(channels, samples);
-    processor.processBlock(audio, midi);
+    callback(processor, audio, midi);
 }
 
 bool containsNote(const juce::MidiBuffer& midi, int note, int velocity)
@@ -110,6 +119,15 @@ void busContract()
     expect(processor.getBusesLayout().getMainOutputChannelSet() == juce::AudioChannelSet::stereo(),
            "a rejected layout leaves stereo in place");
 
+    for (const auto& channels : { juce::AudioChannelSet::disabled(), juce::AudioChannelSet::mono(),
+                                 juce::AudioChannelSet::discreteChannels(3), juce::AudioChannelSet::create5point1() })
+    {
+        auto request = layout;
+        request.outputBuses.getReference(0) = channels;
+        expect(! processor.setBusesLayout(request), "JUCE negotiation rejects an invalid output layout");
+    }
+    expect(processor.setBusesLayout(layout), "JUCE negotiation accepts stereo after rejected requests");
+
     processor.prepareToPlay(48000.0, 32);
     juce::AudioBuffer<float> audio(2, 32);
     juce::MidiBuffer midi;
@@ -118,6 +136,70 @@ void busContract()
     expect(std::isfinite(audio.getSample(0, 0)) && std::isfinite(audio.getSample(1, 0)),
            "stereo render writes finite samples on both channels");
     expect(audio.getNumChannels() == 2, "the rendered buffer stays stereo");
+}
+
+void pendingMidiReleases()
+{
+    for (int mode : { 1, 2 })
+    {
+        Processor processor;
+        processor.prepareToPlay(48000.0, 64);
+        const auto set = [&](const char* id, float value) {
+            auto* parameter = processor.getApvts().getParameter(id);
+            expect(parameter != nullptr, "lifecycle parameter exists");
+            if (parameter != nullptr)
+                parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+        };
+        set(swaraxt::IDs::seqMode, static_cast<float>(mode));
+        set(swaraxt::IDs::seqClockMode, 0.0f);
+        set(swaraxt::IDs::seqMidiOut, 1.0f);
+        set(swaraxt::IDs::seqTempo, 240.0f);
+        processor.sequenceState().setPitchMode(0);
+        for (int step = 0; step < 16; ++step)
+            processor.sequenceState().setStep(step, static_cast<uint8_t>(0x80 | 72), 0x70);
+        juce::MidiBuffer midi;
+        midi.ensureSize(swaraxt::kMidiOutputReserveBytes);
+        std::array<int, 128> active {};
+        const auto track = [&] {
+            for (const auto event : midi)
+            {
+                const auto message = event.getMessage();
+                if (message.isNoteOn()) ++active[static_cast<size_t>(message.getNoteNumber())];
+                if (message.isNoteOff()) --active[static_cast<size_t>(message.getNoteNumber())];
+            }
+        };
+        bool sounding = false;
+        for (int block = 0; block < 512 && ! sounding; ++block)
+        {
+            midi.clear();
+            if (block == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100), 0);
+            render(processor, midi);
+            track();
+            for (int count : active) sounding |= count > 0;
+        }
+        if (mode == 2)
+            expect(sounding, "the generated MIDI note reaches the host before release");
+        else
+            expect(! sounding, "ARP retains its existing no-external-MIDI-output policy");
+        processor.releaseResources();
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+        render(processor, midi);
+        expect(midi.isEmpty(), "unprepared callbacks do not consume queued generated releases");
+        processor.prepareToPlay(48000.0, 64);
+        midi.clear();
+        render(processor, midi, 0);
+        expect(midi.isEmpty(), "zero-length callbacks retain queued generated releases");
+        set(swaraxt::IDs::seqMode, 0.0f);
+        for (int block = 0; block < 32; ++block)
+        {
+            midi.clear();
+            render(processor, midi);
+            track();
+        }
+        for (int count : active)
+            expect(count == 0, "reprepared callbacks deliver the outstanding generated Note Off");
+    }
 }
 
 void presetBounds()
@@ -168,6 +250,18 @@ void presetBounds()
     expect(restoredShape != nullptr && static_cast<int>(std::lround(restoredShape->load())) == before,
            "the loaded preset keeps the saved oscillator shape");
 
+    auto legacyXml = juce::AudioProcessor::getXmlFromBinary(state.getData(), static_cast<int>(state.getSize()));
+    expect(legacyXml != nullptr, "a saved state has XML");
+    if (legacyXml != nullptr)
+    {
+        legacyXml->setAttribute("stateVersion", 1);
+        juce::MemoryBlock legacyState;
+        juce::AudioProcessor::copyXmlToBinary(*legacyXml, legacyState);
+        const auto legacy = directory.getChildFile("legacy.swaraxtpreset");
+        legacy.replaceWithData(legacyState.getData(), legacyState.getSize());
+        expect(load(legacy, error), "a legacy-schema preset file loads through the bounded reader");
+    }
+
     const auto oversized = directory.getChildFile("oversize.swaraxtpreset");
     {
         juce::FileOutputStream stream(oversized);
@@ -191,6 +285,7 @@ void presetBounds()
 
 void pngBudget()
 {
+    juce::String error;
     const auto directory = juce::File::getCurrentWorkingDirectory().getChildFile("mission04-png-fixtures");
     directory.createDirectory();
     auto writeHeader = [](const juce::File& file, std::uint32_t width, std::uint32_t height) {
@@ -237,6 +332,16 @@ void pngBudget()
     expect(format.writeImageToStream(image, stream), "a real 8x8 PNG can be written");
     stream.flush();
     expect(swaraxt::ui::SkinUserSvg::pngDeclaredSizeAllowed(real), "a real small PNG passes the preflight");
+    expect(swaraxt::ui::SkinUserSvg::installBackground(real, error), "a real small PNG decodes and installs");
+    expect(swaraxt::ui::SkinUserSvg::loadBackground() != nullptr, "an installed PNG decodes on asset reload");
+    juce::MemoryBlock installed;
+    swaraxt::ui::SkinUserSvg::backgroundPngFile().loadFileAsData(installed);
+    expect(! swaraxt::ui::SkinUserSvg::installBackground(bomb, error), "an oversized declaration cannot replace valid art");
+    expect(! swaraxt::ui::SkinUserSvg::installBackground(bad, error), "malformed PNG content cannot replace valid art");
+    juce::MemoryBlock after;
+    swaraxt::ui::SkinUserSvg::backgroundPngFile().loadFileAsData(after);
+    expect(after == installed, "failed imports preserve the installed image bytes");
+    swaraxt::ui::SkinUserSvg::clearBackground();
     directory.deleteRecursively();
 }
 
@@ -318,6 +423,7 @@ int main()
     std::printf("Defensive test scratch: %s\n", directory.string().c_str());
     juce::ScopedJuceInitialiser_GUI initialise;
     midiLifecycle();
+    pendingMidiReleases();
     busContract();
     presetBounds();
     pngBudget();
