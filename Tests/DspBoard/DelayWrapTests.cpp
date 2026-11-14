@@ -49,6 +49,32 @@ void delayWrapTests()
         require(effects.line_[1280] == 42, "the following block still leaves the guard cell unused");
         require(effects.delayPtr_ < 1280, "the following block keeps the pointer inside the ring");
     }
+    BoardEffects indexZero;
+    indexZero.reset();
+    indexZero.delayPtr_ = 1260;
+    indexZero.delayCounter_ = 2;
+    indexZero.line_[0] = -77;
+    indexZero.line_[1280] = 42;
+    Block boundary {};
+    indexZero.process(boundary, Effect::crushDelayFeedback, 0, 255, 120);
+    require(indexZero.delayPtr_ == 0, "the exact end-of-ring boundary wraps to index zero");
+    boundary.fill(0);
+    boundary[0] = 592;
+    indexZero.process(boundary, Effect::crushDelayFeedback, 0, 255, 120);
+    require(indexZero.line_[0] == 37, "the following block writes its intended sample to index zero");
+    for (int block = 0; block < 48; ++block)
+    {
+        boundary.fill(0);
+        indexZero.process(boundary, Effect::crushDelayFeedback, 0, 255, 120);
+    }
+    require(indexZero.delayPtr_ == 980, "the delayed read reaches the stored index-zero sample");
+    boundary.fill(0);
+    indexZero.process(boundary, Effect::crushDelayFeedback, 0, 255, 120);
+    require(boundary[0] == 589 && boundary[1] == 589 && boundary[2] == 0,
+            "the delayed output reads the intended index-zero sample exactly");
+    require(indexZero.line_[980] == 12, "feedback uses that same index-zero sample");
+    require(indexZero.line_[1280] == 42, "the write/read cycle leaves the guard cell untouched");
+    std::cout << "Delay index-zero write/read: PASS\n";
     std::cout << "Delay ring invariant: PASS\n";
 }
 }
