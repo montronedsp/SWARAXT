@@ -439,12 +439,23 @@ void layoutAndLifetime()
         expect(main.filterModelForTests().getSelectedId() == 2, "editor reopening reflects processor selection");
         pending = editor->contextMenuCallbackForTests();
         main.dualSvfPanelForTests().calibrationForTests().buttonForTests(0).triggerClick();
-        if (cycle <= 1)
+        if (cycle <= 3)
         {
             editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
             editor->setVisible(true);
-            if (cycle == 0)
+            if (cycle != 1)
+            {
                 editor->showContextMenuForTests();
+                if (cycle == 2)
+                    juce::PopupMenu::dismissAllActiveMenus();
+                if (cycle == 3)
+                {
+                    auto* modal = juce::Component::getCurrentlyModalComponent();
+                    expect(modal != nullptr, "native popup exists before modal dismissal");
+                    if (modal != nullptr)
+                        modal->exitModalState(0);
+                }
+            }
             else
             {
                 juce::ComboBox* preset = nullptr;
