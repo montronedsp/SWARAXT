@@ -186,6 +186,7 @@ void testFullStepSemanticsAndLfo()
 juce::MemoryBlock saveState(SwaraXtAudioProcessor& processor,
                             const swaraxt::SequenceSnapshot& sequence)
 {
+    setInt(processor, swaraxt::IDs::arpPattern, sequence.arpPattern);
     processor.sequenceState().store(sequence);
     juce::MemoryBlock state;
     processor.getStateInformation(state);
@@ -230,9 +231,12 @@ void testStateRoundtripAndPresetSwitching()
         if (auto xml = legacy.createXml())
             juce::AudioProcessor::copyXmlToBinary(*xml, legacyData);
         restoreState(restored, legacyData);
-        expect(sameSequence(restored.sequenceState().snapshot(),
-                            swaraxt::SequenceState::defaultSnapshot()),
-               "version 1/2 states receive the product-compatible default sequence");
+        auto expectedDefault = swaraxt::SequenceState::defaultSnapshot();
+        expectedDefault.arpPattern = a.arpPattern;
+        expect(getInt(restored, swaraxt::IDs::arpPattern) == a.arpPattern,
+               "legacy state without SEQUENCE retains its saved APVTS ARP");
+        expect(sameSequence(restored.sequenceState().snapshot(), expectedDefault),
+               "version 1/2 states default the payload while preserving APVTS ARP");
     }
 
     restored.sequenceState().store(b);
