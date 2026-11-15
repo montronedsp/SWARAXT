@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <stdexcept>
 #include <thread>
 
 namespace {
@@ -275,6 +276,58 @@ void restorePrecedence()
     expect(getInt(legacyNoParam, swaraxt::IDs::arpPattern) == 12, "legacy PARAM-less restore aligns APVTS to SEQUENCE ARP");
     expect(legacyNoParam.sequenceState().arpPattern() == 12, "legacy PARAM-less restore keeps SEQUENCE ARP");
     expect(firmwareArp(legacyNoParam) == 12, "legacy PARAM-less restore publishes SEQUENCE ARP to firmware");
+
+    const int currentVersion = static_cast<int>(missingParam.getProperty("stateVersion", 1));
+    for (int version = 1; version <= currentVersion; ++version)
+    {
+        auto supportedLegacy = missingParam.createCopy();
+        supportedLegacy.setProperty("stateVersion", version, nullptr);
+        Processor restored;
+        const auto legacyBlob = binary(supportedLegacy);
+        restored.setStateInformation(legacyBlob.getData(), static_cast<int>(legacyBlob.getSize()));
+        restored.prepareToPlay(48000, 64);
+        process(restored);
+        expectArp(restored, 12, "every supported PARAM-less state version uses the saved SEQUENCE ARP");
+    }
+
+    auto neitherArp = missingParam.createCopy();
+    neitherArp.removeChild(neitherArp.getChildWithName("SEQUENCE"), nullptr);
+    Processor defaults;
+    setInt(defaults, swaraxt::IDs::arpPattern, 9);
+    const auto neitherBlob = binary(neitherArp);
+    defaults.setStateInformation(neitherBlob.getData(), static_cast<int>(neitherBlob.getSize()));
+    defaults.prepareToPlay(48000, 64);
+    process(defaults);
+    const auto* arp = defaults.getApvts().getParameter(swaraxt::IDs::arpPattern);
+    expectArp(defaults, static_cast<int>(std::lround(arp->convertFrom0to1(arp->getDefaultValue()))),
+              "state without either ARP representation restores the parameter default");
+
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+    struct ThrowOnFallback final : juce::AudioProcessorValueTreeState::Listener
+    {
+        int calls = 0;
+        void parameterChanged(const juce::String&, float value) override
+        {
+            if (std::lround(value) == 12)
+            {
+                ++calls;
+                throw std::runtime_error("legacy ARP notification");
+            }
+        }
+    } throwingListener;
+    Processor throwing;
+    throwing.getApvts().addParameterListener(swaraxt::IDs::arpPattern, &throwingListener);
+    bool escaped = false;
+    try { throwing.setStateInformation(missingParamBlob.getData(), static_cast<int>(missingParamBlob.getSize())); }
+    catch (...) { escaped = true; }
+    throwing.getApvts().removeParameterListener(swaraxt::IDs::arpPattern, &throwingListener);
+    expect(throwingListener.calls > 0 && ! escaped, "legacy ARP notification uses the restoration completion boundary");
+    throwing.prepareToPlay(48000, 64);
+    process(throwing);
+    expectArp(throwing, 12, "legacy ARP remains coherent after a throwing listener");
+    expect(treeFrom(save(throwing)).isEquivalentTo(treeFrom(save(legacyNoParam))),
+           "a throwing legacy ARP listener preserves the complete restored cohort");
+#endif
 
     auto disagreed = treeFrom(blob);
     for (auto child : disagreed)

@@ -1100,6 +1100,10 @@ SwaraXtAudioProcessor::RestoreResult SwaraXtAudioProcessor::restoreState(
                 tree.removeChild(index, nullptr);
         }
         canonicaliseLegacyModes(tree);
+        bool hadArpParam = false;
+        for (const auto child : tree)
+            if (child.hasType("PARAM") && child.getProperty("id") == swaraxt::IDs::arpPattern)
+                hadArpParam = true;
 #if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
         // Complete records in JUCE's adapter order before its commit boundary.
         std::vector<juce::RangedAudioParameter*> parameters;
@@ -1153,10 +1157,6 @@ SwaraXtAudioProcessor::RestoreResult SwaraXtAudioProcessor::restoreState(
             }
         }
         swaraxt::SequenceSnapshot sequence;
-        bool hadArpParam = false;
-        for (const auto child : tree)
-            if (child.hasType("PARAM") && child.getProperty("id") == swaraxt::IDs::arpPattern)
-                hadArpParam = true;
         if (!preserveSequence && !swaraxt::SequenceState::decodeValueTree(tree.getChildWithName("SEQUENCE"), sequence))
         {
             sequence = swaraxt::SequenceState::defaultSnapshot();
@@ -1166,6 +1166,17 @@ SwaraXtAudioProcessor::RestoreResult SwaraXtAudioProcessor::restoreState(
                 if (child.getProperty("id") == swaraxt::IDs::arpPattern)
                     value = child.getProperty("value", value); // JUCE's last duplicate wins.
             sequence.arpPattern = static_cast<uint8_t>(juce::jlimit(0, 15, static_cast<int>(std::lround(static_cast<float>(value)))));
+        }
+        if (! preserveSequence && ! hadArpParam)
+        {
+            auto child = tree.getChildWithProperty("id", swaraxt::IDs::arpPattern);
+            if (! child.isValid())
+            {
+                child = juce::ValueTree("PARAM");
+                child.setProperty("id", swaraxt::IDs::arpPattern, nullptr);
+                tree.addChild(child, -1, nullptr);
+            }
+            child.setProperty("value", static_cast<int>(sequence.arpPattern), nullptr);
         }
         const auto quality = decodeFilterQuality(
             tree.getProperty(kFilterQualityProperty,
@@ -1225,19 +1236,9 @@ SwaraXtAudioProcessor::RestoreResult SwaraXtAudioProcessor::restoreState(
 #endif
         if (!preserveSequence)
         {
-            // APVTS owns ARP when the host parameter is present. SEQUENCE ARP is
-            // the legacy fallback used only when that PARAM child is missing.
-            if (hadArpParam)
-            {
-                const int arp = static_cast<int>(std::lround(
-                    apvts_.getRawParameterValue(swaraxt::IDs::arpPattern)->load()));
-                sequenceState_.setArpPatternFromParameter(arp);
-            }
-            else if (auto* parameter = dynamic_cast<juce::AudioParameterInt*>(
-                         apvts_.getParameter(swaraxt::IDs::arpPattern)))
-            {
-                *parameter = static_cast<int>(sequence.arpPattern);
-            }
+            const int arp = static_cast<int>(std::lround(
+                apvts_.getRawParameterValue(swaraxt::IDs::arpPattern)->load()));
+            sequenceState_.setArpPatternFromParameter(arp);
         }
         if (!fromPreset) { setSequenceLocked(locked); setRandomNoteRange(range); }
         setFilterQuality(quality);
