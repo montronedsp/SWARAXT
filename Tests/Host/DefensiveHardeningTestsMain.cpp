@@ -293,6 +293,8 @@ void busContract()
     rejected.inputBuses.add(juce::AudioChannelSet::stereo());
     expect(! processor.isBusesLayoutSupported(rejected), "an input bus is rejected");
 
+    rejected = layout;
+    rejected.outputBuses.getReference(0) = juce::AudioChannelSet::mono();
     expect(! processor.setBusesLayout(rejected), "an unsupported layout is not applied");
     expect(processor.getBusesLayout().getMainOutputChannelSet() == juce::AudioChannelSet::stereo(),
            "a rejected layout leaves stereo in place");
