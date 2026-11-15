@@ -86,13 +86,13 @@ class PresetNameWindow final : public juce::AlertWindow {
 class AboutPanel final : public juce::Component,
                          private juce::Button::Listener {
  public:
-    explicit AboutPanel(const swaraxt::ui::SwaraXtLookAndFeel& panelLookAndFeel)
-        : lookAndFeel_(panelLookAndFeel),
+    explicit AboutPanel(std::shared_ptr<swaraxt::ui::SwaraXtLookAndFeel> panelLookAndFeel)
+        : lookAndFeel_(std::move(panelLookAndFeel)),
           email_("Support: support@montronedsp.com",
                  juce::URL("mailto:support@montronedsp.com"))
     {
         addAndMakeVisible(email_);
-        email_.setFont(lookAndFeel_.font(swaraxt::ui::TextRole::aboutBody), false);
+        email_.setFont(lookAndFeel_->font(swaraxt::ui::TextRole::aboutBody), false);
         addAndMakeVisible(close_);
         close_.addListener(this);
         setSize(360, 270);
@@ -112,11 +112,11 @@ class AboutPanel final : public juce::Component,
         g.drawRoundedRectangle(bounds.reduced(0.75f), 8.0f, 1.5f);
 
         g.setColour(Palette::skin().displayText);
-        singleLineText(lookAndFeel_.font(TextRole::aboutHeading), "SWARA XT",
+        singleLineText(lookAndFeel_->font(TextRole::aboutHeading), "SWARA XT",
                        { 20.0f, 14.0f, 320.0f, 28.0f }, juce::Justification::centred).draw(g);
 
         g.setColour(Palette::skin().displayText.withAlpha(0.85f));
-        g.setFont(lookAndFeel_.font(swaraxt::ui::TextRole::aboutBody));
+        g.setFont(lookAndFeel_->font(swaraxt::ui::TextRole::aboutBody));
         g.drawFittedText("MontroneDSP\nAuthor: Andrea Montrone\n\u00a9 2026 MontroneDSP\n\nLicensed under the GNU GPL v3 or later.\n\nContains software derived in part from\nMutable Instruments Shruthi firmware.\n\nVersion: " SWARAXT_VERSION_STRING,
                          22, 45, 316, 174, juce::Justification::centred, 10);
     }
@@ -143,7 +143,7 @@ class AboutPanel final : public juce::Component,
             closeCallback_();
     }
 
-    const swaraxt::ui::SwaraXtLookAndFeel& lookAndFeel_;
+    std::shared_ptr<swaraxt::ui::SwaraXtLookAndFeel> lookAndFeel_;
     juce::HyperlinkButton email_;
     juce::TextButton close_ { "Close" };
     std::function<void()> closeCallback_;
@@ -155,14 +155,14 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     : AudioProcessorEditor(&audioProcessor),
       processor_(audioProcessor)
 {
-    setLookAndFeel(&lookAndFeel_);
+    setLookAndFeel(lookAndFeel_.get());
     setResizable(false, false);
     skinId_ = swaraxt::ui::UiPreferences::loadSkin();
     decorationId_ = swaraxt::ui::UiPreferences::loadDecoration();
     manufacturerMark_ = swaraxt::ui::UiPreferences::loadManufacturerMark();
     swaraxt::ui::SkinRegistry::setActive(skinId_);
     swaraxt::ui::SkinColourOverride::refresh();
-    lookAndFeel_.applySkin();
+    lookAndFeel_->applySkin();
     guiSize_ = swaraxt::ui::UiPreferences::loadGuiSize();
     filterQuality_ = processor_.filterQuality();
     addAndMakeVisible(designSurface_);
@@ -196,7 +196,7 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
     applyGuiSize(guiSize_, false);
     designSurface_.addChildComponent(restoreNotificationLabel_);
     designSurface_.addChildComponent(dismissRestoreNotification_);
-    restoreNotificationLabel_.setFont(lookAndFeel_.font(swaraxt::ui::TextRole::aboutBody));
+    restoreNotificationLabel_.setFont(lookAndFeel_->font(swaraxt::ui::TextRole::aboutBody));
     restoreNotificationLabel_.setJustificationType(juce::Justification::centredLeft);
     restoreNotificationLabel_.setColour(juce::Label::backgroundColourId, juce::Colour(0xffffe2a8));
     restoreNotificationLabel_.setColour(juce::Label::textColourId, juce::Colour(0xff231b10));
@@ -213,6 +213,19 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
 SwaraXtAudioProcessorEditor::~SwaraXtAudioProcessorEditor()
 {
     stopTimer();
+    // JUCE destroys asynchronous popups after their modal callbacks complete.
+    for (int i = juce::Component::getNumCurrentlyModalComponents(); --i >= 0;)
+    {
+        auto* modal = juce::Component::getCurrentlyModalComponent(i);
+        if (modal != nullptr && &modal->getLookAndFeel() == lookAndFeel_.get())
+        {
+            juce::ModalComponentManager::getInstance()->attachCallback(modal,
+                juce::ModalCallbackFunction::create([appearance = lookAndFeel_](int) {
+                    juce::ignoreUnused(appearance);
+                }));
+            modal->exitModalState(0);
+        }
+    }
     designSurface_.removeMouseListener(this);
     presetSelector_.removeListener(this);
     for (auto* button : { &prevPresetButton_, &nextPresetButton_, &savePresetButton_ })
@@ -377,7 +390,7 @@ void SwaraXtAudioProcessorEditor::showContextMenu()
     backgroundMenu.addItem(183, "Clear custom", backgroundFile, false);
 
     juce::PopupMenu menu;
-    menu.setLookAndFeel(&lookAndFeel_);
+    menu.setLookAndFeel(lookAndFeel_.get());
     menu.addSubMenu("MIDI Channel", midiMenu);
     menu.addSubMenu("Filter Quality", qualityMenu);
     menu.addSeparator();
@@ -577,7 +590,7 @@ void SwaraXtAudioProcessorEditor::applySkin(swaraxt::ui::SkinId skin, bool persi
     swaraxt::ui::SkinColourOverride::refresh();
     assets_.load(swaraxt::ui::SkinRegistry::get(skin));
     decorationAssets_.load(decorationId_, swaraxt::ui::SkinColourOverride::resolved());
-    lookAndFeel_.applySkin();
+    lookAndFeel_->applySkin();
     prevPresetButton_.setColour(juce::TextButton::textColourOffId,
                                 swaraxt::ui::Palette::skin().displayText);
     nextPresetButton_.setColour(juce::TextButton::textColourOffId,

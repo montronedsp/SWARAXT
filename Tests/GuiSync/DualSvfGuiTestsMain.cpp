@@ -439,11 +439,30 @@ void layoutAndLifetime()
         expect(main.filterModelForTests().getSelectedId() == 2, "editor reopening reflects processor selection");
         pending = editor->contextMenuCallbackForTests();
         main.dualSvfPanelForTests().calibrationForTests().buttonForTests(0).triggerClick();
-        if (cycle == 0)
+        if (cycle <= 1)
         {
             editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
             editor->setVisible(true);
-            editor->showContextMenuForTests();
+            if (cycle == 0)
+                editor->showContextMenuForTests();
+            else
+            {
+                juce::ComboBox* preset = nullptr;
+                for (int i = 0; i < editor->getNumChildComponents(); ++i)
+                {
+                    auto* surface = editor->getChildComponent(i);
+                    for (int j = 0; j < surface->getNumChildComponents(); ++j)
+                        if (auto* combo = dynamic_cast<juce::ComboBox*>(surface->getChildComponent(j));
+                            combo != nullptr && combo->getNumItems() == processor->getNumPrograms())
+                            preset = combo;
+                }
+                expect(preset != nullptr, "actual preset selector is found for teardown");
+                if (preset != nullptr)
+                {
+                    preset->showPopup();
+                    expect(preset->isPopupActive(), "preset popup is active when the editor closes");
+                }
+            }
         }
         editor.reset();
         const auto before = processor->experimentalSvfSelection();

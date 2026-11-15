@@ -186,7 +186,8 @@ class SwaraXtAudioProcessorEditor : public juce::AudioProcessorEditor,
     void showSvgLoadError(const juce::String& message);
 
     SwaraXtAudioProcessor& processor_;
-    swaraxt::ui::SwaraXtLookAndFeel lookAndFeel_;
+    std::shared_ptr<swaraxt::ui::SwaraXtLookAndFeel> lookAndFeel_ =
+        std::make_shared<swaraxt::ui::SwaraXtLookAndFeel>();
     swaraxt::ui::SkinId skinId_ = swaraxt::ui::SkinId::pastel;
     swaraxt::ui::DecorationId decorationId_ = swaraxt::ui::DecorationId::legacy;
     swaraxt::ui::ManufacturerMark manufacturerMark_ = swaraxt::ui::ManufacturerMarkDefinition::defaultMark;
