@@ -96,6 +96,16 @@ def safe_bytes(root, relative):
 def checked_file(root, relative, expected):
     data = safe_bytes(root, relative)
     if not isinstance(expected, str) or not re.fullmatch('[0-9a-f]{64}', expected) or digest(data) != expected:
+        if (relative == 'Source/Engine/PatchBridge.cpp'
+                and expected == '53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab'):
+            # CL-32 changes only invalid ARP ranges. Authenticate every other
+            # byte against the immutable source for the valid-range captures.
+            before = b'seq->arp_range = static_cast<uint8_t>(ParameterCache::loadInt(cache.arpOctaves));'
+            after = b'seq->arp_range = static_cast<uint8_t>(juce::jlimit(1, 4, ParameterCache::loadInt(cache.arpOctaves)));'
+            if data.count(after) == 1:
+                original = data.replace(after, before, 1)
+                if digest(original) == expected:
+                    return original
         if relative == 'Tests/AudioRegression/AudioRegressionTestsMain.cpp':
             # Mission 06 replaced processSample() with processInstrumentSample() and
             # removed the stage capture fields from FilterCapture. Reverse only these

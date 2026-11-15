@@ -576,6 +576,37 @@ class CurrentAdmissionTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform.startswith('linux'), 'Current pinned reference policy is Linux-only')
 class PackageAuthenticationTests(unittest.TestCase):
+    def test_patch_bridge_cl32_reverses_to_authenticated_source(self):
+        source = Path(__file__).resolve().parents[2]
+        expected = '53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab'
+        original = current.checked_file(source, 'Source/Engine/PatchBridge.cpp', expected)
+        self.assertEqual(current.digest(original), expected)
+        self.assertNotEqual(current.digest((source / 'Source/Engine/PatchBridge.cpp').read_bytes()), expected)
+        for value in range(1, 5):
+            self.assertEqual(max(1, min(4, value)), value)
+
+    def test_patch_bridge_unreviewed_changes_fail_closed(self):
+        source = Path(__file__).resolve().parents[2]
+        relative = 'Source/Engine/PatchBridge.cpp'
+        data = (source / relative).read_bytes()
+        expected = '53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab'
+        for changed in (data.replace(b'juce::jlimit(1, 4,', b'juce::jlimit(0, 4,'),
+                        data.replace(b'juce::jlimit(1, 4,', b'juce::jlimit(1, 5,'),
+                        data + b'\n// unreviewed source change\n'):
+            self.assertNotEqual(changed, data)
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                path = root / relative
+                path.parent.mkdir(parents=True)
+                path.write_bytes(changed)
+                with self.assertRaisesRegex(RuntimeError, 'checksum'):
+                    current.checked_file(root, relative, expected)
+
+    def test_patch_bridge_adapter_cannot_change_the_authority_hash(self):
+        source = Path(__file__).resolve().parents[2]
+        with self.assertRaisesRegex(RuntimeError, 'checksum'):
+            current.checked_file(source, 'Source/Engine/PatchBridge.cpp', '0' * 64)
+
     def test_approval_label_cannot_authenticate_tampered_package(self):
         source=Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory()as temp:
