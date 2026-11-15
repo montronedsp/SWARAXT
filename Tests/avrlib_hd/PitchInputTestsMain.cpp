@@ -234,10 +234,14 @@ void midiAdmission() {
     SwaraXtAudioProcessor p; p.prepareToPlay(48000, 256);
     auto& part = p.engineForTests().shruthiPart();
     juce::AudioBuffer<float> audio(2, 256); juce::MidiBuffer midi;
+    p.processBlock(audio, midi);
     for (int raw = 0; raw < 256; ++raw) {
+        const auto before1 = part.patch().osc[0].range;
+        const auto before2 = part.patch().osc[1].range;
         midi.clear(); midi.addEvent(juce::MidiMessage::controllerEvent(1, 22, raw & 127), 0);
         midi.addEvent(juce::MidiMessage::controllerEvent(1, 26, raw & 127), 0); p.processBlock(audio, midi);
-        require(part.patch().osc[0].range >= -24 && part.patch().osc[0].range <= 24, "CC range scaled by firmware table");
+        require(part.patch().osc[0].range == before1 && part.patch().osc[1].range == before2,
+                "production dispatch rejects persistent range CC outside APVTS authority");
     }
     const std::array<int, 4> offsets {{shruthi::PRM_OSC_RANGE_1, shruthi::PRM_OSC_RANGE_2,
                                      shruthi::PRM_SYS_OCTAVE, shruthi::PRM_SYS_MASTER_TUNING}};
@@ -249,14 +253,29 @@ void midiAdmission() {
             midi.addEvent(juce::MidiMessage::controllerEvent(1, 98, offset & 127), 1);
             midi.addEvent(juce::MidiMessage::controllerEvent(1, 6, raw >> 7), 2);
             midi.addEvent(juce::MidiMessage::controllerEvent(1, 38, raw & 127), 3); p.processBlock(audio, midi);
-            const auto& parameter = shruthi::ParameterManager::parameter(shruthi::ParameterManager::at_offset(static_cast<uint8_t>(offset)));
-            const uint8_t code = static_cast<uint8_t>(raw);
-            const bool valid = parameter.Clamp(code) == code;
-            require(part.GetParameter(static_cast<uint8_t>(offset)) == (valid ? code : old), "real NRPN validates signed bytes before assignment");
+            require(part.GetParameter(static_cast<uint8_t>(offset)) == old,
+                    "production dispatch rejects persistent NRPN outside APVTS authority");
             ++cases;
         }
     }
-    // System raga is reachable via NRPN; prove tuned notes remain inside14bits.
+    SwaraXtAudioProcessor direct;
+    direct.prepareToPlay(48000, 256);
+    auto& firmware = direct.engineForTests().shruthiPart();
+    for (const auto offset : offsets) for (int raw = 0; raw < 256; ++raw) {
+        const uint8_t old = firmware.GetParameter(static_cast<uint8_t>(offset));
+        firmware.ControlChange(99, static_cast<uint8_t>(offset >> 7));
+        firmware.ControlChange(98, static_cast<uint8_t>(offset & 127));
+        firmware.ControlChange(6, static_cast<uint8_t>(raw >> 7));
+        firmware.ControlChange(38, static_cast<uint8_t>(raw & 127));
+        const auto& parameter = shruthi::ParameterManager::parameter(
+            shruthi::ParameterManager::at_offset(static_cast<uint8_t>(offset)));
+        const uint8_t code = static_cast<uint8_t>(raw);
+        const bool valid = parameter.Clamp(code) == code;
+        require(firmware.GetParameter(static_cast<uint8_t>(offset)) == (valid ? code : old),
+                "direct firmware NRPN validates signed bytes before assignment");
+        ++cases;
+    }
+    // Direct firmware raga tables retain the original bounded pitch contract.
     int minPitch = 16383, maxPitch = 0;
     for (int scale = 1; scale <= 32; ++scale) for (int note = 0; note <= 127; ++note) {
         const int shift = shruthi::ResourcesManager::Lookup<int16_t, uint8_t>(

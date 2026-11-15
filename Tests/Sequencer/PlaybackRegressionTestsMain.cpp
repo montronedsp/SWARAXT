@@ -84,13 +84,19 @@ void oldPrograms() {
     const int oldIndices[] = {51, 63, 71, 72, 74, 75};
     for (int i = 0; i < 6; ++i) {
         check(p.getProgramName(51+i) == names[i], "retained deterministic index");
-        p.setCurrentProgram(51+i); render(p, host, 1);
+        SwaraXtAudioProcessor::PresetEntry entry;
+        entry.isFactory = true;
+        entry.factoryIndex = 51+i;
+        juce::String error;
+        check(p.loadPresetEntry(entry, error), "explicit retained factory selection succeeds"); render(p, host, 1);
         juce::MemoryBlock saved; p.getStateInformation(saved);
         auto xml = juce::AudioProcessor::getXmlFromBinary(saved.getData(), static_cast<int>(saved.getSize()));
         xml->setAttribute("currentProgram", oldIndices[i]);
         juce::MemoryBlock legacy; juce::AudioProcessor::copyXmlToBinary(*xml, legacy);
         p.setStateInformation(legacy.getData(), static_cast<int>(legacy.getSize()));
         check(p.getCurrentProgram() == 51+i, "old retained index remaps by saved name");
+        p.setCurrentProgram((52+i) % p.getNumPrograms());
+        check(p.getCurrentProgram() == 51+i, "host program reassertion preserves the restored session");
         xml->setAttribute("currentProgram", 9000); xml->setAttribute("presetName", "Deleted factory preset");
         juce::AudioProcessor::copyXmlToBinary(*xml, legacy);
         p.setStateInformation(legacy.getData(), static_cast<int>(legacy.getSize())); render(p, host, 1);
