@@ -212,6 +212,8 @@ if(SWARAXT_DIAGNOSTICS_MODULE AND DIAG_SANITIZER STREQUAL "rtsan")
         LABELS "sanitizer;negative-control" TIMEOUT 120)
 endif()
 swaraxt_qualify_directory("${CMAKE_CURRENT_SOURCE_DIR}")
+set_tests_properties(SwaraXTDualSvfGuiTests PROPERTIES
+    FAIL_REGULAR_EXPRESSION "JUCE Assertion failure")
 if(MSVC)
     set_tests_properties(SwaraXtShruthiSvf2pSanitizerTests
         PROPERTIES LABELS sanitizer TIMEOUT 600)

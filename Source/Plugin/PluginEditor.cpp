@@ -213,11 +213,12 @@ SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& 
 SwaraXtAudioProcessorEditor::~SwaraXtAudioProcessorEditor()
 {
     stopTimer();
-    // JUCE destroys asynchronous popups after their modal callbacks complete.
-    for (int i = juce::Component::getNumCurrentlyModalComponents(); --i >= 0;)
+    // Include popups whose modal state ended before deferred destruction.
+    auto& desktop = juce::Desktop::getInstance();
+    for (int i = desktop.getNumComponents(); --i >= 0;)
     {
-        auto* modal = juce::Component::getCurrentlyModalComponent(i);
-        if (modal != nullptr && &modal->getLookAndFeel() == lookAndFeel_.get())
+        auto* modal = desktop.getComponent(i);
+        if (modal != nullptr && modal != this && &modal->getLookAndFeel() == lookAndFeel_.get())
         {
             juce::ModalComponentManager::getInstance()->attachCallback(modal,
                 juce::ModalCallbackFunction::create([appearance = lookAndFeel_](int) {
