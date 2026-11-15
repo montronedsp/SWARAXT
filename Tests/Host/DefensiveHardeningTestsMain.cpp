@@ -16,6 +16,9 @@
 #include <filesystem>
 #include <limits>
 #include <vector>
+#if JUCE_LINUX
+#include <dlfcn.h>
+#endif
 
 namespace {
 using Processor = SwaraXtAudioProcessor;
@@ -518,6 +521,27 @@ void pngBudget()
     juce::MemoryBlock after;
     swaraxt::ui::SkinUserSvg::backgroundPngFile().loadFileAsData(after);
     expect(after == installed, "failed imports preserve the installed image bytes");
+    expect(! swaraxt::ui::SkinUserSvg::installBackground(small, error), "a header without PNG data cannot decode");
+    const auto compressed = directory.getChildFile("compressed-too-large.png");
+    juce::MemoryBlock oversized(static_cast<size_t>(swaraxt::ui::SkinUserSvg::maxPngBytes) + 1, true);
+    compressed.replaceWithData(oversized.getData(), oversized.getSize());
+    expect(! swaraxt::ui::SkinUserSvg::installBackground(compressed, error), "compressed PNG bytes are bounded");
+    writeHeader(zero, 16, 0);
+    expect(! swaraxt::ui::SkinUserSvg::installBackground(zero, error), "a zero height cannot decode");
+    writeHeader(bomb, 8193, 1);
+    expect(! swaraxt::ui::SkinUserSvg::installBackground(bomb, error), "the maximum edge remains bounded");
+    swaraxt::ui::SkinUserSvg::backgroundPngFile().replaceWithData(oversized.getData(), oversized.getSize());
+    expect(swaraxt::ui::SkinUserSvg::loadBackground() == nullptr, "reload rejects oversized compressed content");
+    image.setPixelAt(3, 4, juce::Colour(0x8000ff00));
+    {
+        juce::FileOutputStream alpha(real);
+        alpha.setPosition(0);
+        alpha.truncate();
+        expect(format.writeImageToStream(image, alpha), "transparent PNG fixture writes");
+    }
+    expect(swaraxt::ui::SkinUserSvg::installBackground(real, error), "alpha PNG installs");
+    const auto alpha = juce::ImageFileFormat::loadFrom(swaraxt::ui::SkinUserSvg::backgroundPngFile());
+    expect(alpha.isValid() && alpha.getPixelAt(3, 4).getAlpha() == 128, "installation preserves alpha pixels");
     swaraxt::ui::SkinUserSvg::clearBackground();
     directory.deleteRecursively();
 }
@@ -584,9 +608,9 @@ void missionPreservation()
 void fileRace(const juce::String& mode)
 {
     const auto directory = juce::File::getCurrentWorkingDirectory();
-    const auto file = directory.getChildFile(mode == "png" ? "race.png" : "race.swaraxtpreset");
+    const auto file = directory.getChildFile(mode.startsWith("png") ? "race.png" : "race.swaraxtpreset");
     juce::String error;
-    if (mode == "png")
+    if (mode.startsWith("png"))
     {
         const auto replacement = directory.getChildFile("replacement.png");
         const auto write = [](const juce::File& destination, int width, int height) {
@@ -597,12 +621,25 @@ void fileRace(const juce::String& mode)
         };
         write(file, 8, 8);
         write(replacement, 2304, 2048);
+        juce::MemoryBlock original;
+        expect(file.loadFileAsData(original), "initial race bytes are recorded before injection");
         setenv("SWARAXT_RACE_REPLACEMENT", replacement.getFullPathName().toRawUTF8(), 1);
         setenv("SWARAXT_RACE_PATH", file.getFullPathName().toRawUTF8(), 1);
         const bool accepted = swaraxt::ui::SkinUserSvg::installBackground(file, error);
         std::printf("PNG replacement accepted=%d decoded_bytes=%d reload=%d error=%s\n", accepted,
                     2304 * 2048 * 4, swaraxt::ui::SkinUserSvg::loadBackground() != nullptr, error.toRawUTF8());
-        expect(! accepted, "the decoded pixel budget also holds if the path changes after preflight");
+        if (mode == "png-first")
+            expect(! accepted, "an oversized replacement before acquisition is rejected");
+        else
+        {
+            juce::MemoryBlock installed;
+            const bool read = swaraxt::ui::SkinUserSvg::backgroundPngFile().loadFileAsData(installed);
+            expect(accepted && read && installed == original,
+                   "validation, decoding and installation consume the same original PNG bytes");
+            using OpenCount = int (*)();
+            const auto count = reinterpret_cast<OpenCount>(dlsym(RTLD_DEFAULT, "mission04_png_source_opens"));
+            expect(count != nullptr && count() == 1, "PNG decoding and installation never reopen the source path");
+        }
         swaraxt::ui::SkinUserSvg::clearBackground();
         replacement.deleteFile();
     }
@@ -652,7 +689,7 @@ int main(int argc, char** argv)
     if (argc == 2)
     {
         const juce::String mode(argv[1]);
-        if (mode != "grow" && mode != "truncate" && mode != "png")
+        if (mode != "grow" && mode != "truncate" && mode != "png" && mode != "png-first")
             return 2;
         fileRace(mode);
         return failures ? 1 : 0;

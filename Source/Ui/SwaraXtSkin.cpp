@@ -309,14 +309,53 @@ std::unique_ptr<juce::Drawable> parseSvgBytes(const void* data, size_t size)
     return drawable;
 }
 
-std::unique_ptr<juce::Drawable> drawableFromPng(const juce::File& file)
+bool readPngBytes(const juce::File& file, juce::MemoryBlock& bytes)
 {
-    if (! SkinUserSvg::pngDeclaredSizeAllowed(file))
+    juce::FileInputStream input(file);
+    const auto size = input.getTotalLength();
+    if (input.failedToOpen() || size <= 0 || size > SkinUserSvg::maxPngBytes)
+        return false;
+    bytes.setSize(static_cast<size_t>(size));
+    return input.read(bytes.getData(), static_cast<int>(size)) == size
+        && input.getTotalLength() == size;
+}
+
+bool pngHeaderAllowed(const juce::MemoryBlock& bytes) noexcept
+{
+    if (bytes.getSize() < 24 || bytes.getSize() > SkinUserSvg::maxPngBytes)
+        return false;
+    const auto* header = static_cast<const unsigned char*>(bytes.getData());
+    static constexpr unsigned char signature[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
+    if (std::memcmp(header, signature, 8) != 0)
+        return false;
+    const auto be32 = [](const unsigned char* p) noexcept {
+        return (static_cast<std::uint32_t>(p[0]) << 24)
+             | (static_cast<std::uint32_t>(p[1]) << 16)
+             | (static_cast<std::uint32_t>(p[2]) << 8)
+             | static_cast<std::uint32_t>(p[3]);
+    };
+    if (be32(header + 8) != 13 || std::memcmp(header + 12, "IHDR", 4) != 0)
+        return false;
+    const auto width = be32(header + 16);
+    const auto height = be32(header + 20);
+    if (width == 0 || height == 0 || width > static_cast<std::uint32_t>(SkinUserSvg::maxImageEdge)
+        || height > static_cast<std::uint32_t>(SkinUserSvg::maxImageEdge))
+        return false;
+    const auto pixels = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
+    return pixels <= static_cast<std::uint64_t>(SkinUserSvg::maxDecodedImageBytes) / 4u;
+}
+
+std::unique_ptr<juce::Drawable> drawableFromPng(const juce::MemoryBlock& bytes)
+{
+    if (! pngHeaderAllowed(bytes))
         return nullptr;
-    const auto image = juce::ImageFileFormat::loadFrom(file);
+    const auto image = juce::ImageFileFormat::loadFrom(bytes.getData(), bytes.getSize());
     if (! image.isValid() || image.getWidth() < 1 || image.getHeight() < 1)
         return nullptr;
     if (image.getWidth() > SkinUserSvg::maxImageEdge || image.getHeight() > SkinUserSvg::maxImageEdge)
+        return nullptr;
+    if (static_cast<std::uint64_t>(image.getWidth()) * static_cast<std::uint64_t>(image.getHeight())
+        > static_cast<std::uint64_t>(SkinUserSvg::maxDecodedImageBytes) / 4u)
         return nullptr;
     auto drawable = std::make_unique<juce::DrawableImage>();
     drawable->setImage(image);
@@ -325,7 +364,14 @@ std::unique_ptr<juce::Drawable> drawableFromPng(const juce::File& file)
     return drawable;
 }
 
-bool copyReplacing(const juce::File& source, const juce::File& destination, juce::String& error)
+std::unique_ptr<juce::Drawable> drawableFromPng(const juce::File& file)
+{
+    juce::MemoryBlock bytes;
+    return readPngBytes(file, bytes) ? drawableFromPng(bytes) : nullptr;
+}
+
+bool copyReplacing(const juce::File& source, const juce::File& destination, juce::String& error,
+                   const juce::MemoryBlock* snapshot = nullptr)
 {
     if (! destination.getParentDirectory().createDirectory()
         && ! destination.getParentDirectory().isDirectory())
@@ -335,7 +381,8 @@ bool copyReplacing(const juce::File& source, const juce::File& destination, juce
     }
     const auto incoming = destination.getSiblingFile(destination.getFileName() + ".incoming");
     incoming.deleteFile();
-    if (! source.copyFileTo(incoming))
+    if (! (snapshot != nullptr ? incoming.replaceWithData(snapshot->getData(), snapshot->getSize())
+                              : source.copyFileTo(incoming)))
     {
         error = "Could not copy the file into preferences.";
         return false;
@@ -440,33 +487,8 @@ bool SkinUserSvg::install(const juce::File& source, const juce::File& destinatio
 
 bool SkinUserSvg::pngDeclaredSizeAllowed(const juce::File& file) noexcept
 {
-    const auto bytes = file.getSize();
-    if (bytes <= 0 || bytes > maxPngBytes)
-        return false;
-    juce::FileInputStream input(file);
-    if (input.failedToOpen())
-        return false;
-    unsigned char header[24] {};
-    if (input.read(header, sizeof(header)) != static_cast<int>(sizeof(header)))
-        return false;
-    static constexpr unsigned char signature[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
-    if (std::memcmp(header, signature, 8) != 0)
-        return false;
-    const auto be32 = [](const unsigned char* p) noexcept {
-        return (static_cast<std::uint32_t>(p[0]) << 24)
-             | (static_cast<std::uint32_t>(p[1]) << 16)
-             | (static_cast<std::uint32_t>(p[2]) << 8)
-             | static_cast<std::uint32_t>(p[3]);
-    };
-    if (be32(header + 8) != 13 || std::memcmp(header + 12, "IHDR", 4) != 0)
-        return false;
-    const auto width = be32(header + 16);
-    const auto height = be32(header + 20);
-    if (width == 0 || height == 0 || width > static_cast<std::uint32_t>(maxImageEdge)
-        || height > static_cast<std::uint32_t>(maxImageEdge))
-        return false;
-    const auto pixels = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
-    return pixels <= static_cast<std::uint64_t>(maxDecodedImageBytes) / 4u;
+    juce::MemoryBlock bytes;
+    return readPngBytes(file, bytes) && pngHeaderAllowed(bytes);
 }
 
 bool SkinUserSvg::installBackground(const juce::File& source, juce::String& error)
@@ -491,12 +513,13 @@ bool SkinUserSvg::installBackground(const juce::File& source, juce::String& erro
             error = "PNG must be between 1 byte and 4 MiB. Built-in background is unchanged.";
             return false;
         }
-        if (drawableFromPng(source) == nullptr)
+        juce::MemoryBlock snapshot;
+        if (! readPngBytes(source, snapshot) || drawableFromPng(snapshot) == nullptr)
         {
-            error = "PNG could not be decoded, or it is larger than 8192 px on a side. Built-in background is unchanged.";
+            error = "PNG could not be decoded, or exceeds the 8192 px edge or 16 MiB pixel budget. Built-in background is unchanged.";
             return false;
         }
-        if (! copyReplacing(source, backgroundPngFile(), error))
+        if (! copyReplacing(source, backgroundPngFile(), error, &snapshot))
             return false;
         backgroundSvgFile().deleteFile();
         return true;
