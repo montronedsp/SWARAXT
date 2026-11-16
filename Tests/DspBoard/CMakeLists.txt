@@ -82,6 +82,14 @@ target_include_directories(SwaraBoardReference PUBLIC
 target_compile_options(SwaraBoardReference PRIVATE
     "$<$<CXX_COMPILER_ID:MSVC>:/FI${SWARAXT_INCLUDE_FIRST}/swaraxt/shruthi_host.h>")
 
+add_executable(SwaraBoardLooperProductionTests LooperProductionTests.cpp)
+target_link_libraries(SwaraBoardLooperProductionTests PRIVATE SwaraBoardAlgorithm)
+swaraxt_enable_warnings(SwaraBoardLooperProductionTests)
+if(MSVC)
+    target_compile_options(SwaraBoardLooperProductionTests PRIVATE /W4 /WX)
+endif()
+add_test(NAME SwaraBoardLooperProductionTests COMMAND SwaraBoardLooperProductionTests)
+
 add_executable(SwaraBoardAlgorithmTests AlgorithmTests.cpp)
 target_link_libraries(SwaraBoardAlgorithmTests PRIVATE SwaraBoardAlgorithm SwaraBoardReference)
 swaraxt_enable_warnings(SwaraBoardAlgorithmTests)
