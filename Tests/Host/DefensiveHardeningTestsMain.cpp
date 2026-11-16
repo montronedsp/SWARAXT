@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <JuceHeader.h>
+#include "../Support/TestEnvironment.h"
 
 #include "Plugin/PluginProcessor.h"
 #include "Ui/SwaraXtSkin.h"
@@ -12,9 +13,11 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <filesystem>
 #include <limits>
+#include <string>
 #include <vector>
 #if JUCE_LINUX
 #include <dlfcn.h>
@@ -535,15 +538,20 @@ void pngBudget()
     swaraxt::ui::SkinUserSvg::backgroundPngFile().replaceWithData(oversized.getData(), oversized.getSize());
     expect(swaraxt::ui::SkinUserSvg::loadBackground() == nullptr, "reload rejects oversized compressed content");
     image.setPixelAt(3, 4, juce::Colour(0x8000ff00));
+    expect(image.getPixelAt(3, 4).getAlpha() == 128, "the alpha fixture is semi-transparent before encoding");
     {
         juce::FileOutputStream alpha(real);
         alpha.setPosition(0);
         alpha.truncate();
         expect(format.writeImageToStream(image, alpha), "transparent PNG fixture writes");
     }
+    juce::MemoryBlock encoded;
+    expect(real.loadFileAsData(encoded), "encoded alpha PNG can be read back");
     expect(swaraxt::ui::SkinUserSvg::installBackground(real, error), "alpha PNG installs");
-    const auto alpha = juce::ImageFileFormat::loadFrom(swaraxt::ui::SkinUserSvg::backgroundPngFile());
-    expect(alpha.isValid() && alpha.getPixelAt(3, 4).getAlpha() == 128, "installation preserves alpha pixels");
+    juce::MemoryBlock installedAlpha;
+    expect(swaraxt::ui::SkinUserSvg::backgroundPngFile().loadFileAsData(installedAlpha)
+               && installedAlpha == encoded,
+           "installation preserves the encoded alpha PNG bytes");
     swaraxt::ui::SkinUserSvg::clearBackground();
     directory.deleteRecursively();
 }
@@ -668,12 +676,163 @@ void fileRace(const juce::String& mode)
 }
 #endif
 
+#if JUCE_WINDOWS
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+// Deterministic pathname substitution. The first CreateFileW of the fixture
+// keeps its file object; the directory entry is then replaced. A later open
+// of the same pathname would observe the replacement, so a successful install
+// of the original bytes is proof the decoder never reopened that path.
+int pngSourceOpens = 0;
+std::wstring pngWatchedPath;
+std::wstring pngReplacementPath;
+HANDLE (WINAPI* pngOriginalCreateFileW)(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE) = nullptr;
+
+bool samePngPath(LPCWSTR path)
+{
+    if (path == nullptr || pngWatchedPath.empty())
+        return false;
+    wchar_t full[1024] {};
+    const auto length = GetFullPathNameW(path, 1024, full, nullptr);
+    return (length > 0 && length < 1024 && _wcsicmp(full, pngWatchedPath.c_str()) == 0)
+        || _wcsicmp(path, pngWatchedPath.c_str()) == 0;
+}
+
+void substitutePngPath()
+{
+    using Move = BOOL (WINAPI*)(LPCWSTR, LPCWSTR, DWORD);
+    auto move = reinterpret_cast<Move>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "MoveFileExW"));
+    const auto held = pngWatchedPath + L".held";
+    if (move == nullptr
+        || move(pngWatchedPath.c_str(), held.c_str(), MOVEFILE_REPLACE_EXISTING) == 0
+        || move(pngReplacementPath.c_str(), pngWatchedPath.c_str(), MOVEFILE_REPLACE_EXISTING) == 0)
+        pngSourceOpens = -1000;
+}
+
+HANDLE WINAPI pngCreateFileW(LPCWSTR path, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES security,
+                             DWORD disposition, DWORD flags, HANDLE templateFile)
+{
+    if (! samePngPath(path))
+        return pngOriginalCreateFileW(path, access, share, security, disposition, flags, templateFile);
+    ++pngSourceOpens;
+    const auto handle = pngOriginalCreateFileW(path, access, share, security, disposition, flags, templateFile);
+    if (pngSourceOpens == 1 && handle != INVALID_HANDLE_VALUE)
+        substitutePngPath();
+    return handle;
+}
+
+bool installPngCreateFileHook()
+{
+    auto* base = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    const auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+    const auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    const auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (directory.VirtualAddress == 0)
+        return false;
+    for (auto* import = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + directory.VirtualAddress);
+         import->Name != 0; ++import)
+    {
+        auto* original = reinterpret_cast<IMAGE_THUNK_DATA*>(base + import->OriginalFirstThunk);
+        auto* bound = reinterpret_cast<IMAGE_THUNK_DATA*>(base + import->FirstThunk);
+        for (; original->u1.AddressOfData != 0; ++original, ++bound)
+        {
+            if ((original->u1.Ordinal & IMAGE_ORDINAL_FLAG) != 0)
+                continue;
+            const auto* name = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(base + original->u1.AddressOfData);
+            if (std::strcmp(name->Name, "CreateFileW") != 0)
+                continue;
+            DWORD previous = 0;
+            if (VirtualProtect(&bound->u1.Function, sizeof(void*), PAGE_EXECUTE_READWRITE, &previous) == 0)
+                return false;
+            pngOriginalCreateFileW = reinterpret_cast<decltype(pngOriginalCreateFileW)>(bound->u1.Function);
+            bound->u1.Function = reinterpret_cast<ULONG_PTR>(pngCreateFileW);
+            VirtualProtect(&bound->u1.Function, sizeof(void*), previous, &previous);
+            return pngOriginalCreateFileW != nullptr;
+        }
+    }
+    return false;
+}
+
+void restorePngCreateFileHook()
+{
+    if (pngOriginalCreateFileW == nullptr)
+        return;
+    auto* base = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    const auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+    const auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    const auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    for (auto* import = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(base + directory.VirtualAddress);
+         import->Name != 0; ++import)
+    {
+        auto* original = reinterpret_cast<IMAGE_THUNK_DATA*>(base + import->OriginalFirstThunk);
+        auto* bound = reinterpret_cast<IMAGE_THUNK_DATA*>(base + import->FirstThunk);
+        for (; original->u1.AddressOfData != 0; ++original, ++bound)
+        {
+            if (bound->u1.Function == reinterpret_cast<ULONG_PTR>(pngCreateFileW))
+            {
+                DWORD previous = 0;
+                VirtualProtect(&bound->u1.Function, sizeof(void*), PAGE_EXECUTE_READWRITE, &previous);
+                bound->u1.Function = reinterpret_cast<ULONG_PTR>(pngOriginalCreateFileW);
+                VirtualProtect(&bound->u1.Function, sizeof(void*), previous, &previous);
+            }
+        }
+    }
+    pngOriginalCreateFileW = nullptr;
+}
+
+void windowsPngImmutableSnapshot()
+{
+    const auto directory = juce::File::getCurrentWorkingDirectory();
+    const auto source = directory.getChildFile("race-snapshot.png");
+    const auto replacement = directory.getChildFile("race-replacement.png");
+    const auto write = [](const juce::File& destination, juce::uint8 red) {
+        juce::Image image(juce::Image::ARGB, 8, 8, true);
+        image.setPixelAt(0, 0, juce::Colour::fromRGBA(red, 0, 0, 255));
+        juce::FileOutputStream stream(destination);
+        juce::PNGImageFormat format;
+        expect(stream.openedOk() && format.writeImageToStream(image, stream), "Windows PNG fixture writes");
+    };
+    write(source, 20);
+    juce::MemoryBlock flipped;
+    expect(source.loadFileAsData(flipped) && flipped.getSize() > 24, "replacement starts from the original PNG");
+    static_cast<unsigned char*>(flipped.getData())[flipped.getSize() - 1] ^= 0xff;
+    expect(replacement.replaceWithData(flipped.getData(), flipped.getSize()), "same-sized replacement is published");
+    juce::MemoryBlock original;
+    expect(source.loadFileAsData(original) && original.getSize() > 24, "original PNG bytes are recorded");
+    wchar_t full[1024] {};
+    const auto length = GetFullPathNameW(source.getFullPathName().toWideCharPointer(), 1024, full, nullptr);
+    expect(length > 0 && length < 1024, "PNG fixture path normalises");
+    pngWatchedPath.assign(full, full + length);
+    wchar_t replacementFull[1024] {};
+    const auto replacementLength = GetFullPathNameW(replacement.getFullPathName().toWideCharPointer(), 1024, replacementFull, nullptr);
+    pngReplacementPath.assign(replacementFull, replacementFull + replacementLength);
+    pngSourceOpens = 0;
+    expect(installPngCreateFileHook(), "CreateFileW interception is installed in this test process");
+    juce::String error;
+    const bool accepted = swaraxt::ui::SkinUserSvg::installBackground(source, error);
+    restorePngCreateFileHook();
+    juce::MemoryBlock installed;
+    const bool read = swaraxt::ui::SkinUserSvg::backgroundPngFile().loadFileAsData(installed);
+    std::printf("Windows PNG snapshot accepted=%d opens=%d installed=%d error=%s\n",
+                accepted, pngSourceOpens, read, error.toRawUTF8());
+    expect(accepted && read && installed == original,
+           "validation, decoding and installation consume the acquired PNG snapshot");
+    expect(pngSourceOpens == 1, "PNG decoding and installation never reopen the source path");
+    swaraxt::ui::SkinUserSvg::clearBackground();
+    source.deleteFile();
+    replacement.deleteFile();
+    juce::File(juce::String(pngWatchedPath.c_str()) + ".held").deleteFile();
+}
+#endif
+
 }
 
 int main(int argc, char** argv)
 {
     setvbuf(stdout, nullptr, _IONBF, 0);
-    const auto* scratch = std::getenv("SWARAXT_DEFENSIVE_TEST_DIR");
+    const auto* scratch = swaraxt::test::environment("SWARAXT_DEFENSIVE_TEST_DIR");
     std::error_code error;
     const auto directory = scratch != nullptr
         ? std::filesystem::canonical(scratch, error) : std::filesystem::path{};
@@ -708,6 +867,9 @@ int main(int argc, char** argv)
     tuningBounds();
     invalidScaleFrequencies();
     missionPreservation();
+#if JUCE_WINDOWS
+    windowsPngImmutableSnapshot();
+#endif
     std::printf("Defensive hardening tests: %s (%d failures)\n", failures ? "FAILED" : "PASSED", failures);
     return failures ? 1 : 0;
 }
