@@ -12,15 +12,29 @@
 #include <vector>
 #if defined(_MSC_VER) && defined(_DEBUG)
 #include <crtdbg.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef near
+#undef near
+#endif
+#ifdef far
+#undef far
+#endif
 #endif
 namespace {
 int failures = 0;
 #if defined(_MSC_VER) && defined(_DEBUG)
 bool inCallback = false;
+DWORD callbackThread = 0;
 int allocations = 0;
+// Count only the thread that is inside processBlock. JUCE timer threads post
+// messages through the same CRT and must not fail the audio-callback probe.
 int allocationHook(int type, void*, size_t, int, long, const unsigned char*, int)
 {
-    if (inCallback && type == _HOOK_ALLOC) ++allocations;
+    if (inCallback && type == _HOOK_ALLOC && GetCurrentThreadId() == callbackThread)
+        ++allocations;
     return 1;
 }
 #endif
@@ -133,6 +147,7 @@ void processorContracts(const juce::File& directory)
            ==swaraxt::ScalePitch::toVoicePitchFromHz(300.0*std::exp2(-9.0/12.0)), "actual processor INPUT TUNE signed MIDI key");
 #if defined(_MSC_VER) && defined(_DEBUG)
     const auto previous=_CrtSetAllocHook(allocationHook);
+    callbackThread=GetCurrentThreadId();
     inCallback=true;
     for(int block=0;block<32;++block) p.processBlock(audio,midi);
     inCallback=false;
