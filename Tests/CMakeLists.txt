@@ -652,6 +652,12 @@ add_test(NAME SwaraXTUnitTests COMMAND SwaraXTTests)
 
 # Cutoff parameter-contract tests (production path via processInstrumentSample,
 # not the removed legacy processSample() cascade).
+add_executable(SwaraXTCutoffAuthorityTests Filter/CutoffAuthorityTests.cpp)
+target_include_directories(SwaraXTCutoffAuthorityTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
+swaraxt_enable_warnings(SwaraXTCutoffAuthorityTests)
+swaraxt_enable_warnings_as_errors(SwaraXTCutoffAuthorityTests)
+add_test(NAME SwaraXTCutoffAuthorityTests COMMAND SwaraXTCutoffAuthorityTests)
+
 swaraxt_add_plugin_console_test(SwaraXTCutoffContractTests Filter/CutoffContractTestsMain.cpp)
 target_compile_definitions(SwaraXTCutoffContractTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
 swaraxt_enable_warnings_as_errors(SwaraXTCutoffContractTests)
