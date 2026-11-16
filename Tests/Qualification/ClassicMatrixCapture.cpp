@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -109,11 +110,11 @@ std::vector<Timed> note(int midiNote, int sample = 0, int velocity = 100)
 class Capture
 {
 public:
-    explicit Capture(FILE* file) : file_(file) {}
+    explicit Capture(juce::FileOutputStream& stream) : stream_(&stream) {}
 
     bool writeBytes(const void* data, std::size_t bytes)
     {
-        if (file_ == nullptr || std::fwrite(data, 1, bytes, file_) != bytes)
+        if (stream_ == nullptr || ! stream_->write(data, bytes))
         {
             fail("capture write");
             return false;
@@ -182,7 +183,7 @@ public:
     int rows() const { return rows_; }
 
 private:
-    FILE* file_ = nullptr;
+    juce::FileOutputStream* stream_ = nullptr;
     int rows_ = 0;
 };
 }
@@ -195,19 +196,17 @@ int main(int argc, char** argv)
         std::printf("usage: ClassicMatrixCapture <output.bin>\n");
         return 2;
     }
-    FILE* file = std::fopen(argv[1], "wb");
-    if (file == nullptr)
+    const juce::File output(juce::String::fromUTF8(argv[1]));
+    std::unique_ptr<juce::FileOutputStream> stream(output.createOutputStream());
+    if (stream == nullptr || ! stream->openedOk())
     {
         std::printf("FAIL open %s\n", argv[1]);
         return 2;
     }
     const char magic[] = "SWC1";
-    Capture capture(file);
+    Capture capture(*stream);
     if (! capture.writeBytes(magic, 4))
-    {
-        std::fclose(file);
         return 1;
-    }
     const auto held = note(60);
 
     for (int byte : {0, 1, 127, 254, 255})
@@ -400,9 +399,8 @@ int main(int argc, char** argv)
 #else
     std::printf("compiler=unknown rows=%d failures=%d\n", capture.rows(), gFailures);
 #endif
-    if (std::fflush(file) != 0)
+    stream->flush();
+    if (! stream->getStatus().wasOk())
         fail("capture flush");
-    if (std::fclose(file) != 0)
-        fail("capture close");
     return gFailures == 0 ? 0 : 1;
 }
