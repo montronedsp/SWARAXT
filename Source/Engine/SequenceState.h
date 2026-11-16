@@ -692,13 +692,13 @@ class SequenceState {
     {
         {
             WriterGate gate(*this);
-            SequenceSnapshot current;
-            loadUnlocked(current);
+            SequenceSnapshot draft;
+            loadUnlocked(draft);
 #if defined(SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS)
             snapshotPoint(SnapshotPoint::editBeforeCommit);
 #endif
-            mutate(current);
-            storeUnlocked(current, false);
+            mutate(draft);
+            storeUnlocked(draft, false);
         }
         if (notify)
             notifyListeners();
