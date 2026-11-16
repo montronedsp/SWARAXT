@@ -477,21 +477,11 @@ void layoutAndLifetime()
             }
             else
             {
-                juce::ComboBox* preset = nullptr;
-                for (int i = 0; i < editor->getNumChildComponents(); ++i)
-                {
-                    auto* surface = editor->getChildComponent(i);
-                    for (int j = 0; j < surface->getNumChildComponents(); ++j)
-                        if (auto* combo = dynamic_cast<juce::ComboBox*>(surface->getChildComponent(j));
-                            combo != nullptr && combo->getNumItems() == processor->getNumPrograms())
-                            preset = combo;
-                }
-                expect(preset != nullptr, "actual preset selector is found for teardown");
-                if (preset != nullptr)
-                {
-                    preset->showPopup();
-                    expect(preset->isPopupActive(), "preset popup is active when the editor closes");
-                }
+                auto& preset = editor->presetSelectorForTests();
+                expect(preset.getNumItems() > processor->getNumPrograms(),
+                       "actual preset selector is found for teardown");
+                preset.showPopup();
+                expect(preset.isPopupActive(), "preset popup is active when the editor closes");
             }
         }
         editor.reset();
