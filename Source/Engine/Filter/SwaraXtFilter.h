@@ -217,13 +217,20 @@ public:
 
     void updateCoefficients() noexcept
     {
-        const double modOct = static_cast<double>(params_.matrixCutoffOctaves);
-        const double musical = mapper_.mapCutoffHz(params_.cutoffHz,
-                                                    params_.keyTrack,
-                                                    params_.noteNumber,
-                                                    modOct);
-        const double stageHz = mapper_.stageCutoffFromMusicalCutoff(musical);
-        targetControl_ = {stageHz, params_.resonance, params_.drive};
+        // Firmware CV is authoritative whenever it is non-negative. The mapped
+        // stage frequency is only the diagnostic fallback Ir3109BoardCore uses
+        // when boardCutoffCvVolts < 0, so the production path does not compute it.
+        double cutoff = static_cast<double>(params_.cutoffHz);
+        if (params_.boardCutoffCvVolts < 0.0)
+        {
+            const double modOct = static_cast<double>(params_.matrixCutoffOctaves);
+            const double musical = mapper_.mapCutoffHz(params_.cutoffHz,
+                                                        params_.keyTrack,
+                                                        params_.noteNumber,
+                                                        modOct);
+            cutoff = mapper_.stageCutoffFromMusicalCutoff(musical);
+        }
+        targetControl_ = {cutoff, params_.resonance, params_.drive};
         targetControl_.boardCutoffCvVolts = params_.boardCutoffCvVolts;
     }
 
