@@ -117,7 +117,7 @@ class AboutPanel final : public juce::Component,
 
         g.setColour(Palette::skin().displayText.withAlpha(0.85f));
         g.setFont(lookAndFeel_->font(swaraxt::ui::TextRole::aboutBody));
-        g.drawFittedText("MontroneDSP\nAuthor: Andrea Montrone\n\u00a9 2026 MontroneDSP\n\nLicensed under the GNU GPL v3 or later.\n\nContains software derived in part from\nMutable Instruments Shruthi firmware.\n\nVersion: " SWARAXT_VERSION_STRING,
+        g.drawFittedText(juce::String::fromUTF8("MontroneDSP\nAuthor: Andrea Montrone\n\xc2\xa9 2026 MontroneDSP\n\nLicensed under the GNU GPL v3 or later.\n\nContains software derived in part from\nMutable Instruments Shruthi firmware.\n\nVersion: " SWARAXT_VERSION_STRING),
                          22, 45, 316, 174, juce::Justification::centred, 10);
     }
 

@@ -439,11 +439,30 @@ void layoutAndLifetime()
         expect(main.filterModelForTests().getSelectedId() == 2, "editor reopening reflects processor selection");
         pending = editor->contextMenuCallbackForTests();
         main.dualSvfPanelForTests().calibrationForTests().buttonForTests(0).triggerClick();
-        if (cycle <= 3)
+        if (cycle <= 4)
         {
             editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
             editor->setVisible(true);
-            if (cycle != 1)
+            if (cycle == 4)
+            {
+                juce::Button* about = nullptr;
+                for (int i = 0; i < editor->getNumChildComponents(); ++i)
+                {
+                    auto* surface = editor->getChildComponent(i);
+                    for (int j = 0; j < surface->getNumChildComponents(); ++j)
+                        if (auto* button = dynamic_cast<juce::Button*>(surface->getChildComponent(j));
+                            button != nullptr && button->getTooltip() == "About Swara XT")
+                            about = button;
+                }
+                expect(about != nullptr, "actual About button is found for teardown");
+                if (about != nullptr)
+                {
+                    click(*about);
+                    const auto image = editor->createComponentSnapshot(editor->getLocalBounds());
+                    expect(image.isValid(), "About paints before its editor closes");
+                }
+            }
+            else if (cycle != 1)
             {
                 editor->showContextMenuForTests();
                 if (cycle == 2)
