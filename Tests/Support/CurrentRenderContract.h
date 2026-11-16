@@ -1,6 +1,6 @@
 // Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
-#include <cstdlib>
+#include "TestEnvironment.h"
 #include <cstdio>
 #include <vector>
 #include <cmath>
@@ -15,7 +15,7 @@ void currentRenderInput(SwaraXtAudioProcessor& p, double rate, int block, int sa
     check(sub>=0 && sub<=127 && noise>=0 && noise<=127,"current public mixer bounds");
     // Independent nonnegative integer division oracle; do not call PatchBridge's shift.
     check(patch.mix_sub_osc==sub/2 && patch.mix_noise==noise/2,"current independent mixer conversion");
-    if(const char* directory=std::getenv("SWARA_CURRENT_REFERENCE_DIR")) {
+    if(const char* directory=environment("SWARA_CURRENT_REFERENCE_DIR")) {
         static int index=0;
         juce::DynamicObject::Ptr config=new juce::DynamicObject;
         config->setProperty("rate",rate);config->setProperty("block",block);
@@ -39,7 +39,7 @@ void currentRenderOutput(const char* name,const std::vector<float>& audio,Check 
     bool finite=true;
     for(float x:audio)finite=finite && std::isfinite(x);
     check(finite,"current reference samples finite");
-    if(const char* directory=std::getenv("SWARA_CURRENT_REFERENCE_DIR")) {
+    if(const char* directory=environment("SWARA_CURRENT_REFERENCE_DIR")) {
         const auto file=juce::File(juce::String(directory)).getChildFile(juce::String(name)+".f32");
         check(file.replaceWithData(audio.data(),audio.size()*sizeof(float)),"write current raw float reference");
     }
