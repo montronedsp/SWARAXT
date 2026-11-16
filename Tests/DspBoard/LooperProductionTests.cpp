@@ -100,7 +100,7 @@ struct Stats
     int maxAbs = 0;
     double sum = 0;
     int peak = 0;
-    int seam = 0;
+    int adjacentPeak = 0;
 };
 
 Stats compare(const std::vector<std::int16_t>& a, const std::vector<std::int16_t>& b)
@@ -116,7 +116,8 @@ Stats compare(const std::vector<std::int16_t>& a, const std::vector<std::int16_t
         stats.sum += static_cast<double>(delta) * delta;
         stats.peak = std::max(stats.peak, std::abs(static_cast<int>(a[static_cast<std::size_t>(i)])));
         if (i > 0)
-            stats.seam = std::max(stats.seam, std::abs(a[static_cast<std::size_t>(i)] - a[static_cast<std::size_t>(i - 1)]));
+            stats.adjacentPeak = std::max(stats.adjacentPeak,
+                std::abs(a[static_cast<std::size_t>(i)] - a[static_cast<std::size_t>(i - 1)]));
     }
     return stats;
 }
@@ -124,8 +125,8 @@ Stats compare(const std::vector<std::int16_t>& a, const std::vector<std::int16_t
 void printStats(const char* label, const Stats& stats)
 {
     const double rms = stats.samples == 0 ? 0.0 : std::sqrt(stats.sum / stats.samples);
-    std::printf("%s samples=%d first=%d maxAbs=%d rms=%.6f peak=%d seam=%d\n",
-        label, stats.samples, stats.first, stats.maxAbs, rms, stats.peak, stats.seam);
+    std::printf("%s samples=%d first=%d maxAbs=%d rms=%.6f peak=%d adjacentPeak=%d\n",
+        label, stats.samples, stats.first, stats.maxAbs, rms, stats.peak, stats.adjacentPeak);
 }
 
 Block ramp(int origin)

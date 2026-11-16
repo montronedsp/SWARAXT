@@ -292,9 +292,15 @@ add_test(NAME AvrlibHdVowelTests COMMAND AvrlibHdVowelTests)
 # redundant processSample() cascade which has been removed.
 
 function(swaraxt_add_plugin_console_test target)
+    set(swaraxt_console_sources ${ARGN})
+    set(swaraxt_register_ctest TRUE)
+    if("NO_TEST" IN_LIST swaraxt_console_sources)
+        set(swaraxt_register_ctest FALSE)
+        list(REMOVE_ITEM swaraxt_console_sources NO_TEST)
+    endif()
     juce_add_console_app(${target} PRODUCT_NAME "${target}")
     juce_generate_juce_header(${target})
-    target_sources(${target} PRIVATE ${ARGN} ${SWARAXT_ALL_PLUGIN_SOURCES})
+    target_sources(${target} PRIVATE ${swaraxt_console_sources} ${SWARAXT_ALL_PLUGIN_SOURCES})
     target_compile_definitions(${target}
         PRIVATE
             JUCE_WEB_BROWSER=0
@@ -314,9 +320,13 @@ function(swaraxt_add_plugin_console_test target)
     swaraxt_configure_shruthi_target(${target})
     swaraxt_enable_avrlib_hd_voice(${target})
     add_dependencies(${target} SwaraXtBuiltinTunings)
-    add_test(NAME ${target} COMMAND ${target})
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        set_property(GLOBAL APPEND PROPERTY SWARAXT_CONSOLE_TEST_TARGETS ${target})
+    # NO_TEST builds a qualification tool that needs an explicit output path.
+    # Registering it with CTest would fail because the tool rejects a bare launch.
+    if(swaraxt_register_ctest)
+        add_test(NAME ${target} COMMAND ${target})
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+            set_property(GLOBAL APPEND PROPERTY SWARAXT_CONSOLE_TEST_TARGETS ${target})
+        endif()
     endif()
 endfunction()
 
@@ -658,8 +668,7 @@ swaraxt_enable_warnings(SwaraXTCutoffAuthorityTests)
 swaraxt_enable_warnings_as_errors(SwaraXTCutoffAuthorityTests)
 add_test(NAME SwaraXTCutoffAuthorityTests COMMAND SwaraXTCutoffAuthorityTests)
 
-swaraxt_add_plugin_console_test(SwaraXTClassicMatrixCapture Qualification/ClassicMatrixCapture.cpp)
-set_tests_properties(SwaraXTClassicMatrixCapture PROPERTIES TIMEOUT 600)
+swaraxt_add_plugin_console_test(SwaraXTClassicMatrixCapture NO_TEST Qualification/ClassicMatrixCapture.cpp)
 
 swaraxt_add_plugin_console_test(SwaraXTCutoffContractTests Filter/CutoffContractTestsMain.cpp)
 target_compile_definitions(SwaraXTCutoffContractTests PRIVATE SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1)
