@@ -5,6 +5,7 @@
 #include "shruthi/patch.h"
 #include "shruthi/sequencer_settings.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -14,6 +15,14 @@
 #include <vector>
 
 namespace {
+int gFailures = 0;
+
+void fail(const char* message)
+{
+    ++gFailures;
+    std::printf("FAIL: %s\n", message);
+}
+
 struct Timed
 {
     int sample = 0;
@@ -41,7 +50,7 @@ void setParam(SwaraXtAudioProcessor& processor, const char* id, float value)
     if (auto* parameter = processor.getApvts().getParameter(id))
         parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
     else
-        std::printf("FAIL missing %s\n", id);
+        fail(id);
 }
 
 void neutral(SwaraXtAudioProcessor& processor)
@@ -102,21 +111,42 @@ class Capture
 public:
     explicit Capture(FILE* file) : file_(file) {}
 
-    void add(const char* name, double rate, int block, const std::vector<float>& samples)
+    bool writeBytes(const void* data, std::size_t bytes)
     {
+        if (file_ == nullptr || std::fwrite(data, 1, bytes, file_) != bytes)
+        {
+            fail("capture write");
+            return false;
+        }
+        return true;
+    }
+
+    void add(const char* name, double rate, int block, int expectedSamples, const std::vector<float>& samples)
+    {
+        float peak = 0.0f;
+        for (float sample : samples)
+        {
+            if (! std::isfinite(sample))
+                fail(name);
+            peak = std::max(peak, std::abs(sample));
+        }
+        if (static_cast<int>(samples.size()) != expectedSamples || name == nullptr || name[0] == '\0')
+            fail(name == nullptr ? "scenario" : name);
+        if (peak <= 1.0e-8f)
+            fail(name);
         const auto hash = hashSamples(samples);
         std::printf("scenario=%s rate=%.0f block=%d samples=%zu hash=%016llx\n",
             name, rate, block, samples.size(), static_cast<unsigned long long>(hash));
         const auto length = static_cast<std::uint32_t>(std::strlen(name));
         const auto count = static_cast<std::uint32_t>(samples.size());
         const auto blockSize = static_cast<std::int32_t>(block);
-        std::fwrite(&length, 4, 1, file_);
-        std::fwrite(name, 1, length, file_);
-        std::fwrite(&rate, sizeof(rate), 1, file_);
-        std::fwrite(&blockSize, 4, 1, file_);
-        std::fwrite(&count, 4, 1, file_);
+        writeBytes(&length, 4);
+        writeBytes(name, length);
+        writeBytes(&rate, sizeof(rate));
+        writeBytes(&blockSize, 4);
+        writeBytes(&count, 4);
         if (count != 0)
-            std::fwrite(samples.data(), sizeof(float), count, file_);
+            writeBytes(samples.data(), sizeof(float) * count);
         ++rows_;
     }
 
@@ -146,7 +176,7 @@ public:
             const float* left = audio.getReadPointer(0);
             out.insert(out.end(), left, left + block);
         }
-        add(name, rate, block, out);
+        add(name, rate, block, blocks * block, out);
     }
 
     int rows() const { return rows_; }
@@ -165,15 +195,19 @@ int main(int argc, char** argv)
         std::printf("usage: ClassicMatrixCapture <output.bin>\n");
         return 2;
     }
-    FILE* file = nullptr;
-    if (fopen_s(&file, argv[1], "wb") != 0 || file == nullptr)
+    FILE* file = std::fopen(argv[1], "wb");
+    if (file == nullptr)
     {
         std::printf("FAIL open %s\n", argv[1]);
         return 2;
     }
     const char magic[] = "SWC1";
-    std::fwrite(magic, 1, 4, file);
     Capture capture(file);
+    if (! capture.writeBytes(magic, 4))
+    {
+        std::fclose(file);
+        return 1;
+    }
     const auto held = note(60);
 
     for (int byte : {0, 1, 127, 254, 255})
@@ -249,6 +283,8 @@ int main(int argc, char** argv)
         setParam(processor, swaraxt::IDs::seqTempo, 140.0f);
     });
     const int programs = SwaraXtAudioProcessor{}.getNumPrograms();
+    if (programs != 57)
+        fail("factory program count");
     for (int program = 0; program < programs; ++program)
     {
         const std::string name = "factory-" + std::to_string(program);
@@ -293,10 +329,36 @@ int main(int argc, char** argv)
         auto eco = render(processor, 48000.0, 128, 8, {});
         samples.insert(samples.end(), high.begin(), high.end());
         samples.insert(samples.end(), eco.begin(), eco.end());
-        capture.add("quality-transition", 48000.0, 128, samples);
+        capture.add("quality-reprepare", 48000.0, 128, static_cast<int>(samples.size()), samples);
+        processor.setNonRealtime(true);
+        processor.prepareToPlay(48000.0, 128);
+        processor.setFilterQuality(swaraxt::FilterQuality::normal);
+        std::vector<float> live;
+        auto appendLive = [&](int blocks, const std::vector<Timed>& events) {
+            juce::AudioBuffer<float> audio(2, 128);
+            for (int index = 0; index < blocks; ++index)
+            {
+                juce::MidiBuffer midi;
+                const int origin = index * 128;
+                for (const auto& event : events)
+                    if (event.sample >= origin && event.sample < origin + 128)
+                        midi.addEvent(event.message, event.sample - origin);
+                audio.clear();
+                processor.processBlock(audio, midi);
+                const float* left = audio.getReadPointer(0);
+                live.insert(live.end(), left, left + 128);
+            }
+        };
+        appendLive(8, held);
+        processor.setFilterQuality(swaraxt::FilterQuality::high);
+        appendLive(8, {});
+        processor.setFilterQuality(swaraxt::FilterQuality::eco);
+        appendLive(8, {});
+        capture.add("quality-live", 48000.0, 128, 3072, live);
         processor.reset();
         processor.releaseResources();
-        capture.add("reprepare", 48000.0, 64, render(processor, 48000.0, 64, 12, note(67)));
+        const auto reprepared = render(processor, 48000.0, 64, 12, note(67));
+        capture.add("reprepare", 48000.0, 64, 768, reprepared);
     }
     capture.run("saturation", 48000.0, 128, 24, held, [](SwaraXtAudioProcessor& processor) {
         setParam(processor, swaraxt::IDs::filterCutoff, 12000.0f);
@@ -325,7 +387,22 @@ int main(int argc, char** argv)
             setParam(processor, swaraxt::IDs::dspFxParam2, 40.0f);
     });
 
-    std::printf("compiler=_MSC_FULL_VER=%d rows=%d\n", _MSC_FULL_VER, capture.rows());
-    std::fclose(file);
-    return 0;
+    if (capture.rows() != 109)
+        fail("scenario count");
+#if defined(__clang__)
+    std::printf("compiler=clang %d.%d.%d rows=%d failures=%d\n",
+        __clang_major__, __clang_minor__, __clang_patchlevel__, capture.rows(), gFailures);
+#elif defined(_MSC_VER)
+    std::printf("compiler=msvc %d rows=%d failures=%d\n", _MSC_VER, capture.rows(), gFailures);
+#elif defined(__GNUC__)
+    std::printf("compiler=gcc %d.%d.%d rows=%d failures=%d\n",
+        __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__, capture.rows(), gFailures);
+#else
+    std::printf("compiler=unknown rows=%d failures=%d\n", capture.rows(), gFailures);
+#endif
+    if (std::fflush(file) != 0)
+        fail("capture flush");
+    if (std::fclose(file) != 0)
+        fail("capture close");
+    return gFailures == 0 ? 0 : 1;
 }
