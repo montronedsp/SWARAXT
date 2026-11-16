@@ -508,6 +508,11 @@ swaraxt_add_plugin_console_test(SwaraXTArpAutomationRaceTests Sequencer/ArpAutom
 target_compile_definitions(SwaraXTArpAutomationRaceTests PRIVATE
     SWARAXT_ENABLE_SEQUENCE_SNAPSHOT_TESTS=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 swaraxt_enable_warnings_as_errors(SwaraXTArpAutomationRaceTests)
+if(MSVC)
+    # restorePrecedence keeps several processors in one frame. That frame is
+    # about 1 MiB, which overflows the 1 MiB default image stack on Windows.
+    target_link_options(SwaraXTArpAutomationRaceTests PRIVATE "/STACK:8388608")
+endif()
 set_tests_properties(SwaraXTArpAutomationRaceTests PROPERTIES TIMEOUT 90 LABELS "headless;parameter-authority")
 swaraxt_add_plugin_console_test(SwaraXTMidiCcNrpnAuthorityTests Sequencer/MidiCcNrpnAuthorityTestsMain.cpp)
 target_compile_definitions(SwaraXTMidiCcNrpnAuthorityTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
@@ -516,12 +521,14 @@ set_tests_properties(SwaraXTMidiCcNrpnAuthorityTests PROPERTIES TIMEOUT 90 LABEL
 swaraxt_add_plugin_console_test(SwaraXTDefensiveHardeningTests Host/DefensiveHardeningTestsMain.cpp)
 target_compile_definitions(SwaraXTDefensiveHardeningTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 set(defensive_test_scratch "${CMAKE_BINARY_DIR}/defensive-hardening-scratch")
-file(MAKE_DIRECTORY "${defensive_test_scratch}")
+set(defensive_test_home "${CMAKE_BINARY_DIR}/defensive-hardening-home")
+file(MAKE_DIRECTORY "${defensive_test_scratch}"
+    "${defensive_test_home}/AppData/Roaming" "${defensive_test_home}/AppData/Local")
 set_property(SOURCE Host/DefensiveHardeningTestsMain.cpp APPEND PROPERTY
     COMPILE_DEFINITIONS SWARAXT_DEFENSIVE_TEST_ROOT="${defensive_test_scratch}")
 set_tests_properties(SwaraXTDefensiveHardeningTests PROPERTIES
     WORKING_DIRECTORY "${defensive_test_scratch}"
-    ENVIRONMENT "SWARAXT_DEFENSIVE_TEST_DIR=${defensive_test_scratch}")
+    ENVIRONMENT "SWARAXT_DEFENSIVE_TEST_DIR=${defensive_test_scratch};APPDATA=${defensive_test_home}/AppData/Roaming;LOCALAPPDATA=${defensive_test_home}/AppData/Local;USERPROFILE=${defensive_test_home}")
 swaraxt_enable_warnings_as_errors(SwaraXTDefensiveHardeningTests)
 set_tests_properties(SwaraXTDefensiveHardeningTests PROPERTIES TIMEOUT 120 LABELS "headless;defensive-hardening")
 # Headless listener handoff/lifetime contracts; no editor or file chooser.
