@@ -33,4 +33,7 @@ add_subdirectory("${SWARAXT_JUCE_DIR}" "${CMAKE_BINARY_DIR}/JUCE" EXCLUDE_FROM_A
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     include("${CMAKE_CURRENT_LIST_DIR}/LinuxJuce904Compatibility.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/Juce904RestoreCompletion.cmake")
+elseif(WIN32)
+    include("${CMAKE_CURRENT_LIST_DIR}/Juce901RestoreCompletion.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/Juce901PngError.cmake")
 endif()
