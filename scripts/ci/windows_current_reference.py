@@ -14,10 +14,11 @@ POLICY = 'windows-current-msvc-v1'
 PACKAGE_SHA256 = '00ed3f5558abdd3741dc49645d2a85ba5057649a7adb9515fc7b78434f58c9ff'
 PACKAGE_FILE = 'Tests/References/windows-current-' + PACKAGE_SHA256 + '.json'
 # Admitted for fresh qualification, not a claim of native audio acceptance.
-# Verified by hosted run 41700756992; standard toolset also used by 40027581469.
+# Verified by hosted run 43994991391 (ImageVersion 20261112.366.7).
+# Previous admission (run 41700756992, SHA fe251ef5…, 19.44.35229.0) is no longer hosted.
 # The immutable package retains its original compiler provenance and 72 values.
-ADMITTED_COMPILER_SHA256 = 'fe251ef50a1545b1b0835ee17b1e785459712b38d79e45b5c1d3d28970a36619'
-ADMITTED_COMPILER_VERSION = '19.44.35229.0'
+ADMITTED_COMPILER_SHA256 = 'e87e78b3ef6580b75aebda843f8a22e874612d9f766344046551399f898eb226'
+ADMITTED_COMPILER_VERSION = '19.44.35230.0'
 ADMITTED_TOOLSET_VERSION = '14.44.35207'
 ALL_TESTS = ('SwaraXTAudioParityTests', 'SwaraXTDspFxIntegratedExactParityTests',
              'SwaraXTHostSrcExactParityTests', 'SwaraXTDualSvfHeadlessTests')
