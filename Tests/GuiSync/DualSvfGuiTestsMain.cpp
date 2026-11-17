@@ -64,6 +64,36 @@ bool finite(const juce::AudioBuffer<float>& buffer)
     return true;
 }
 
+void expectPresetSelectorMatches(SwaraXtAudioProcessor& processor, juce::ComboBox& preset,
+                                 const char* label)
+{
+    const auto entries = processor.getPresetEntries();
+    const int factory = processor.getNumPrograms();
+    expect(static_cast<int>(entries.size()) >= factory, "preset entries include every factory program");
+    // ComboBox::getNumItems counts only itemID != 0 entries. Section headings and
+    // separators are not counted, so zero user presets makes size == factory.
+    expect(preset.getNumItems() == static_cast<int>(entries.size()),
+           "preset selector item count matches processor preset entries");
+    expect(preset.getNumItems() >= factory, "preset selector lists every factory program");
+    for (size_t index = 0; index < entries.size(); ++index)
+    {
+        const int itemId = static_cast<int>(index) + 1;
+        expect(preset.getItemText(static_cast<int>(index)) == entries[index].name,
+               "preset selector text matches processor preset entry");
+        expect(preset.getItemId(static_cast<int>(index)) == itemId,
+               "preset selector IDs are 1-based entry indices");
+    }
+    if (! entries.empty())
+    {
+        expect(entries.front().isFactory, "first preset entry is a factory program");
+        std::printf("%s: programs=%d entries=%d selector=%d first_factory=\"%s\" first_item=\"%s\" user_dir=\"%s\"\n",
+                    label, factory, static_cast<int>(entries.size()), preset.getNumItems(),
+                    entries.front().name.toRawUTF8(),
+                    preset.getItemText(0).toRawUTF8(),
+                    processor.userPresetDirectory().getFullPathName().toRawUTF8());
+    }
+}
+
 void process(SwaraXtAudioProcessor& processor)
 {
     juce::AudioBuffer<float> buffer(2, 256);
@@ -409,9 +439,64 @@ void allocationAudit()
 #endif
 }
 
+void presetSelectorPopulation()
+{
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getChildFile("swara-dual-svf-presets-" + juce::Uuid().toString());
+    expect(root.createDirectory().wasOk(), "isolated preset directory is created");
+    const auto empty = root.getChildFile("empty");
+    const auto populated = root.getChildFile("populated");
+    expect(empty.createDirectory().wasOk() && populated.createDirectory().wasOk(),
+           "empty and populated preset directories are created");
+
+    {
+        SwaraXtAudioProcessor processor;
+        processor.setUserPresetDirectoryForTests(empty);
+        SwaraXtAudioProcessorEditor editor(processor);
+        auto& preset = editor.presetSelectorForTests();
+        expect(processor.getPresetEntries().size() == static_cast<size_t>(processor.getNumPrograms()),
+               "clean CI state has factory presets only");
+        expectPresetSelectorMatches(processor, preset, "empty-user-dir");
+        preset.showPopup();
+        expect(preset.isPopupActive(), "preset popup opens with only factory presets");
+        juce::PopupMenu::dismissAllActiveMenus();
+        expect(pumpUntil([&] { return ! preset.isPopupActive(); }, 1000),
+               "factory-only preset popup dismisses");
+    }
+
+    {
+        SwaraXtAudioProcessor writer;
+        writer.setUserPresetDirectoryForTests(populated);
+        juce::String error;
+        expect(writer.saveUserPreset("Alpha", false, error), "first user preset is saved");
+        expect(writer.saveUserPreset("Beta", false, error), "second user preset is saved");
+        expect(writer.saveUserPreset("Gamma", false, error), "third user preset is saved");
+        expect(populated.getNumberOfChildFiles(juce::File::findFiles, "*.swaraxtpreset") == 3,
+               "populated directory contains three user preset files");
+
+        SwaraXtAudioProcessor processor;
+        processor.setUserPresetDirectoryForTests(populated);
+        SwaraXtAudioProcessorEditor editor(processor);
+        auto& preset = editor.presetSelectorForTests();
+        expect(static_cast<int>(processor.getPresetEntries().size())
+                   == processor.getNumPrograms() + 3,
+               "user presets appear after factory programs");
+        expectPresetSelectorMatches(processor, preset, "populated-user-dir");
+        preset.showPopup();
+        expect(preset.isPopupActive(), "preset popup opens with user presets present");
+    }
+
+    expect(root.deleteRecursively(), "isolated preset test directory is removed");
+}
+
 void layoutAndLifetime()
 {
+    const auto presetRoot = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                .getChildFile("swara-dual-svf-lifecycle-" + juce::Uuid().toString());
+    expect(presetRoot.createDirectory().wasOk(), "lifecycle uses an isolated empty user-preset directory");
+
     auto processor = std::make_unique<SwaraXtAudioProcessor>();
+    processor->setUserPresetDirectoryForTests(presetRoot);
     processor->prepareToPlay(48000.0, 256);
     processor->setExperimentalSvfEnabled(true);
     std::atomic<bool> stopAudio { false };
@@ -478,8 +563,7 @@ void layoutAndLifetime()
             else
             {
                 auto& preset = editor->presetSelectorForTests();
-                expect(preset.getNumItems() > processor->getNumPrograms(),
-                       "actual preset selector is found for teardown");
+                expectPresetSelectorMatches(*processor, preset, "lifecycle-teardown");
                 preset.showPopup();
                 expect(preset.isPopupActive(), "preset popup is active when the editor closes");
             }
@@ -500,6 +584,7 @@ void layoutAndLifetime()
     processor.reset();
     pending(416);
     pump(20);
+    expect(presetRoot.deleteRecursively(), "lifecycle preset directory is removed");
 
     SwaraXtAudioProcessor displayProcessor;
     displayProcessor.setExperimentalSvfEnabled(true);
@@ -628,6 +713,7 @@ int main()
     concurrentProcessing();
     coherentPublication();
     allocationAudit();
+    presetSelectorPopulation();
     layoutAndLifetime();
     std::printf("Dual SVF GUI failures=%d\n", failures);
     return failures == 0 ? 0 : 1;
