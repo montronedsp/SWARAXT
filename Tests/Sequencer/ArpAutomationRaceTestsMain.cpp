@@ -391,10 +391,9 @@ void throwingEditReleasesGate()
     state.setLength(9);
     try
     {
-        // Function-pointer mutator from another TU: revise() still publishes
-        // only after a returning mutator, but optimized MSVC cannot prove this
-        // call never returns (avoids C4702 under /WX on the publish path).
-        state.revise(&swaraxt::test_support::throwingSequenceMutator);
+        // Out-of-line mutator via public test entry: keeps revise() private and
+        // avoids optimized MSVC proving the publish path unreachable (C4702).
+        state.throwingEditForTests(&swaraxt::test_support::throwingSequenceMutator);
         expect(false, "throwing sequencer edit must propagate");
     }
     catch (int value)

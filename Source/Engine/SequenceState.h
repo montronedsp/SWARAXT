@@ -82,6 +82,12 @@ class SequenceState {
         revision_.store(evenRevision, std::memory_order_relaxed);
         writer_.clear(std::memory_order_release);
     }
+    // Public test entry to private revise(). Pass an out-of-line mutator so
+    // optimized MSVC cannot prove the publish path unreachable (C4702 /WX).
+    void throwingEditForTests(void (*mutate)(SequenceSnapshot&))
+    {
+        revise(mutate);
+    }
 #endif
 
 #if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
