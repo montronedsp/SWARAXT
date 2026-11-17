@@ -642,6 +642,7 @@ class PackageAuthenticationTests(unittest.TestCase):
                       inspect.getsource(native_reference.historical_windows_main))
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'Linux checked_file uses POSIX O_DIRECTORY')
 class ReviewedSourceCompatibilityTests(unittest.TestCase):
     """Fail-closed admission of reviewed CurrentRenderContract / PatchBridge bytes."""
 
