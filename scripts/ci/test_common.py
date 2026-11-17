@@ -260,21 +260,23 @@ class WindowsCompilerAdmission(unittest.TestCase):
         import windows_current_reference as authority
         from windows_toolchain_identity import verify_identity
         result = verify_identity('C:/VS/VC/Tools/MSVC/14.44.35207/bin/HostX64/x64/cl.exe',
-                                 ' cl.EXE: Version 19.44.35229.0', authority.ADMITTED_COMPILER_SHA256)
-        self.assertEqual(result, dict(compiler_version='19.44.35229.0', toolset_version='14.44.35207'))
+                                 ' cl.EXE: Version 19.44.35230.0', authority.ADMITTED_COMPILER_SHA256)
+        self.assertEqual(result, dict(compiler_version='19.44.35230.0', toolset_version='14.44.35207'))
 
     def test_unknown_and_historical_hashes_rejected(self):
         import windows_current_reference as authority
         package = authority.load_package(Path(__file__).resolve().parents[2])
-        for value in ('0' * 64, package['compiler_sha256'], None):
+        for value in ('0' * 64, package['compiler_sha256'],
+                      'fe251ef50a1545b1b0835ee17b1e785459712b38d79e45b5c1d3d28970a36619', None):
             with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, 'Unqualified Windows compiler'):
                 authority.require_compiler(value)
 
     def test_version_toolset_and_missing_version_rejected(self):
         import windows_current_reference as authority
         from windows_toolchain_identity import verify_identity
-        for toolset, log in (('14.38.33130', 'cl.exe: Version 19.44.35229.0'),
+        for toolset, log in (('14.38.33130', 'cl.exe: Version 19.44.35230.0'),
                              ('14.44.35207', 'cl.exe: Version 19.38.33145.0'),
+                             ('14.44.35207', 'cl.exe: Version 19.44.35229.0'),
                              ('14.44.35207', '')):
             with self.subTest(toolset=toolset, log=log), self.assertRaisesRegex(RuntimeError, 'version/toolset'):
                 verify_identity('C:/VS/VC/Tools/MSVC/' + toolset + '/bin/HostX64/x64/cl.exe',
