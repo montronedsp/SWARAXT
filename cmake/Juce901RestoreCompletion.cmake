@@ -37,7 +37,10 @@ if(DEFINED SWARAXT_VERIFY_RESTORE_SOURCE)
 endif()
 
 find_package(Git REQUIRED)
-set(restore_patch "${CMAKE_CURRENT_LIST_DIR}/Juce904RestoreCompletion.patch")
+# JUCE 9.0.1 APVTS sources are CRLF; the LF 9.0.4 patch does not apply to them.
+# Keep a 9.0.1-specific CRLF patch that preserves the same exception-safety edits
+# and the verified post-patch digests below.
+set(restore_patch "${CMAKE_CURRENT_LIST_DIR}/Juce901RestoreCompletion.patch")
 set(restore_root "${CMAKE_BINARY_DIR}/generated/restore-completion")
 set(restore_modules "${restore_root}/modules")
 set(restore_manifest "${restore_root}/manifest.txt")
@@ -47,6 +50,7 @@ if(EXISTS "${restore_manifest}")
     file(READ "${restore_manifest}" previous_patch)
 endif()
 if(NOT previous_patch STREQUAL restore_patch_hash)
+    file(REMOVE_RECURSE "${restore_modules}")
     file(MAKE_DIRECTORY "${restore_modules}")
     file(COPY "${SWARAXT_JUCE_DIR}/modules/juce_audio_processors" DESTINATION "${restore_modules}")
     execute_process(COMMAND "${GIT_EXECUTABLE}" -c core.autocrlf=false apply --binary --check "${restore_patch}"
