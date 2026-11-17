@@ -4,6 +4,7 @@
 #include <JuceHeader.h>
 
 #include "Plugin/PluginProcessor.h"
+#include "ThrowingSequenceMutator.h"
 
 #include <atomic>
 #include <cstdio>
@@ -390,7 +391,10 @@ void throwingEditReleasesGate()
     state.setLength(9);
     try
     {
-        state.throwingEditForTests();
+        // Function-pointer mutator from another TU: revise() still publishes
+        // only after a returning mutator, but optimized MSVC cannot prove this
+        // call never returns (avoids C4702 under /WX on the publish path).
+        state.revise(&swaraxt::test_support::throwingSequenceMutator);
         expect(false, "throwing sequencer edit must propagate");
     }
     catch (int value)

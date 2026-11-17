@@ -82,10 +82,6 @@ class SequenceState {
         revision_.store(evenRevision, std::memory_order_relaxed);
         writer_.clear(std::memory_order_release);
     }
-    void throwingEditForTests()
-    {
-        revise([](SequenceSnapshot&) { throw 1; });
-    }
 #endif
 
 #if defined(SWARAXT_ENABLE_SEQUENCE_NOTIFICATION_TESTS)
