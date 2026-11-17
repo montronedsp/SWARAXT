@@ -276,5 +276,37 @@ class FixtureAdmissionTests(unittest.TestCase):
             policy.checked_fixture(SOURCE, self.RELATIVE, '0' * 64)
 
 
+class ReviewedWindowsSourceCompatibilityTests(unittest.TestCase):
+    """Portable Windows fixture adapters for PatchBridge and CurrentRenderContract."""
+
+    def test_positive_current_sources_admit_against_historical_pins(self):
+        package = policy.load_package(SOURCE)
+        for relative in ('Source/Engine/PatchBridge.cpp', 'Tests/Support/CurrentRenderContract.h'):
+            policy.checked_fixture(SOURCE, relative, package['fixtures'][relative])
+
+    def test_unapproved_patch_bridge_edit_is_rejected(self):
+        relative = 'Source/Engine/PatchBridge.cpp'
+        expected = policy.PATCH_BRIDGE_HISTORICAL_SHA256
+        data = (SOURCE / relative).read_bytes().replace(b'juce::jlimit(1, 4,', b'juce::jlimit(1, 5,')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / relative
+            target.parent.mkdir(parents=True)
+            target.write_bytes(data)
+            with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
+                policy.checked_fixture(root, relative, expected)
+
+    def test_modified_environment_helper_is_rejected(self):
+        contract = 'Tests/Support/CurrentRenderContract.h'
+        helper = 'Tests/Support/TestEnvironment.h'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / contract).parent.mkdir(parents=True)
+            (root / contract).write_bytes((SOURCE / contract).read_bytes())
+            (root / helper).write_bytes((SOURCE / helper).read_bytes() + b'\n')
+            with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
+                policy.checked_fixture(root, contract, policy.CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

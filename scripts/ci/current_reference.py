@@ -24,6 +24,13 @@ PROFILES = ('gcc-Release', 'gcc-Debug', 'clang-Release', 'clang-Debug',
             'clang-asan-ubsan', 'clang-tsan', 'clang-rtsan', 'clang-fuzz')
 DIAGNOSTICS = ('runtime error:', 'Sanitizer:', 'Sanitizer CHECK', 'DEADLYSIGNAL',
                'JUCE Assertion failure', 'Leaked objects detected:', 'X Error of failed request:')
+# Reviewed source variants authenticated against historical fixture bytes.
+# Do not reseal audio goldens for these source-only compatibility edits.
+PATCH_BRIDGE_HISTORICAL_SHA256 = '53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab'
+PATCH_BRIDGE_CURRENT_SHA256 = 'c6b8c73388fd1528ade8b710bf04e88ccf88463e31093f44fb93800f623e3505'
+CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256 = '1ae25418a1fa9d87d429688b6a66d2efb784301ffe897432ce5649ea3eb4bbcd'
+CURRENT_RENDER_CONTRACT_CURRENT_SHA256 = 'd535b59cbbf7673b62e226f8ce098e27002cf207d3da194addeaa591f48faa39'
+TEST_ENVIRONMENT_SHA256 = '4be3b0cadcad578a8b8413de4bed27cee3f8fca2c321311c506597cdf278968c'
 
 
 def digest(data):
@@ -97,14 +104,36 @@ def checked_file(root, relative, expected):
     data = safe_bytes(root, relative)
     if not isinstance(expected, str) or not re.fullmatch('[0-9a-f]{64}', expected) or digest(data) != expected:
         if (relative == 'Source/Engine/PatchBridge.cpp'
-                and expected == '53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab'):
-            # CL-32 changes only invalid ARP ranges. Authenticate every other
-            # byte against the immutable source for the valid-range captures.
+                and expected == PATCH_BRIDGE_HISTORICAL_SHA256
+                and digest(data) == PATCH_BRIDGE_CURRENT_SHA256):
+            # CL-32 changes only invalid ARP ranges. Historical captures use
+            # arp.octaves=1, which is already inside [1,4]; jlimit is identity.
             before = b'seq->arp_range = static_cast<uint8_t>(ParameterCache::loadInt(cache.arpOctaves));'
             after = b'seq->arp_range = static_cast<uint8_t>(juce::jlimit(1, 4, ParameterCache::loadInt(cache.arpOctaves)));'
             if data.count(after) == 1:
                 original = data.replace(after, before, 1)
-                if digest(original) == expected:
+                if original != data and digest(original) == expected:
+                    return original
+        if (relative == 'Tests/Support/CurrentRenderContract.h'
+                and expected == CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256
+                and digest(data) == CURRENT_RENDER_CONTRACT_CURRENT_SHA256):
+            # MSVC-safe environment() is getenv on non-MSVC. Capture is gated on
+            # SWARA_CURRENT_REFERENCE_DIR and copies the pointer into juce::String
+            # immediately, so the helper is equivalent for qualified scenarios.
+            # Pin TestEnvironment.h so a later helper edit cannot ride this path.
+            try:
+                helper = safe_bytes(root, 'Tests/Support/TestEnvironment.h')
+            except RuntimeError as error:
+                raise RuntimeError('Reference checksum mismatch: Tests/Support/TestEnvironment.h') from error
+            if digest(helper) != TEST_ENVIRONMENT_SHA256:
+                raise RuntimeError('Reference checksum mismatch: Tests/Support/TestEnvironment.h')
+            include_after = b'#include "TestEnvironment.h"\n'
+            include_before = b'#include <cstdlib>\n'
+            call_after = b'environment("SWARA_CURRENT_REFERENCE_DIR")'
+            call_before = b'std::getenv("SWARA_CURRENT_REFERENCE_DIR")'
+            if data.count(include_after) == 1 and data.count(call_after) == 2:
+                original = data.replace(include_after, include_before, 1).replace(call_after, call_before)
+                if original != data and digest(original) == expected:
                     return original
         if relative == 'Tests/AudioRegression/AudioRegressionTestsMain.cpp':
             # Mission 06 replaced processSample() with processInstrumentSample() and

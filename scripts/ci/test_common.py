@@ -219,6 +219,41 @@ class WindowsAuditFixtureAuthentication(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
                 authority.checked_fixture(root, other, package['fixtures'][relative])
 
+    def test_reviewed_patch_bridge_and_render_contract_admit_without_resealing(self):
+        import windows_current_reference as authority
+        source = Path(__file__).resolve().parents[2]
+        package = authority.load_package(source)
+        self.assertEqual(sum(len(t['cases']) for t in package['tests'].values()), 72)
+        for relative, current_digest in (
+                ('Source/Engine/PatchBridge.cpp', authority.PATCH_BRIDGE_CURRENT_SHA256),
+                ('Tests/Support/CurrentRenderContract.h', authority.CURRENT_RENDER_CONTRACT_CURRENT_SHA256)):
+            data = (source / relative).read_bytes()
+            self.assertEqual(authority.digest(data.replace(b'\r\n', b'\n')), current_digest)
+            self.assertEqual(authority.checked_fixture(source, relative, package['fixtures'][relative]), data)
+
+    def test_unapproved_windows_patch_bridge_and_helper_edits_are_rejected(self):
+        import windows_current_reference as authority
+        source = Path(__file__).resolve().parents[2]
+        package = authority.load_package(source)
+        patch = 'Source/Engine/PatchBridge.cpp'
+        contract = 'Tests/Support/CurrentRenderContract.h'
+        helper = 'Tests/Support/TestEnvironment.h'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / patch
+            target.parent.mkdir(parents=True)
+            target.write_bytes((source / patch).read_bytes().replace(
+                b'juce::jlimit(1, 4,', b'juce::jlimit(0, 4,'))
+            with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
+                authority.checked_fixture(root, patch, package['fixtures'][patch])
+            contract_path = root / contract
+            contract_path.parent.mkdir(parents=True)
+            contract_path.write_bytes((source / contract).read_bytes())
+            helper_path = root / helper
+            helper_path.write_bytes((source / helper).read_bytes() + b'\n')
+            with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
+                authority.checked_fixture(root, contract, package['fixtures'][contract])
+
 
 class WindowsCompilerAdmission(unittest.TestCase):
     def test_verified_hosted_identity(self):

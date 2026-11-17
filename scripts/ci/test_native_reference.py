@@ -642,6 +642,81 @@ class PackageAuthenticationTests(unittest.TestCase):
                       inspect.getsource(native_reference.historical_windows_main))
 
 
+class ReviewedSourceCompatibilityTests(unittest.TestCase):
+    """Fail-closed admission of reviewed CurrentRenderContract / PatchBridge bytes."""
+
+    CONTRACT = 'Tests/Support/CurrentRenderContract.h'
+    HELPER = 'Tests/Support/TestEnvironment.h'
+    PATCH = 'Source/Engine/PatchBridge.cpp'
+
+    def setUp(self):
+        self.source = Path(__file__).resolve().parents[2]
+        self.tmp = tempfile.TemporaryDirectory(prefix='swara-reviewed-')
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def _write(self, relative, data):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    def test_current_render_contract_reverses_to_authenticated_source(self):
+        original = current.checked_file(
+            self.source, self.CONTRACT, current.CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256)
+        self.assertEqual(current.digest(original), current.CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256)
+        self.assertEqual(current.digest((self.source / self.CONTRACT).read_bytes()),
+                         current.CURRENT_RENDER_CONTRACT_CURRENT_SHA256)
+        self.assertEqual(current.digest((self.source / self.HELPER).read_bytes()),
+                         current.TEST_ENVIRONMENT_SHA256)
+
+    def test_current_render_contract_historical_bytes_still_admit(self):
+        data = (self.source / self.CONTRACT).read_bytes()
+        historical = data.replace(b'#include "TestEnvironment.h"\n', b'#include <cstdlib>\n', 1)
+        historical = historical.replace(b'environment("SWARA_CURRENT_REFERENCE_DIR")',
+                                        b'std::getenv("SWARA_CURRENT_REFERENCE_DIR")')
+        self._write(self.CONTRACT, historical)
+        admitted = current.checked_file(
+            self.root, self.CONTRACT, current.CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256)
+        self.assertEqual(current.digest(admitted), current.CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256)
+
+    def test_current_render_contract_unreviewed_changes_fail_closed(self):
+        data = (self.source / self.CONTRACT).read_bytes()
+        helper = (self.source / self.HELPER).read_bytes()
+        self._write(self.HELPER, helper)
+        for changed in (data.replace(b'environment(', b'environment_x(', 1),
+                        data.replace(b'#include "TestEnvironment.h"', b'#include "TestEnvironmentX.h"'),
+                        data + b'\n// unreviewed source change\n'):
+            self.assertNotEqual(changed, data)
+            self._write(self.CONTRACT, changed)
+            with self.assertRaisesRegex(RuntimeError, 'checksum'):
+                current.checked_file(
+                    self.root, self.CONTRACT, current.CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256)
+
+    def test_modified_test_environment_helper_is_rejected(self):
+        self._write(self.CONTRACT, (self.source / self.CONTRACT).read_bytes())
+        self._write(self.HELPER, (self.source / self.HELPER).read_bytes() + b'\n')
+        with self.assertRaisesRegex(RuntimeError, 'checksum'):
+            current.checked_file(
+                self.root, self.CONTRACT, current.CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256)
+
+    def test_current_render_contract_wrong_historical_hash_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, 'checksum'):
+            current.checked_file(self.source, self.CONTRACT, '0' * 64)
+
+    def test_one_changed_source_byte_is_rejected(self):
+        data = bytearray((self.source / self.PATCH).read_bytes())
+        data[0] ^= 0x01
+        self._write(self.PATCH, bytes(data))
+        with self.assertRaisesRegex(RuntimeError, 'checksum'):
+            current.checked_file(self.root, self.PATCH, current.PATCH_BRIDGE_HISTORICAL_SHA256)
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Current pinned reference policy is Linux-only')
+    def test_load_package_reaches_positive_admission(self):
+        package = current.load_package(self.source)
+        self.assertEqual(package['policy'], current.POLICY)
+        self.assertEqual(len(package['source_fixtures']), 9)
+
+
 @unittest.skipUnless(sys.platform.startswith('linux'), 'Fixture admission tests require Linux')
 class FixtureAdmissionTestsLinux(unittest.TestCase):
     """Positive and negative controls for AudioRegressionTestsMain.cpp fixture admission on Linux.
