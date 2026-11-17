@@ -76,7 +76,7 @@ def synthetic_profile(root, identity):
             after_sha256=pluginval.AFTER_SHA256, compiler_portability=pluginval.PORTABILITY_FILES, binary_sha256='3' * 64),
             vst3sdk_tool=dict(source_sha=SDK_SHA, binary_sha256='4' * 64),
             external_validators=dict(sha256='3' * 64, vst3sdk_binary_sha256='4' * 64))
-        payload['windows-native-reference-controls.log'] = b'Ran 30 tests in 1.0s\n\nOK\n'
+        payload['windows-native-reference-controls.log'] = b'Ran 33 tests in 1.0s\n\nOK\n'
         payload['pluginval.log'] = b'Num plugins found: 1\nStrictness level: 10\nv1.3.1\nSUCCESS\n'
         payload['validator-extensive.log'] = b'Result: 100 tests passed, 0 tests failed\n'
     if identity['profile'] == 'msvc-asan':
@@ -400,7 +400,7 @@ class ArtifactControls(unittest.TestCase):
 
     def test_native_control_count_29_rejected(self):
         """Negative control: under-count 29 tests is rejected."""
-        self._set_native_control_log(b'Ran 29 tests in 1.0s\n\nOK\n')
+        self._set_native_control_log(b'Ran 30 tests in 1.0s\n\nOK\n')
         self.reject('Missing native negative-control proof')
 
     def test_native_control_count_31_rejected(self):
@@ -415,12 +415,12 @@ class ArtifactControls(unittest.TestCase):
 
     def test_native_control_no_ok_summary_rejected(self):
         """Negative control: missing terminal OK summary is rejected."""
-        self._set_native_control_log(b'Ran 30 tests in 1.0s\n\nFAILED\n')
+        self._set_native_control_log(b'Ran 33 tests in 1.0s\n\nFAILED\n')
         self.reject('Missing native negative-control proof')
 
     def test_native_control_failed_summary_rejected(self):
         """Negative control: FAILED result line is rejected."""
-        self._set_native_control_log(b'Ran 30 tests in 1.0s\n\nFAILED (failures=1)\n')
+        self._set_native_control_log(b'Ran 33 tests in 1.0s\n\nFAILED (failures=1)\n')
         self.reject('Missing native negative-control proof')
 
     def test_native_control_nonzero_exit_rejected(self):
