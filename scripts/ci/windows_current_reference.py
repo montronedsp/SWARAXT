@@ -23,6 +23,12 @@ ALL_TESTS = ('SwaraXTAudioParityTests', 'SwaraXTDspFxIntegratedExactParityTests'
              'SwaraXTHostSrcExactParityTests', 'SwaraXTDualSvfHeadlessTests')
 PROFILES = ('msvc-Release', 'msvc-Debug', 'msvc-asan')
 DIAGNOSTICS = ('Sanitizer', 'runtime error:', 'JUCE Assertion failure', 'Leaked objects detected:', 'DEADLYSIGNAL')
+# Independently pinned reviewed variants. Historical Windows fixtures stay sealed.
+PATCH_BRIDGE_HISTORICAL_SHA256 = '53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab'
+PATCH_BRIDGE_CURRENT_SHA256 = 'c6b8c73388fd1528ade8b710bf04e88ccf88463e31093f44fb93800f623e3505'
+CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256 = '1ae25418a1fa9d87d429688b6a66d2efb784301ffe897432ce5649ea3eb4bbcd'
+CURRENT_RENDER_CONTRACT_CURRENT_SHA256 = 'd535b59cbbf7673b62e226f8ce098e27002cf207d3da194addeaa591f48faa39'
+TEST_ENVIRONMENT_SHA256 = '4be3b0cadcad578a8b8413de4bed27cee3f8fca2c321311c506597cdf278968c'
 digest = paths.digest
 decode = paths.strict_json
 
@@ -80,6 +86,35 @@ def checked_fixture(root, relative, expected):
         )
         if digest(original) == expected:
             return data
+    if (relative == 'Source/Engine/PatchBridge.cpp'
+            and expected == PATCH_BRIDGE_HISTORICAL_SHA256
+            and digest(normalized) == PATCH_BRIDGE_CURRENT_SHA256):
+        # CL-32 jlimit(1,4) is identity for historical arp.octaves=1 captures.
+        before = b'seq->arp_range = static_cast<uint8_t>(ParameterCache::loadInt(cache.arpOctaves));'
+        after = b'seq->arp_range = static_cast<uint8_t>(juce::jlimit(1, 4, ParameterCache::loadInt(cache.arpOctaves)));'
+        if normalized.count(after) == 1:
+            original = normalized.replace(after, before, 1)
+            if original != normalized and digest(original) == expected:
+                return data
+    if (relative == 'Tests/Support/CurrentRenderContract.h'
+            and expected == CURRENT_RENDER_CONTRACT_HISTORICAL_SHA256
+            and digest(normalized) == CURRENT_RENDER_CONTRACT_CURRENT_SHA256):
+        # MSVC _dupenv_s matches getenv for this capture: unset yields nullptr,
+        # a set value is copied into juce::String before the next lookup.
+        try:
+            helper = paths.trusted_file(root, 'Tests/Support/TestEnvironment.h').read_bytes()
+        except (RuntimeError, OSError) as error:
+            raise RuntimeError('Windows reference checksum mismatch: Tests/Support/TestEnvironment.h') from error
+        if digest(helper.replace(b'\r\n', b'\n')) != TEST_ENVIRONMENT_SHA256:
+            raise RuntimeError('Windows reference checksum mismatch: Tests/Support/TestEnvironment.h')
+        include_after = b'#include "TestEnvironment.h"\n'
+        include_before = b'#include <cstdlib>\n'
+        call_after = b'environment("SWARA_CURRENT_REFERENCE_DIR")'
+        call_before = b'std::getenv("SWARA_CURRENT_REFERENCE_DIR")'
+        if normalized.count(include_after) == 1 and normalized.count(call_after) == 2:
+            original = normalized.replace(include_after, include_before, 1).replace(call_after, call_before)
+            if original != normalized and digest(original) == expected:
+                return data
     raise RuntimeError('Windows reference checksum mismatch: ' + relative)
 
 
