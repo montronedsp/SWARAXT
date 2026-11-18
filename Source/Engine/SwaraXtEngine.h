@@ -209,6 +209,7 @@ class SwaraXtEngine {
 #endif
 
     SwaraXtFilter& filter() noexcept { return filter_; }
+    float knobCutoffTrimBytesForTests() const noexcept { return knobCutoffTrimBytes_; }
     const SwaraXtFilter& filter() const noexcept { return filter_; }
 
     // Experimental native-rate Shruthi Dual-SVF. Default off: Classic.
@@ -566,6 +567,7 @@ class SwaraXtEngine {
     int postMixerRampSamples_ = 1;
     int postMixerSamplesRemaining_ = 0;
     float filterCutoffHz_ = 8000.0f;
+    float knobCutoffTrimBytes_ = 0.0f;
     float filterResonance_ = 0.2f;
     float filterKeyTrack_ = 0.5f;
     int midiChannel_ = 1;
