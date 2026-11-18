@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Reject unwanted Cursor agent co-author trailers. Does not rewrite messages.
 set -euo pipefail
 
