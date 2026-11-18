@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 MontroneDSP
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
 # Agent instructions — SWARA XT
 
 ## Git attribution
