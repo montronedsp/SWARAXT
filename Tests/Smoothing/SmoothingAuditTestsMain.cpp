@@ -450,6 +450,117 @@ void testMatrixAmountAndLfoRateStayNative()
     expect(finite, "LFO rate jump stays finite");
 }
 
+
+// RMS of the second difference: a level-independent proxy for high-band energy of a
+// low-passed sawtooth. It rises monotonically with filter cutoff at zero resonance.
+double highBandRms(const std::vector<float>& y)
+{
+    double sum = 0.0;
+    int n = 0;
+    for (size_t i = 2; i < y.size(); ++i)
+    {
+        const double d = static_cast<double>(y[i]) - 2.0 * y[i - 1] + y[i - 2];
+        sum += d * d;
+        ++n;
+    }
+    return n > 0 ? std::sqrt(sum / n) : 0.0;
+}
+
+// The cutoff parameter is continuous (10 Hz-20 kHz) but the firmware patch stores a
+// 7-bit semitone code. Moving the knob inside one semitone cell must still move the
+// Classic filter: nine values 10 cents apart (all inside the cell of code 90) must
+// give nine distinct, strictly brightening renders at every host block size.
+void testCutoffKnobSubSemitoneResolution()
+{
+    const double centerHz = 20000.0 * std::pow(2.0, (90.0 - 127.0) / 12.0);
+    for (int block : { 64, 1024 })
+    {
+        std::vector<double> energy;
+        std::vector<std::vector<float>> renders;
+        for (int k = -4; k <= 4; ++k)
+        {
+            SwaraXtAudioProcessor proc;
+            proc.prepareToPlay(48000.0, block);
+            configureNeutralSaw(proc);
+            setFloat(proc, swaraxt::IDs::filterCutoff,
+                     static_cast<float>(centerHz * std::pow(2.0, 10.0 * k / 1200.0)));
+            setFloat(proc, swaraxt::IDs::filterResonance, 0.0f);
+            // Long warm-up so the filter envelope has finished its note-on movement.
+            auto samples = renderHeldNote(proc, 24000 / block, 9600 / block, block, {});
+            energy.push_back(highBandRms(samples));
+            renders.push_back(std::move(samples));
+        }
+        int distinct = 0;
+        for (size_t i = 1; i < renders.size(); ++i)
+            distinct += renders[i] != renders[i - 1] ? 1 : 0;
+        std::printf("cutoff knob 10-cent steps blk=%d: distinct adjacent renders=%d/8 highBandRms %.6f..%.6f\n",
+                    block, distinct, energy.front(), energy.back());
+        expect(distinct == 8, "knob moves inside one semitone cell change the render");
+        bool increasing = true;
+        for (size_t i = 1; i < energy.size(); ++i)
+            increasing = increasing && energy[i] > energy[i - 1] * (1.0 + 1.0e-6);
+        expect(increasing, "sub-semitone cutoff steps brighten the filter monotonically");
+    }
+}
+
+
+void applyOneBlock(SwaraXtAudioProcessor& proc)
+{
+    juce::AudioBuffer<float> buffer(2, 64);
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+}
+
+// The fine path must be invisible wherever the cutoff is a firmware code: every one of the
+// 128 codes, and every imported Shruthi factory patch, keeps exactly zero knob trim. Off-grid
+// values stay inside +-1 CV byte (half a semitone) and are monotonic across a cell.
+void testKnobTrimGridAndRange()
+{
+    SwaraXtAudioProcessor proc;
+    proc.prepareToPlay(48000.0, 64);
+    int gridViolations = 0;
+    for (int code = 0; code <= 127; ++code)
+    {
+        const float hz = static_cast<float>(20000.0 * std::pow(2.0, (code - 127.0) / 12.0));
+        setFloat(proc, swaraxt::IDs::filterCutoff, juce::jlimit(10.0f, 20000.0f, hz));
+        applyOneBlock(proc);
+        if (proc.engineForTests().knobCutoffTrimBytesForTests() != 0.0f && hz >= 10.0f)
+            ++gridViolations;
+    }
+    std::printf("knob trim on 128 grid codes: violations=%d\n", gridViolations);
+    expect(gridViolations == 0, "cutoff exactly on a semitone code has zero knob trim");
+
+    float maxAbs = 0.0f, previous = -2.0f;
+    bool monotonic = true;
+    const double centerHz = 20000.0 * std::pow(2.0, (90.0 - 127.0) / 12.0);
+    for (int cents = -49; cents <= 49; ++cents)
+    {
+        setFloat(proc, swaraxt::IDs::filterCutoff, static_cast<float>(centerHz * std::pow(2.0, cents / 1200.0)));
+        applyOneBlock(proc);
+        const float trim = proc.engineForTests().knobCutoffTrimBytesForTests();
+        maxAbs = std::max(maxAbs, std::abs(trim));
+        monotonic = monotonic && trim >= previous;
+        previous = trim;
+    }
+    std::printf("knob trim across one cell: max |trim|=%.4f bytes monotonic=%d\n", static_cast<double>(maxAbs), monotonic ? 1 : 0);
+    expect(maxAbs <= 1.0f, "knob trim stays within one CV byte");
+    expect(monotonic, "knob trim rises monotonically across a semitone cell");
+
+    int nonZeroImported = 0;
+    for (int index = 0; index < static_cast<int>(swaraxt::kShruthiFactoryPresetCount); ++index)
+    {
+        SwaraXtAudioProcessor factory;
+        factory.prepareToPlay(48000.0, 64);
+        factory.setCurrentProgram(swaraxt::kShruthiFactoryPresetStart + index);
+        applyOneBlock(factory);
+        if (factory.engineForTests().knobCutoffTrimBytesForTests() != 0.0f)
+            ++nonZeroImported;
+    }
+    std::printf("imported Shruthi factory patches with non-zero knob trim: %d / %d\n", nonZeroImported,
+                static_cast<int>(swaraxt::kShruthiFactoryPresetCount));
+    expect(nonZeroImported == 0, "imported Shruthi factory patches render with zero knob trim");
+}
+
 }  // namespace
 
 int main()
@@ -460,6 +571,8 @@ int main()
     testCutoffAndResonancePluginJumps();
     testCombinedAndQualityInteraction();
     testMatrixAmountAndLfoRateStayNative();
+    testCutoffKnobSubSemitoneResolution();
+    testKnobTrimGridAndRange();
     std::printf(gFailures == 0 ? "Swara XT smoothing audit tests: PASSED\n"
                                : "Swara XT smoothing audit tests: FAILED (%d)\n",
                 gFailures);
