@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Git attribution
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  no-cursor-coauthor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with history for the event range
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Reject Cursor co-author trailers on new commits
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          range=""
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+              echo "Missing pull_request base/head SHA; refusing to PASS." >&2
+              exit 1
+            fi
+            git rev-parse --verify "$BASE_SHA^{commit}" >/dev/null
+            git rev-parse --verify "$HEAD_SHA^{commit}" >/dev/null
+            range="${BASE_SHA}..${HEAD_SHA}"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            if [ -z "${AFTER_SHA:-}" ] || [ "$AFTER_SHA" = "0000000000000000000000000000000000000000" ]; then
+              echo "Missing or zero push after SHA; refusing to PASS." >&2
+              exit 1
+            fi
+            if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              # New branch: inspect reachable commits not on default branch tip if available.
+              if git rev-parse --verify origin/main >/dev/null 2>&1; then
+                range="origin/main..${AFTER_SHA}"
+              else
+                echo "Cannot determine push range for new branch without origin/main; refusing to PASS." >&2
+                exit 1
+              fi
+            else
+              git rev-parse --verify "$BEFORE_SHA^{commit}" >/dev/null
+              git rev-parse --verify "$AFTER_SHA^{commit}" >/dev/null
+              range="${BEFORE_SHA}..${AFTER_SHA}"
+            fi
+          else
+            echo "Unsupported event $EVENT_NAME" >&2
+            exit 1
+          fi
+
+          echo "Inspecting commit range: $range"
+          commits=$(git rev-list "$range")
+          if [ -z "$commits" ]; then
+            echo "No commits in range."
+            exit 0
+          fi
+
+          failed=0
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            body=$(git log -1 --format=%B "$sha")
+            if printf '%s\n' "$body" | grep -Eiq '^[[:space:]]*Co-authored-by:[[:space:]]*Cursor[[:space:]]*<cursoragent@cursor\.com>[[:space:]]*$'; then
+              echo "FORBIDDEN trailer in $sha" >&2
+              git log -1 --format='%H%n%s%n%b' "$sha" >&2
+              failed=1
+            fi
+          done <<< "$commits"
+
+          if [ "$failed" -ne 0 ]; then
+            echo "Git attribution check failed: remove Co-authored-by: Cursor <cursoragent@cursor.com>." >&2
+            exit 1
+          fi
+          echo "Git attribution check passed."

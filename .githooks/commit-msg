@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Reject unwanted Cursor agent co-author trailers. Does not rewrite messages.
+set -euo pipefail
+
+msg_file=${1:-}
+if [[ -z "$msg_file" || ! -f "$msg_file" ]]; then
+  echo "commit-msg: missing commit message file" >&2
+  exit 1
+fi
+
+if grep -Eiq '^[[:space:]]*Co-authored-by:[[:space:]]*Cursor[[:space:]]*<cursoragent@cursor\.com>[[:space:]]*$' "$msg_file"; then
+  cat >&2 <<'ERR'
+commit-msg: rejected forbidden agent attribution trailer:
+
+  Co-authored-by: Cursor <cursoragent@cursor.com>
+
+Disable Cursor commit attribution (CLI: attribution.attributeCommitsToAgent=false),
+remove the trailer from the message, and retry. Legitimate human Co-authored-by
+trailers are allowed.
+ERR
+  exit 1
+fi
+
+exit 0
