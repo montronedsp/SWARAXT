@@ -118,12 +118,36 @@ bool isTransientPerformanceController(uint8_t controller) noexcept
 constexpr float kMinimumPanelCutoffHz = 10.0f;
 constexpr float kMaximumPanelCutoffHz = 20000.0f;
 
-uint8_t shruthiCutoffCode(float cutoffHz)
+// Panel cutoff in firmware patch units (semitones, 127 = 20 kHz), before rounding.
+// One evaluation feeds both the integer code and the Classic trim so they cannot diverge.
+float shruthiCutoffCodeUnrounded(float cutoffHz)
 {
-    const float bounded = juce::jlimit(kMinimumPanelCutoffHz, kMaximumPanelCutoffHz, cutoffHz);
+    const float safe = std::isfinite(cutoffHz) ? cutoffHz : kMinimumPanelCutoffHz;
+    const float bounded = juce::jlimit(kMinimumPanelCutoffHz, kMaximumPanelCutoffHz, safe);
     const float semitonesBelowMaximum = 12.0f * std::log2(bounded / kMaximumPanelCutoffHz);
+    return 127.0f + semitonesBelowMaximum;
+}
+
+uint8_t shruthiCutoffCodeFromUnrounded(float unrounded)
+{
     return static_cast<uint8_t>(juce::jlimit(0, 127,
-        static_cast<int>(std::lround(127.0f + semitonesBelowMaximum))));
+        static_cast<int>(std::lround(unrounded))));
+}
+
+// patch.filter_cutoff holds a 7-bit semitone code, so a continuous host parameter would
+// otherwise move the Classic filter in 100-cent steps. The part of the knob that the code
+// cannot represent is returned in firmware CV bytes (24 per octave, so 2 per semitone,
+// within +-1) and added after the firmware has produced its byte; matrix, envelope and LFO
+// modulation keep their firmware resolution. A value within kKnobGridSnapSemitones of a
+// code returns exactly 0, so patches that store the cutoff as a code (every imported
+// Shruthi patch) render exactly as before.
+constexpr float kKnobGridSnapSemitones = 0.002f; // 0.2 cent
+
+float shruthiCutoffTrimBytesFromUnrounded(float unrounded)
+{
+    const float code = juce::jlimit(0.0f, 127.0f, unrounded);
+    const float remainder = code - std::round(code);
+    return std::abs(remainder) < kKnobGridSnapSemitones ? 0.0f : 2.0f * remainder;
 }
 
 // The 0.7 Hz safety pole reaches 1e-7 from unity in about 3.66 seconds. That is
@@ -325,10 +349,12 @@ void SwaraXtEngine::applyParameters(const SequenceSnapshot& sequence, uint32_t r
     else
         setPostMixerTarget(postMixerLinear);
     filterCutoffHz_ = ParameterCache::load(parameterCache_->filterCutoff);
+    const float unroundedCutoff = shruthiCutoffCodeUnrounded(filterCutoffHz_);
+    knobCutoffTrimBytes_ = shruthiCutoffTrimBytesFromUnrounded(unroundedCutoff);
     filterResonance_ = ParameterCache::load(parameterCache_->filterResonance);
     filterKeyTrack_ = ParameterCache::load(parameterCache_->filterKeyTracking);
     auto* patch = part_.mutable_patch();
-    patch->filter_cutoff = shruthiCutoffCode(filterCutoffHz_);
+    patch->filter_cutoff = shruthiCutoffCodeFromUnrounded(unroundedCutoff);
     patch->filter_resonance = static_cast<uint8_t>(juce::jlimit(0, 63,
         static_cast<int>(std::lround(filterResonance_ * 63.0f))));
     midiChannel_ = juce::jlimit(0, 16, ParameterCache::loadInt(parameterCache_->midiChannel));
@@ -844,8 +870,10 @@ void SwaraXtEngine::updateFilterFromShruthi()
     const double extraOctaves = p.matrixCutoffOctaves;
     // Transport every native byte directly to the board CV domain; the panel-Hz
     // clamp is not authority for hardware cutoff reconstruction.
+    // The knob's sub-semitone remainder joins the firmware byte here (Classic path only;
+    // the Dual SVF consumes the unmodified byte).
     p.boardCutoffCvVolts = std::clamp((static_cast<double>(voice.cutoff())
-        + 24.0 * extraOctaves) * (5.0 / 255.0), 0.0, 5.0);
+        + 24.0 * extraOctaves + static_cast<double>(knobCutoffTrimBytes_)) * (5.0 / 255.0), 0.0, 5.0);
     filter_.setParams(p);
     experimentalSvf_.setFirmwareCutoff(voice.cutoff());
     experimentalSvf_.setFirmwareResonance(voice.resonance());
