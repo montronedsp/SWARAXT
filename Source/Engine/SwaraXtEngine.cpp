@@ -3,6 +3,7 @@
 
 #include "Engine/SwaraXtEngine.h"
 #include "Engine/Filter/ShruthiSvfSection2Control.h"
+#include "Engine/GrooveClock.h"
 #include "BuiltinTunings.h"
 
 #include <JuceHeader.h>
@@ -22,32 +23,6 @@ namespace {
 
 constexpr double kLfoBeatsPerCycle[] { 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 };
 
-// Signed Shruthi groove LUTs (resources.cc, shruthi-1 56bfe78). Each entry is
-// the interval that begins when the clock leaves that step. The pre-clock
-// sentinel 0xff selects entry 15 for the first step.
-constexpr int kGrooveLut[6][16] = {
-    { 127, 127, -127, -127, 127, 127, -127, -127, 127, 127, -127, -127, 127, 127, -127, -127 },
-    { 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127, 127, -127 },
-    { -63, -63, 127, 0, -127, 0, 0, 88, 0, 0, 88, -50, -88, 0, 88, 0 },
-    { 19, 44, 93, -4, 32, -53, -90, -127, 117, 32, -102, -53, 105, -53, 93, -53 },
-    { 88, -101, 107, -95, 88, -88, 50, -38, 65, -88, 101, -95, 101, -127, 63, -31 },
-    { 70, -84, 84, -112, 84, -98, 112, -98, 54, -70, 127, -84, 127, -112, 84, -84 }
-};
-
-int grooveSwing(int groove, int index, int amount) noexcept
-{
-    const int product = kGrooveLut[groove][index] * amount;
-    // floor(product / 512), matching S8U8MulShift8 followed by an arithmetic >> 1.
-    if (product >= 0)
-        return product / 512;
-    return -((-product + 511) / 512);
-}
-
-int grooveScaleNum(int groove, int index, int amount) noexcept
-{
-    return 128 + grooveSwing(groove, index, amount);
-}
-
 int hostPatternLength(const shruthi::SequencerSettings& settings) noexcept
 {
     const int length = settings.pattern_size;
@@ -58,33 +33,6 @@ int hostGrooveTemplate(const shruthi::SequencerSettings& settings) noexcept
 {
     const int groove = settings.seq_groove_template;
     return groove >= 0 && groove <= 5 ? groove : 0;
-}
-
-int stepGrooveIndex(uint64_t step, int length) noexcept
-{
-    if (step == 0)
-        return 15;
-    return static_cast<int>((step - 1) % static_cast<uint64_t>(length));
-}
-
-int64_t grooveScaleSum(uint64_t stepCount, int length, int groove, int amount) noexcept
-{
-    if (stepCount == 0)
-        return 0;
-    int64_t sum = grooveScaleNum(groove, 15, amount);
-    const uint64_t periodic = stepCount - 1;
-    const uint64_t cycles = periodic / static_cast<uint64_t>(length);
-    const int remainder = static_cast<int>(periodic % static_cast<uint64_t>(length));
-    int64_t cycle = 0;
-    int prefix = 0;
-    for (int index = 0; index < length; ++index)
-    {
-        const int scale = grooveScaleNum(groove, index, amount);
-        cycle += scale;
-        if (index < remainder)
-            prefix += scale;
-    }
-    return sum + static_cast<int64_t>(cycles) * cycle + prefix;
 }
 
 bool sameSequencePayload(const SequenceSnapshot& a, const SequenceSnapshot& b) noexcept
@@ -510,14 +458,11 @@ double SwaraXtEngine::hostTickPpq(uint64_t tick) const noexcept
         return std::numeric_limits<double>::max();
 
     const auto& settings = part_.sequencer_settings();
-    const uint64_t stepTicks = juce::jmax<uint64_t>(1, part_.clock_ticks_per_step());
+    const int stepTicks = static_cast<int>(juce::jmax<uint64_t>(1, part_.clock_ticks_per_step()));
     const int length = hostPatternLength(settings);
     const int groove = hostGrooveTemplate(settings);
     const int amount = juce::jlimit(0, 127, sequencerSwing_);
-    const uint64_t step = tick / stepTicks;
-    const uint64_t position = tick % stepTicks;
-    const int64_t units = grooveScaleSum(step, length, groove, amount) * static_cast<int64_t>(stepTicks)
-        + static_cast<int64_t>(position) * grooveScaleNum(groove, stepGrooveIndex(step, length), amount);
+    const auto units = groove::unitsBeforeTick(tick, length, stepTicks, groove, amount);
     return static_cast<double>(units) / 3072.0;
 }
 
