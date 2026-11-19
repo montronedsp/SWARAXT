@@ -1,8 +1,8 @@
 // Copyright 2026 MontroneDSP.
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Independent Shruthi groove oracle and HOST alignment regression.
-// The expected PPQ values are computed from the firmware LUT and fixed-point
-// rule. They do not call SwaraXtEngine::hostTickPpq.
+// Expected PPQ values replay Part's per-clock swing update. They do not call
+// SwaraXtEngine::hostTickPpq or GrooveClock.h.
 
 #include <JuceHeader.h>
 
@@ -38,53 +38,41 @@ constexpr int kGrooveLut[6][16] = {
     { 70, -84, 84, -112, 84, -98, 112, -98, 54, -70, 127, -84, 127, -112, 84, -84 }
 };
 
-int firmwareSwing(int groove, int index, int amount)
+int scaleAt(int groove, int index, int amount)
 {
     const int product = kGrooveLut[groove][index] * amount;
-    if (product >= 0)
-        return product / 512;
-    return -((-product + 511) / 512);
+    const int swung = product >= 0 ? product / 512 : -((-product + 511) / 512);
+    return 128 + swung;
 }
 
-int scaleNum(int groove, int index, int amount)
+// Independent of GrooveClock.h. Replays the production Part clock: step starts
+// at 0xff, the LUT index is masked with 0x0f, and swing is resampled on every
+// clock before the step advances. The sum is the gaps before `tick`.
+int64_t firmwareUnits(uint64_t tick, uint64_t stepTicks, int length, int groove, int amount)
 {
-    return 128 + firmwareSwing(groove, index, amount);
-}
-
-int stepIndex(uint64_t step, int length)
-{
-    if (step == 0)
-        return 15;
-    return static_cast<int>((step - 1) % static_cast<uint64_t>(length));
-}
-
-int64_t scaleSum(uint64_t stepCount, int length, int groove, int amount)
-{
-    if (stepCount == 0)
-        return 0;
-    int64_t sum = scaleNum(groove, 15, amount);
-    const uint64_t periodic = stepCount - 1;
-    const uint64_t cycles = periodic / static_cast<uint64_t>(length);
-    const int remainder = static_cast<int>(periodic % static_cast<uint64_t>(length));
-    int64_t cycle = 0;
-    int prefix = 0;
-    for (int index = 0; index < length; ++index)
+    int step = 0xff;
+    int prescaler = 0;
+    int64_t units = 0;
+    const int clocksPerStep = static_cast<int>(stepTicks < 1 ? 1 : stepTicks);
+    for (uint64_t clock = 0; clock < tick; ++clock)
     {
-        const int scale = scaleNum(groove, index, amount);
-        cycle += scale;
-        if (index < remainder)
-            prefix += scale;
+        units += scaleAt(groove, step & 0x0f, amount);
+        if (prescaler == 0)
+        {
+            step = (step + 1) & 0xff;
+            if (step >= length)
+                step = 0;
+        }
+        ++prescaler;
+        if (prescaler >= clocksPerStep)
+            prescaler = 0;
     }
-    return sum + static_cast<int64_t>(cycles) * cycle + prefix;
+    return units;
 }
 
 double oraclePpq(uint64_t tick, uint64_t stepTicks, int length, int groove, int amount)
 {
-    const uint64_t step = tick / stepTicks;
-    const uint64_t position = tick % stepTicks;
-    const int64_t units = scaleSum(step, length, groove, amount) * static_cast<int64_t>(stepTicks)
-        + static_cast<int64_t>(position) * scaleNum(groove, stepIndex(step, length), amount);
-    return static_cast<double>(units) / 3072.0;
+    return static_cast<double>(firmwareUnits(tick, stepTicks, length, groove, amount)) / 3072.0;
 }
 
 // The pre-correction HOST scheduler. It ignores the groove template.
@@ -155,6 +143,13 @@ void testLegacyTemplateCollision()
            "firmware swing and shuffle differ where their LUT rows differ");
     expect(std::abs(swing - oracleShuffle) > 0.01,
            "legacy HOST timing is not the shuffle profile");
+
+    // groove 0, amount 127, length 16, 6 clocks/step.
+    // scale(15) + 5 * scale(0) = 96 + 5 * 159 = 891.
+    // The retired per-step model used 6 * scale(15) = 576.
+    const int64_t units = firmwareUnits(6, 6, 16, 0, 127);
+    expect(units == 891, "swing tick 6 follows the per-clock firmware sum");
+    expect(units != 576, "the per-step model is not the firmware sum");
 }
 
 void testHostMatchesOracle(SwaraXtAudioProcessor& processor)
