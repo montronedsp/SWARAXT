@@ -834,8 +834,14 @@ inline void HdOscillator::RenderVowel(uint32_t increment, int num, float* out) {
         ? static_cast<int8_t>(random_->state_msb()) : 0;
     int phase_noise = static_cast<int>(phase_msb) *
         static_cast<int>(static_cast<int8_t>(state_.vw.noise_modulation));
-    if ((static_cast<int>(static_cast<uint16_t>(phase >> 8)) + phase_noise) <
-        static_cast<int>(static_cast<uint16_t>(increment >> 8))) {
+    // AVR int is 16 bits, so uint16 phase + int16 noise wraps modulo 65536.
+    // A signed widening add resets on the wrong side of zero and changes the
+    // breath of vowels whose noise byte is non-zero (ROM entries 7 and 8).
+    const auto phase16 = static_cast<uint16_t>(phase >> 8);
+    const auto increment16 = static_cast<uint16_t>(increment >> 8);
+    const auto wrapped = static_cast<uint16_t>(
+        phase16 + static_cast<uint16_t>(phase_noise));
+    if (wrapped < increment16) {
       state_.vw.formant_phase[0] = 0;
       state_.vw.formant_phase[1] = 0;
       state_.vw.formant_phase[2] = 0;
