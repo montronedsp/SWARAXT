@@ -23,6 +23,9 @@ class InternalSampleQueue {
     int queueTargetSize() const noexcept;
     float readInterpolated() noexcept;
     int size() const noexcept { return size_; }
+    // Zero already-rendered samples that have not yet entered the reader
+    // window. History that the interpolator still needs is left intact.
+    void silenceLookahead() noexcept;
 
  private:
     float at(int index) const noexcept;
@@ -88,6 +91,19 @@ inline int InternalSampleQueue::minimumReadableSize() const noexcept
 inline int InternalSampleQueue::queueTargetSize() const noexcept
 {
     return std::max(8, minimumReadableSize());
+}
+
+inline void InternalSampleQueue::silenceLookahead() noexcept
+{
+    const int keep = minimumReadableSize();
+    if (size_ <= keep)
+        return;
+    int index = (readIndex_ + keep) % kCapacity;
+    for (int n = keep; n < size_; ++n)
+    {
+        data_[static_cast<size_t>(index)] = 0.0f;
+        index = (index + 1) % kCapacity;
+    }
 }
 
 inline float InternalSampleQueue::readInterpolated() noexcept

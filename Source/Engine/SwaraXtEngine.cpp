@@ -865,7 +865,10 @@ void SwaraXtEngine::dispatchMidi(const PendingMidi& event)
     else if (statusHi == 0xB0)
     {
         if (event.data1 == 120)
+        {
             midiDispatcher_.AllSoundOff(channel);
+            applyEmergencySilence();
+        }
         else if (event.data1 == 123)
             midiDispatcher_.AllNotesOff(channel);
         else if (event.data1 == 121)
@@ -888,6 +891,22 @@ void SwaraXtEngine::dispatchMidi(const PendingMidi& event)
     {
         midiDispatcher_.Aftertouch(channel, event.data1, event.data2);
     }
+}
+
+void SwaraXtEngine::applyEmergencySilence() noexcept
+{
+    // Voice::Kill() stops new energy at the VCA. Already-rendered native
+    // samples, the Dual SVF matching delay, and series board delay/feedback
+    // can still reach the host. Clear only those panic-owned stores. Leave
+    // classic/experimental filter memory and the SRC kernel so a later Note On
+    // in this block is not a wholesale engine reset.
+    dualOutputDelay_.reset();
+    internalQueue_.silenceLookahead();
+    boardProcessor_.reset(activeBoard_.effect);
+    postDacFilter_.reset();
+    // The 0.7 Hz output DC blocker would otherwise take hundreds of
+    // milliseconds to forget the last sounding sample.
+    dcBlocker_.reset();
 }
 
 void SwaraXtEngine::releaseMidiInput(const juce::MidiBuffer& midi) noexcept

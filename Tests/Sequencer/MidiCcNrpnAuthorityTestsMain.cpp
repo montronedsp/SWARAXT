@@ -373,6 +373,93 @@ void allNotesOffWithoutPedalRemainsOrdinaryRelease()
            "CC123 without sustain clears the pressed-key stack normally");
 }
 
+void allSoundOffClearsOwnersAndKillsVoice()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    expect(part(processor).num_notes() == 1, "Note On occupies the pressed-key stack");
+    renderMessage(processor, juce::MidiMessage::allSoundOff(1));
+    expect(part(processor).num_notes() == 0, "CC120 clears the pressed-key stack");
+    expect(! part(processor).latched(), "CC120 does not leave sustain latched");
+    expect(part(processor).voice().amplitude_envelope_dead(),
+           "CC120 kills the production HD amplitude envelope");
+    expect(part(processor).generated_note_count_for_tests() == 0,
+           "CC120 releases sequencer/arp generated-note owners");
+}
+
+void allSoundOffIgnoresSustainPedal()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    renderCc(processor, 64, 127);
+    expect(part(processor).latched(), "sustain is down before CC120");
+    renderMessage(processor, juce::MidiMessage::allSoundOff(1));
+    expect(! part(processor).latched(), "CC120 clears an active sustain pedal");
+    expect(part(processor).num_notes() == 0, "CC120 releases a sustain-held note");
+    expect(part(processor).voice().amplitude_envelope_dead(),
+           "CC120 kills the voice despite sustain");
+    renderCc(processor, 64, 0);
+    expect(part(processor).num_notes() == 0, "pedal-up after CC120 does not resurrect the note");
+}
+
+void allSoundOffClearsAHeldChord()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 64, (juce::uint8) 100));
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 67, (juce::uint8) 100));
+    expect(part(processor).num_notes() == 3, "three physically held keys");
+    renderMessage(processor, juce::MidiMessage::allSoundOff(1));
+    expect(part(processor).num_notes() == 0, "CC120 clears every pressed key");
+    expect(part(processor).voice().amplitude_envelope_dead(),
+           "CC120 kills the sounding voice of a chord");
+}
+
+void allSoundOffIsIdempotentAndAllowsRetrigger()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::allSoundOff(1));
+    expect(part(processor).num_notes() == 0, "CC120 without a note is harmless");
+    expect(part(processor).voice().amplitude_envelope_dead(),
+           "CC120 without a note leaves the amplitude envelope dead");
+
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 62, (juce::uint8) 96));
+    renderMessage(processor, juce::MidiMessage::allSoundOff(1));
+    renderMessage(processor, juce::MidiMessage::allSoundOff(1));
+    expect(part(processor).num_notes() == 0, "repeated CC120 remains empty");
+    expect(part(processor).voice().amplitude_envelope_dead(),
+           "repeated CC120 keeps the envelope dead");
+
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 64, (juce::uint8) 100));
+    expect(part(processor).num_notes() == 1, "Note On after CC120 occupies the stack");
+    expect(! part(processor).voice().amplitude_envelope_dead(),
+           "Note On after CC120 starts the amplitude envelope");
+}
+
+void allSoundOffOnIgnoredChannelDoesNothing()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    setInt(processor, swaraxt::IDs::midiChannel, 2);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(2, 60, (juce::uint8) 100));
+    expect(part(processor).num_notes() == 1, "accepted-channel Note On is held");
+    renderMessage(processor, juce::MidiMessage::allSoundOff(1));
+    expect(part(processor).num_notes() == 1, "wrong-channel CC120 is ignored");
+    expect(! part(processor).voice().amplitude_envelope_dead(),
+           "wrong-channel CC120 must not kill the voice");
+    renderMessage(processor, juce::MidiMessage::allSoundOff(2));
+    expect(part(processor).num_notes() == 0, "matching-channel CC120 clears the stack");
+}
+
 void twoInstancesStayIndependent()
 {
     Processor a, b;
@@ -403,6 +490,11 @@ int main()
     sustainChordAndPerNoteOffsRemainCompatible();
     resetControllersReleasesOnlySustainOwnedNotes();
     allNotesOffWithoutPedalRemainsOrdinaryRelease();
+    allSoundOffClearsOwnersAndKillsVoice();
+    allSoundOffIgnoresSustainPedal();
+    allSoundOffClearsAHeldChord();
+    allSoundOffIsIdempotentAndAllowsRetrigger();
+    allSoundOffOnIgnoredChannelDoesNothing();
     twoInstancesStayIndependent();
     std::printf("MIDI CC/NRPN authority tests: %s (%d failures)\n",
                 failures ? "FAILED" : "PASSED", failures);

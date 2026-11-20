@@ -382,8 +382,13 @@ void Part::ControlChange(uint8_t controller, uint8_t value) {
 
 /* static */
 void Part::AllSoundOff() {
+  // CC 120 ignores sustain and must not enter the amplitude release stage.
+  // Clear owners first so a later Note On can restart synthesis normally.
   ignore_note_off_messages_ = false;
+  release_latched_keys_on_next_note_on_ = false;
   AllNotesOff();
+  StopSequencerArpeggiatorNotes();
+  voice_.Kill();
 }
 
 /* static */
