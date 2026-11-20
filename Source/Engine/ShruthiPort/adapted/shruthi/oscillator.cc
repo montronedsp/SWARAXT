@@ -415,7 +415,11 @@ void Oscillator::RenderVowel(uint8_t* buffer) {
     phase.integral += phase_increment_.integral;
     int16_t phase_noise = int8_t(random_ != nullptr ? random_->state_msb() : 0) *
         int8_t(data_.vw.noise_modulation);
-    if ((phase.integral + phase_noise) < phase_increment_.integral) {
+    // AVR promotes this add to 16-bit unsigned. Keep that wrap on a 32-bit host
+    // so a negative breath offset cannot reset formants that have not wrapped.
+    const uint16_t phase_with_noise = static_cast<uint16_t>(
+        phase.integral + static_cast<uint16_t>(phase_noise));
+    if (phase_with_noise < phase_increment_.integral) {
       data_.vw.formant_phase[0] = 0;
       data_.vw.formant_phase[1] = 0;
       data_.vw.formant_phase[2] = 0;
