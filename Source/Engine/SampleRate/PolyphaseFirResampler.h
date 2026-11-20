@@ -63,6 +63,10 @@ class PolyphaseFirResampler {
     int queueTargetSize() const noexcept { return kTaps + 8; }
     float readInterpolated() noexcept;
     int size() const noexcept { return size_; }
+    // Zero already-rendered native samples that have not yet entered the FIR
+    // window. The current kernel history is left intact so reconstruction can
+    // decay instead of hard-cutting the host buffer.
+    void silenceLookahead() noexcept;
 
     // Causal streaming delay in native samples, including startup. The engine
     // must report it to the host rather than concealing it with future audio.
@@ -276,6 +280,20 @@ float PolyphaseFirResampler<T, P, I>::readInterpolated() noexcept
 
     fraction_ += step_;
     return std::isfinite(accumulator) ? accumulator : 0.0f;
+}
+
+template <int T, int P, bool I>
+void PolyphaseFirResampler<T, P, I>::silenceLookahead() noexcept
+{
+    const int keep = minimumReadableSize();
+    if (size_ <= keep)
+        return;
+    int index = (readIndex_ + keep) & kCapacityMask;
+    for (int n = keep; n < size_; ++n)
+    {
+        data_[static_cast<size_t>(index)] = 0.0f;
+        index = (index + 1) & kCapacityMask;
+    }
 }
 
 }  // namespace swaraxt
