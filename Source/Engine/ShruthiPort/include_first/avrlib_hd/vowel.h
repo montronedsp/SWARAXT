@@ -183,7 +183,11 @@ inline void HdVowel::RenderNaive(uint16_t increment16, uint8_t parameter,
     phase = static_cast<uint16_t>(phase + increment16);
     int16_t phase_noise = static_cast<int8_t>(noise_msb) *
                           static_cast<int8_t>(noise_modulation_);
-    if (static_cast<int32_t>(phase) + phase_noise < increment16) {
+    // Same AVR 16-bit wrap as Oscillator::RenderVowel. Signed widening misses
+    // the wrap and resets formants whenever phase + noise is a small negative.
+    const uint16_t wrapped = static_cast<uint16_t>(
+        phase + static_cast<uint16_t>(phase_noise));
+    if (wrapped < increment16) {
       formant_phase_[0] = 0;
       formant_phase_[1] = 0;
       formant_phase_[2] = 0;
