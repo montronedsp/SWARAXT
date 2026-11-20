@@ -64,6 +64,13 @@ void renderEmpty(Processor& processor, int samples = 64)
     render(processor, juce::MidiBuffer {}, samples);
 }
 
+void renderMessage(Processor& processor, const juce::MidiMessage& message)
+{
+    juce::MidiBuffer midi;
+    midi.addEvent(message, 0);
+    render(processor, midi);
+}
+
 int8_t octave(const Processor& processor)
 {
     return part(processor).system_settings().octave;
@@ -268,6 +275,104 @@ void performanceControllersRemainLive()
     expect(bend(processor) == 128, "Reset All Controllers restores pitch bend");
 }
 
+// CC 123 must not cut a Roland-style sustained chord. Its live keys must
+// nevertheless be flagged so lifting the pedal cannot leave a stuck note.
+void allNotesOffDuringSustainReleasesOnPedalUp()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    renderCc(processor, 64, 127);
+    renderMessage(processor, juce::MidiMessage::allNotesOff(1));
+    expect(part(processor).latched(), "CC123 must not disable an active sustain pedal");
+    expect(part(processor).num_notes() == 1, "CC123 with sustain must keep the note held");
+    renderEmpty(processor);
+    expect(part(processor).num_notes() == 1, "CC123 must not prematurely release a sustained note");
+    renderCc(processor, 64, 0);
+    expect(! part(processor).latched(), "pedal-up clears sustain after CC123");
+    expect(part(processor).num_notes() == 0, "pedal-up releases the key marked by CC123");
+
+    // Repeated all-notes-off messages must not leave extra owners behind.
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 62, (juce::uint8) 96));
+    renderCc(processor, 64, 127);
+    renderMessage(processor, juce::MidiMessage::allNotesOff(1));
+    renderMessage(processor, juce::MidiMessage::allNotesOff(1));
+    renderCc(processor, 64, 0);
+    expect(part(processor).num_notes() == 0, "repeated CC123 remains idempotent under sustain");
+}
+
+void sustainChordAndPerNoteOffsRemainCompatible()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 64, (juce::uint8) 100));
+    renderCc(processor, 64, 127);
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 60));
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 64));
+    renderCc(processor, 64, 127);
+    renderMessage(processor, juce::MidiMessage::allNotesOff(1));
+    renderEmpty(processor);
+    expect(part(processor).num_notes() == 2,
+           "sustained chord survives per-note offs, CC123 and an empty block");
+    renderCc(processor, 64, 0);
+    expect(part(processor).num_notes() == 0,
+           "pedal-up releases every note from a sustained Roland-style chord");
+}
+
+void resetControllersReleasesOnlySustainOwnedNotes()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 64, (juce::uint8) 100));
+    renderCc(processor, 64, 127);
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 64));
+    expect(part(processor).num_notes() == 2, "sustain holds E4 after its physical note-off");
+
+    renderCc(processor, 1, 127);
+    renderMessage(processor, juce::MidiMessage::pitchWheel(1, 16383));
+    renderCc(processor, 121, 0);
+    expect(! part(processor).latched(), "CC121 resets sustain");
+    expect(part(processor).num_notes() == 1,
+           "CC121 releases latched E4 but preserves physically held C4");
+    expect(wheel(processor) == 0, "CC121 resets mod wheel with a latched key");
+    expect(bend(processor) == 128, "CC121 resets pitch bend with a latched key");
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 60));
+    expect(part(processor).num_notes() == 0, "physical C4 note-off clears the remaining key");
+
+    // CC121 must also release a pedal-held key when no physical key remains.
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 67, (juce::uint8) 100));
+    renderCc(processor, 64, 127);
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 67));
+    renderCc(processor, 121, 0);
+    expect(part(processor).num_notes() == 0, "CC121 releases a fully latched note");
+    renderCc(processor, 121, 0);
+    expect(part(processor).num_notes() == 0, "repeated CC121 does not recreate held notes");
+
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 72, (juce::uint8) 100));
+    renderCc(processor, 121, 0);
+    expect(part(processor).num_notes() == 1,
+           "CC121 without pedal does not release a physically held key");
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 72));
+    expect(part(processor).num_notes() == 0, "physical note-off still works after CC121");
+}
+
+void allNotesOffWithoutPedalRemainsOrdinaryRelease()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    renderMessage(processor, juce::MidiMessage::allNotesOff(1));
+    expect(part(processor).num_notes() == 0,
+           "CC123 without sustain clears the pressed-key stack normally");
+}
+
 void twoInstancesStayIndependent()
 {
     Processor a, b;
@@ -294,6 +399,10 @@ int main()
     nrpnCannotWriteSystemOrPatchState();
     ignoredChannelDoesNotApplyControllers();
     performanceControllersRemainLive();
+    allNotesOffDuringSustainReleasesOnPedalUp();
+    sustainChordAndPerNoteOffsRemainCompatible();
+    resetControllersReleasesOnlySustainOwnedNotes();
+    allNotesOffWithoutPedalRemainsOrdinaryRelease();
     twoInstancesStayIndependent();
     std::printf("MIDI CC/NRPN authority tests: %s (%d failures)\n",
                 failures ? "FAILED" : "PASSED", failures);
