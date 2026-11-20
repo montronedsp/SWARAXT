@@ -270,6 +270,24 @@ if(NOT MSVC)
 endif()
 add_test(NAME AvrlibHdVowelTests COMMAND AvrlibHdVowelTests)
 
+# AVR 16-bit wrap of the vowel breath compare. Fails if the reset is widened
+# to a signed 32-bit add (the host int width).
+add_executable(AvrlibHdVowelPhaseWrapTests
+    avrlib_hd/VowelPhaseWrapTestsMain.cpp
+)
+target_include_directories(AvrlibHdVowelPhaseWrapTests PRIVATE
+    "${SWARAXT_INCLUDE_FIRST}"
+)
+if(MSVC)
+    target_compile_options(AvrlibHdVowelPhaseWrapTests PRIVATE /W4 /permissive- /WX)
+else()
+    target_compile_options(AvrlibHdVowelPhaseWrapTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(NOT MSVC)
+    target_link_libraries(AvrlibHdVowelPhaseWrapTests PRIVATE m)
+endif()
+add_test(NAME AvrlibHdVowelPhaseWrapTests COMMAND AvrlibHdVowelPhaseWrapTests)
+
 # HD VCF parity (kFaithful mode) tested the legacy processSample() cascade,
 # which has been removed with the redundant Classic implementation. Production
 # filter behavior is protected by SwaraXTIR3109SolverTests,
