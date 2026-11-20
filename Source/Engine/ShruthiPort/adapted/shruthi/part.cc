@@ -389,6 +389,9 @@ void Part::AllSoundOff() {
 /* static */
 void Part::ResetAllControllers() {
   ignore_note_off_messages_ = false;
+  // CC 121 also resets sustain. Release only keys already marked as
+  // sustained; physically held keys must remain pressed.
+  ReleaseLatchedNotes();
   voice_.ResetAllControllers();
 }
 
@@ -985,8 +988,14 @@ void Part::ProcessControlBlock() {
 /* static */
 void Part::AllNotesOff() {
   if (ignore_note_off_messages_) {
-    // This is a fix for the Roland machines that send the all notes off
-    // message every time all keys in a chord are released.
+    // Roland controllers can send CC 123 while sustain is held. Keep the
+    // chord sounding, but mark each live key for release when pedal lifts.
+    for (uint8_t i = 1; i <= pressed_keys_.max_size(); ++i) {
+      NoteEntry* entry = pressed_keys_.mutable_note(i);
+      if (entry->velocity != 0) {
+        entry->velocity = static_cast<uint8_t>(entry->velocity | 0x80);
+      }
+    }
     return;
   }
   poly_allocator_.Clear();
