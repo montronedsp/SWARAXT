@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.3 — 2026-11-21
+
+- CC 120 All Sound Off kills the HD amplitude envelopes and clears panic-owned host-path stores without a release tail.
+- Recorded board-looper content is preserved across CC 120; playback stays stopped until the play control changes.
+- Emergency-silence and MIDI authority regressions cover host-output silence, sustain/modulation panic, delay feedback, and audible Note On recovery.
+- Product and package metadata identify SWARA XT 1.3.3.
+
 ## 1.3.1 — 2026-11-06
 
 - Sequencer GUI source consolidation: shared widgets, oscillator/modulation/sequencer panels in dedicated translation units.

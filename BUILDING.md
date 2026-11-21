@@ -1,6 +1,6 @@
 # Building Swara XT
 
-The current source and package metadata target **1.3.1**. The latest
+The current source and package metadata target **1.3.3**. The latest
 published release remains [1.3.0](https://github.com/montronedsp/SWARAXT/releases/tag/v1.3.0).
 
 ## Requirements
