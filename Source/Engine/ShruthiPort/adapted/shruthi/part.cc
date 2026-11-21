@@ -535,8 +535,10 @@ void Part::Start(bool internal) {
     voice_.NoteOff();
   }
 
+  // Sustain belongs to the performance controller, not to the sequencer
+  // clock. The first Note On can call Start(true); host start/reclock must
+  // likewise not consume a pedal already pressed.
   release_latched_keys_on_next_note_on_ = false;
-  ignore_note_off_messages_ = false;
 
   arp_seq_prescaler_ = 0;
   arp_seq_step_ = 0xff;
