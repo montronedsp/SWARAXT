@@ -29,6 +29,23 @@ Follow, Independent and Relative modes set how the second section relates to
 the first. Its front-panel controls are manual and session-local; a fresh
 instance starts with Classic. Bank changes use a brief fade through silence.
 
+<table>
+  <tr>
+  <td align="center" valign="middle">
+    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/oscillators-524.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/oscillators-524.webp" alt="SWARA XT oscillator model menu showing analog, CZ, FM and wavetable synthesis options" width="190"></a>
+    <br><sub>Oscillator models</sub>
+  </td>
+  <td align="center" valign="middle">
+    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/filter-833.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/filter-833.webp" alt="SWARA XT Classic filter: cutoff, resonance, envelope, key tracking and LFO controls" width="400"></a>
+    <br><sub>Classic IR3109 filter</sub>
+  </td>
+  <td align="center" valign="middle">
+    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-dual-svf-832.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-dual-svf-832.webp" alt="SWARA XT Dual SVF panel with routing, independent second filter controls and calibration" width="235"></a>
+    <br><sub>Experimental Dual SVF</sub>
+  </td>
+  </tr>
+</table>
+
 ### Modulation and sequencing
 
 Two envelopes, two LFOs and dedicated filter ENV/LFO controls work alongside
@@ -41,6 +58,19 @@ controller values, host synchronization, sequence randomization and
 **Sequence Lock**. Pitch modes are **LEGACY**, **LINEAR**, **SCALE** and
 **QUANTIZED CV**. Optional MIDI output carries LEGACY notes or the nearest
 12-TET notes from QUANTIZED CV; LINEAR and SCALE drive the internal voice.
+
+<table>
+  <tr>
+  <td align="center" valign="middle">
+    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/matrix-874.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/matrix-874.webp" alt="SWARA XT modulation matrix showing three of twelve routing slots" width="470"></a>
+    <br><sub>12-slot modulation matrix</sub>
+  </td>
+  <td align="center" valign="middle">
+    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/mode-sequence-877.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/mode-sequence-877.webp" alt="SWARA XT sequence mode editing a sixteen-step pattern" width="310"></a>
+    <br><sub>16-step sequencer</sub>
+  </td>
+  </tr>
+</table>
 
 ### Microtuning
 
@@ -55,6 +85,11 @@ pitch to the active tuning. **INPUT TUNE** applies that same tuning to MIDI
 input in TUNED or QUANTIZED mode. Keyboard mappings and the voice's playable
 pitch range apply; imports are validated before the active tuning changes.
 
+<p align="center">
+  <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-microtuning-524.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-microtuning-524.webp" alt="SWARA XT microtuning menu with factory temperament choices and 19-EDO selected" width="300"></a>
+  <br><sub>Factory tunings and alternative temperaments</sub>
+</p>
+
 ### Effects, presets and customization
 
 - Sixteen DSP-board effects plus **Off**, including distortion, crush, comb,
@@ -65,6 +100,11 @@ pitch range apply; imports are validated before the active tuning changes.
   for direct loading in the synthesizer. The separate **Skin Editor** remains
   available in source but its application is not distributed.
 - VST3 and Standalone on Windows and Linux; macOS source builds also include AU.
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-custom-detail-1048.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-custom-detail-1048.webp" alt="SWARA XT custom SVG decoration in the Jungle skin" width="390"></a>
+  <br><sub>Custom skins, artwork and decorations</sub>
+</p>
 
 **New to SWARA XT? Read the [Quick Start Manual](docs/QUICKSTART.md).**
 
