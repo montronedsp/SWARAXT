@@ -1,4 +1,4 @@
-Swara XT 1.3.1
+Swara XT 1.3.3
 MontroneDSP
 
 VST3 — per-user installation:
@@ -38,7 +38,7 @@ Skin Examples:
 The Skin Examples folder contains starter SVG/PNG/TXT assets
 (manufacturer mark watermark, column decoration, background, and colours).
 Load them directly from the synthesizer editor context menus.
-The separate Skin Editor application is not included in version 1.3.1.
+The separate Skin Editor application is not included in version 1.3.3.
 Additional SVG decorations are in Skin Examples/Decorations.
 Installed user copies live under:
 
