@@ -460,6 +460,168 @@ void allSoundOffOnIgnoredChannelDoesNothing()
     expect(part(processor).num_notes() == 0, "matching-channel CC120 clears the stack");
 }
 
+// Mission 16: channel-filter changes must retire input ownership before the
+// old channel's releases become unreachable. A fresh note on the new channel
+// must still play; the old channel must no longer be admitted.
+void channelSwitchReleasesHeldInput()
+{
+    const auto exercise = [](int from, int oldInputChannel, int to, int newInputChannel) {
+        Processor processor;
+        processor.prepareToPlay(48000, 64);
+        setInt(processor, swaraxt::IDs::midiChannel, from);
+        renderEmpty(processor);
+
+        renderMessage(processor,
+                      juce::MidiMessage::noteOn(oldInputChannel, 60, (juce::uint8) 100));
+        expect(part(processor).num_notes() == 1, "old input channel accepted the held note");
+        setInt(processor, swaraxt::IDs::midiChannel, to);
+        renderEmpty(processor);
+        expect(part(processor).num_notes() == 0,
+               "changing MIDI channel retires the old pressed-key owner");
+        expect(part(processor).generated_note_count_for_tests() == 0,
+               "channel switch does not retain generated firmware notes");
+        expect(part(processor).voice().amplitude_envelope_dead(),
+               "channel switch kills old input-owned voice without a release tail");
+
+        renderMessage(processor, juce::MidiMessage::noteOff(oldInputChannel, 60));
+        expect(part(processor).num_notes() == 0,
+               "late note-off from the previous channel is harmless");
+
+        renderMessage(processor,
+                      juce::MidiMessage::noteOn(newInputChannel, 65, (juce::uint8) 100));
+        expect(part(processor).num_notes() == 1,
+               "new channel accepts an independent fresh note");
+        expect(! part(processor).voice().amplitude_envelope_dead(),
+               "fresh note after channel switch wakes the voice");
+        if (to != 0 && oldInputChannel != newInputChannel)
+        {
+            renderMessage(processor,
+                          juce::MidiMessage::noteOn(oldInputChannel, 67, (juce::uint8) 100));
+            expect(part(processor).num_notes() == 1,
+                   "discarded old channel cannot acquire a new note owner");
+        }
+        renderMessage(processor, juce::MidiMessage::noteOff(newInputChannel, 65));
+        expect(part(processor).num_notes() == 0,
+               "new channel's matching note-off works normally");
+    };
+
+    exercise(1, 1, 2, 2);
+    exercise(0, 5, 3, 3);
+    exercise(16, 16, 1, 1);
+    exercise(2, 2, 0, 7);
+}
+
+void channelSwitchReleasesSustainOwnership()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    setInt(processor, swaraxt::IDs::midiChannel, 1);
+    renderEmpty(processor);
+
+    renderCc(processor, 64, 127, 1);
+    expect(part(processor).latched(), "old-channel sustain-down precondition");
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 60));
+    expect(part(processor).num_notes() == 1 && part(processor).latched(),
+           "note-off under the old pedal is genuinely sustain-owned");
+
+    setInt(processor, swaraxt::IDs::midiChannel, 2);
+    renderEmpty(processor);
+    expect(! part(processor).latched() && part(processor).num_notes() == 0,
+           "channel switch clears the pedal and all sustain-owned keys");
+    renderCc(processor, 64, 0, 1);
+    expect(! part(processor).latched() && part(processor).num_notes() == 0,
+           "ignored old-channel pedal-up cannot resurrect note ownership");
+
+    renderMessage(processor, juce::MidiMessage::noteOn(2, 62, (juce::uint8) 100));
+    expect(part(processor).num_notes() == 1,
+           "new input channel starts with no inherited sustain");
+    renderMessage(processor, juce::MidiMessage::noteOff(2, 62));
+    expect(part(processor).num_notes() == 0,
+           "new-channel note-off releases without an inherited pedal");
+
+    // A pedal with no keys is still controller-owned state that needs clearing.
+    renderCc(processor, 64, 127, 2);
+    expect(part(processor).latched(), "pedal-only precondition on channel 2");
+    setInt(processor, swaraxt::IDs::midiChannel, 3);
+    renderEmpty(processor);
+    expect(! part(processor).latched(),
+           "pedal-only channel switch clears stale sustain ownership");
+}
+
+void unchangedChannelKeepsSounding()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    setInt(processor, swaraxt::IDs::midiChannel, 1);
+    renderEmpty(processor);
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    expect(part(processor).num_notes() == 1, "same-channel test holds one note");
+    renderEmpty(processor);
+    setInt(processor, swaraxt::IDs::midiChannel, 1);
+    renderEmpty(processor);
+    expect(part(processor).num_notes() == 1,
+           "reapplying unchanged MIDI channel must not panic a held note");
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 60));
+    expect(part(processor).num_notes() == 0,
+           "unchanged-channel held note releases normally");
+}
+
+void sustainBeforeFirstNoteSurvivesClockStart()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    expect(! part(processor).running(), "internal firmware clock is initially stopped");
+    renderCc(processor, 64, 127);
+    expect(part(processor).latched(), "sustain pedal accepted before first note");
+    renderMessage(processor, juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100));
+    expect(part(processor).running(), "first Note On starts the internal firmware clock");
+    expect(part(processor).latched(), "clock Start must preserve the pressed pedal");
+    renderMessage(processor, juce::MidiMessage::noteOff(1, 60));
+    expect(part(processor).num_notes() == 1,
+           "first note stays latched when Note Off arrives with sustain down");
+    renderEmpty(processor);
+    expect(part(processor).num_notes() == 1, "sustain survives subsequent process blocks");
+    renderCc(processor, 64, 0);
+    expect(! part(processor).latched() && part(processor).num_notes() == 0,
+           "pedal-up after Start releases the originally sustained note");
+}
+
+void controllerSweepPreservesPersistentAuthority()
+{
+    Processor processor;
+    processor.prepareToPlay(48000, 64);
+    renderEmpty(processor);
+    const int values[] = { 0, 1, 63, 64, 127 };
+    std::vector<float> parameterBefore;
+    parameterBefore.reserve(static_cast<size_t>(processor.getParameters().size()));
+    for (auto* parameter : processor.getParameters())
+        parameterBefore.push_back(parameter->getValue());
+    const auto originalOctave = octave(processor);
+    const auto originalRaga = raga(processor);
+    const auto originalShape = oscShape(processor);
+
+    for (int controller = 0; controller < 128; ++controller)
+        for (const int value : values)
+        {
+            renderCc(processor, controller, value);
+            expect(octave(processor) == originalOctave && raga(processor) == originalRaga
+                       && oscShape(processor) == originalShape,
+                   "MIDI CC sweep cannot mutate hidden firmware patch/system authority");
+            const auto& parameters = processor.getParameters();
+            for (int index = 0; index < parameters.size(); ++index)
+                expect(parameters[index]->getValue() == parameterBefore[static_cast<size_t>(index)],
+                       "MIDI CC sweep cannot change any APVTS parameter");
+        }
+    // Positive control: supported transient CC1 must still reach the voice.
+    renderCc(processor, 1, 127);
+    expect(wheel(processor) == static_cast<uint8_t>(127 << 1),
+           "positive control: MIDI CC sweep reaches performance controllers");
+    renderCc(processor, 1, 0);
+    expect(wheel(processor) == 0, "mod wheel clears normally after the CC sweep");
+}
+
 void twoInstancesStayIndependent()
 {
     Processor a, b;
@@ -495,6 +657,11 @@ int main()
     allSoundOffClearsAHeldChord();
     allSoundOffIsIdempotentAndAllowsRetrigger();
     allSoundOffOnIgnoredChannelDoesNothing();
+    channelSwitchReleasesHeldInput();
+    channelSwitchReleasesSustainOwnership();
+    unchangedChannelKeepsSounding();
+    sustainBeforeFirstNoteSurvivesClockStart();
+    controllerSweepPreservesPersistentAuthority();
     twoInstancesStayIndependent();
     std::printf("MIDI CC/NRPN authority tests: %s (%d failures)\n",
                 failures ? "FAILED" : "PASSED", failures);
