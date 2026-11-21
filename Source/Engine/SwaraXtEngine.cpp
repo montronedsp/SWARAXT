@@ -897,16 +897,23 @@ void SwaraXtEngine::applyEmergencySilence() noexcept
 {
     // Voice::Kill() stops new energy at the VCA. Already-rendered native
     // samples, the Dual SVF matching delay, and series board delay/feedback
-    // can still reach the host. Clear only those panic-owned stores. Leave
-    // classic/experimental filter memory and the SRC kernel so a later Note On
-    // in this block is not a wholesale engine reset.
+    // can still reach the host. Clear only those panic-owned stores. A recorded
+    // loop is kept; its playback stays stopped until the play control changes.
+    // Leave classic/experimental filter memory and the SRC kernel so a later
+    // Note On in this block is not a wholesale engine reset.
     dualOutputDelay_.reset();
     internalQueue_.silenceLookahead();
-    boardProcessor_.reset(activeBoard_.effect);
+    boardProcessor_.silenceSoundingState(activeBoard_.effect);
     postDacFilter_.reset();
     // The 0.7 Hz output DC blocker would otherwise take hundreds of
     // milliseconds to forget the last sounding sample.
     dcBlocker_.reset();
+    // The samples still inside the SRC window are the pre-panic note. Let them
+    // drain without charging the 0.7 Hz blocker, or that blocker rings for
+    // hundreds of milliseconds after the window is gone.
+    const double host = hostSampleRate_ > 1.0 ? hostSampleRate_ : 48000.0;
+    const double native = static_cast<double>(kOutputLatencyNativeSamples + kAudioBlockSize + 256);
+    emergencyDcResetRemaining_ = static_cast<int>(std::ceil(native * host / kInternalSampleRate)) + 8;
 }
 
 void SwaraXtEngine::releaseMidiInput(const juce::MidiBuffer& midi) noexcept
@@ -1505,8 +1512,8 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
 
         float sample = 0.0f;
         if (internalQueue_.size() >= internalQueue_.minimumReadableSize())
-            sample = dcBlocker_.process(internalQueue_.readInterpolated());
-        else if (drainingToDormant_)
+            sample = internalQueue_.readInterpolated();
+        else if (drainingToDormant_ && emergencyDcResetRemaining_ == 0)
         {
             dcDrainingToDormant_ = true;
             sample = dcBlocker_.process(0.0f);
@@ -1520,6 +1527,18 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
                 || std::abs(sample) <= kDcSettlementThreshold
                 || dcDrainSamples_ >= maxDcDrainSamples_)
                 enterDormant();
+        }
+
+        // Panic drain: emit the SRC residue raw and keep the blocker empty.
+        // Feeding that residue through the 0.7 Hz filter would re-charge it.
+        if (emergencyDcResetRemaining_ > 0)
+        {
+            dcBlocker_.reset();
+            --emergencyDcResetRemaining_;
+        }
+        else if (! drainingToDormant_ || ! dcDrainingToDormant_)
+        {
+            sample = dcBlocker_.process(sample);
         }
 
         if (! std::isfinite(sample))

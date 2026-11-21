@@ -10,10 +10,12 @@ using FloatBlock = std::array<float, blockSize>;
 class BoardProcessor {
 public:
     void reset(Effect nextEffect = Effect::off) noexcept;
+    void silenceSoundingState(Effect effect) noexcept;
     void processBoard(FloatBlock& samples, const BoardControl& controls,
                       const float* hardwareMix = nullptr) noexcept;
     void processClassicFx(FloatBlock& samples, const BoardControl& controls) noexcept;
     bool hasValidLoop() const noexcept { return effects_.hasRecordedLoop(); }
+    bool loopPlaybackHeld() const noexcept { return effects_.loopPlaybackHeld(); }
     const BoardInputModel& inputModel() const noexcept { return input_; }
     static double tailSeconds(const BoardControl& controls) noexcept;
     bool needsAudio(const BoardControl& controls) const noexcept;

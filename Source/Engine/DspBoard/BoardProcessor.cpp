@@ -19,6 +19,16 @@ void BoardProcessor::reset(Effect effect) noexcept
     lastOutput_ = 0;
     tailActive_ = false;
 }
+void BoardProcessor::silenceSoundingState(Effect effect) noexcept
+{
+    input_.reset();
+    output_.reset();
+    filter_.reset();
+    effects_.silenceSoundingState(effect == Effect::looper || effect == Effect::pitch);
+    sinceInput_ = quietTime_ = 0;
+    lastOutput_ = 0;
+    tailActive_ = false;
+}
 void BoardProcessor::processEffects(Block& samples, const BoardControl& c) noexcept
 {
     if (c.effect == Effect::looper && c.cv2 >= 128 && !effects_.hasRecordedLoop())
