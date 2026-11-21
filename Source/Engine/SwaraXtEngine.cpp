@@ -305,7 +305,21 @@ void SwaraXtEngine::applyParameters(const SequenceSnapshot& sequence, uint32_t r
     patch->filter_cutoff = shruthiCutoffCodeFromUnrounded(unroundedCutoff);
     patch->filter_resonance = static_cast<uint8_t>(juce::jlimit(0, 63,
         static_cast<int>(std::lround(filterResonance_ * 63.0f))));
-    midiChannel_ = juce::jlimit(0, 16, ParameterCache::loadInt(parameterCache_->midiChannel));
+    const int nextMidiChannel = juce::jlimit(0, 16,
+        ParameterCache::loadInt(parameterCache_->midiChannel));
+    if (nextMidiChannel != midiChannel_)
+    {
+        // Input release messages on the previous channel will now be rejected.
+        // Retire both pressed/sustain-owned voices and generated voices before
+        // adopting the new input filter. This is a note-ownership boundary,
+        // not a CC120 host-audio/FX panic: existing effects and loops survive.
+        part_.AllSoundOff();
+        // Generated MIDI may already be in flight after its firmware owner
+        // ended. Retire the old output identities on their original channels;
+        // drop pending Ons and retain failed Offs for bounded retry.
+        forceFlushSequencerMidiRelease(hostBlockOrigin_);
+    }
+    midiChannel_ = nextMidiChannel;
     midiInputMode_ = juce::jlimit(0, 2, ParameterCache::loadInt(parameterCache_->midiInputTuning));
     // The tuning latch precedes parameter adoption; install this admitted mode
     // before clocks or MIDI can generate a note in the current callback.
