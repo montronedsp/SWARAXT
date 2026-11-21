@@ -354,6 +354,7 @@ class SwaraXtEngine {
     bool patchRequiresAudioSource() const noexcept;
     void dispatchMidi(const PendingMidi& event);
     void applyEmergencySilence() noexcept;
+    int emergencyDcResetRemaining_ = 0;
     void collectMidiEvents(juce::MidiBufferIterator& cursor, const juce::MidiBufferIterator& end,
                            int startSample, int numSamples);
     void updateFilterFromShruthi();

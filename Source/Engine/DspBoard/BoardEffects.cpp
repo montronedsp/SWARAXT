@@ -12,6 +12,27 @@ void BoardEffects::reset(bool offsetBinarySilence) noexcept
     *this = BoardEffects{};
     if (offsetBinarySilence) line_.fill(-128); // Stored byte 128, not signed audio -128.
 }
+void BoardEffects::silenceSoundingState(bool offsetBinaryLine) noexcept
+{
+    crushCounter_ = 0;
+    delayCounter_ = 0;
+    held_ = 0;
+    delayed_ = 0;
+    delayOutput_ = 0;
+    delayInput_ = 0;
+    ringPhase_ = 0;
+    pitchPhase_ = 0;
+    pitchWrite_ = 0;
+    if (recordedLoop_)
+    {
+        // line_ is the loop. Do not wipe it, and do not keep replaying it.
+        loopPlaybackHeld_ = true;
+        holdCvLatched_ = false;
+        return;
+    }
+    line_.fill(offsetBinaryLine ? static_cast<std::int8_t>(-128) : 0);
+    delayPtr_ = 0;
+}
 void BoardEffects::process(Block& b, Effect effect, std::uint8_t x, std::uint8_t y, std::uint8_t tempo) noexcept
 {
     switch (effect)
@@ -22,7 +43,22 @@ void BoardEffects::process(Block& b, Effect effect, std::uint8_t x, std::uint8_t
         case Effect::combPositive: comb(b, true, x, y); break;
         case Effect::combNegative: comb(b, false, x, y); break;
         case Effect::ringMod: ringMod(b, x, y); break;
-        case Effect::looper: if (y < 128) loopRecord(b, x); else loopReplay(b, x); break;
+        case Effect::looper:
+            if (y < 128)
+            {
+                loopPlaybackHeld_ = false;
+                holdCvLatched_ = false;
+                loopRecord(b, x);
+            }
+            else if (releaseHeldLoop(y))
+            {
+                b.fill(0);
+            }
+            else
+            {
+                loopReplay(b, x);
+            }
+            break;
         case Effect::pitch: pitch(b, x, y); break;
         case Effect::delay:
         case Effect::delayFeedback:
@@ -166,6 +202,22 @@ void BoardEffects::loopRecord(Block& b, std::uint8_t time) noexcept
     loopStart_ = static_cast<std::uint16_t>((loopPtr_ + 1024u - duration) & 1023u);
     loopPhase_ = 0;
     loopDuration_ = duration;
+}
+bool BoardEffects::releaseHeldLoop(std::uint8_t cv2) noexcept
+{
+    if (! loopPlaybackHeld_)
+        return false;
+    if (! holdCvLatched_)
+    {
+        holdCv2_ = cv2;
+        holdCvLatched_ = true;
+        return true;
+    }
+    if (cv2 == holdCv2_)
+        return true;
+    loopPlaybackHeld_ = false;
+    holdCvLatched_ = false;
+    return false;
 }
 void BoardEffects::loopReplay(Block& b, std::uint8_t pitchCode) noexcept
 {

@@ -46,22 +46,20 @@ shruthi::Part& part(Processor& processor)
 }
 
 constexpr float kAudible = 1.0e-2f;
+// Practical emergency silence. This is not digital zero: the retained FIR
+// history can leave a reconstruction residue of a few thousandths (~-50 dBFS).
+constexpr float kPracticalSilence = 4.0e-3f;
+constexpr float kDigitalSilence = 1.0e-6f;
 constexpr double kNativeRate = 20000000.0 / 510.0;
-
-float silenceCeiling(float peakBefore) noexcept
-{
-    return std::max(kAudible, 0.02f * peakBefore);
-}
+constexpr int kFirTaps = 256;
 
 int architecturalSilenceBudget(double hostRate) noexcept
 {
-    // Reported native-to-host latency (filter matching delay + FIR group delay)
-    // plus one native block still sitting in the reconstruction window.
+    // Filter matching delay + FIR group delay, one native block, and the FIR
+    // window that silenceLookahead deliberately keeps. No extra time floor.
     const double native = static_cast<double>(swaraxt::SwaraXtEngine::kOutputLatencyNativeSamples
-        + swaraxt::SwaraXtEngine::kAudioBlockSize);
-    const int fromArchitecture = static_cast<int>(std::ceil(native * hostRate / kNativeRate)) + 32;
-    const int fromTime = static_cast<int>(std::ceil(0.025 * hostRate));
-    return std::max(fromArchitecture, fromTime);
+        + swaraxt::SwaraXtEngine::kAudioBlockSize + kFirTaps);
+    return static_cast<int>(std::ceil(native * hostRate / kNativeRate)) + 8;
 }
 
 int recoveryBlocks(double hostRate, int blockSize) noexcept
@@ -89,6 +87,22 @@ void applyDryLongRelease(Processor& processor, bool longRelease)
     setInt(processor, swaraxt::IDs::dspFxProgram, 0);
     setFloat(processor, swaraxt::IDs::filterResonance, 0.0f);
     setFloat(processor, swaraxt::IDs::master, 0.85f);
+}
+
+float rmsOf(const std::vector<float>& samples, int begin, int end) noexcept
+{
+    const int n = static_cast<int>(samples.size());
+    begin = std::max(0, begin);
+    end = std::min(n, end);
+    if (end <= begin)
+        return 0.0f;
+    double sum = 0.0;
+    for (int i = begin; i < end; ++i)
+    {
+        const double sample = samples[static_cast<size_t>(i)];
+        sum += sample * sample;
+    }
+    return static_cast<float>(std::sqrt(sum / static_cast<double>(end - begin)));
 }
 
 float peakOf(const std::vector<float>& samples, int begin, int end) noexcept
@@ -273,35 +287,47 @@ struct CaseResult {
     double rate = 0;
     int block = 0;
     int eventOffset = 0;
-    int lastAudibleSample = -1;
+    int lastPracticalSample = -1;
     int residualSamples = 0;
+    int samplesToPractical = -1;
     float peakBefore = 0;
+    float peakAfterEvent = 0;
+    float rmsAfterBudget = 0;
     float peakAfterBudget = 0;
     float step = 0;
+    bool digitalSilence = false;
     bool envelopeDead = false;
     bool recovered = false;
 };
 
 void report(const CaseResult& result)
 {
+    const auto db = [](float x) {
+        return 20.0 * std::log10(std::max(static_cast<double>(x), 1.0e-12));
+    };
     std::printf(
-        "  %-28s sr=%.0f bs=%4d ev=%4d last=%5d residual=%5d pre=%.4f post=%.6f step=%.4f dead=%d rec=%d\n",
-        result.name, result.rate, result.block, result.eventOffset, result.lastAudibleSample,
-        result.residualSamples, result.peakBefore, result.peakAfterBudget, result.step,
+        "  %-28s sr=%.0f bs=%4d ev=%4d pre=%.4f(%+.1fdB) postPeak=%.6f(%+.1fdB) "
+        "after=%.6f(%+.1fdB) rms=%.6f settle=%d residual=%d digital=%d step=%.4f dead=%d rec=%d\n",
+        result.name, result.rate, result.block, result.eventOffset,
+        result.peakBefore, db(result.peakBefore),
+        result.peakAfterEvent, db(result.peakAfterEvent),
+        result.peakAfterBudget, db(result.peakAfterBudget),
+        result.rmsAfterBudget, result.samplesToPractical, result.residualSamples,
+        result.digitalSilence ? 1 : 0, result.step,
         result.envelopeDead ? 1 : 0, result.recovered ? 1 : 0);
 }
 
 CaseResult measureCc120(const char* name, double rate, int blockSize, int eventOffset,
-                        bool longRelease, bool resonant, bool experimental, bool delayFx,
+                        bool longRelease, bool resonant, bool experimental, int fxProgram,
                         bool arp)
 {
     Processor processor;
     applyDryLongRelease(processor, longRelease);
     if (resonant)
         setFloat(processor, swaraxt::IDs::filterResonance, 0.85f);
-    if (delayFx)
+    if (fxProgram > 0)
     {
-        setInt(processor, swaraxt::IDs::dspFxProgram, 6); // Delay
+        setInt(processor, swaraxt::IDs::dspFxProgram, fxProgram);
         setInt(processor, swaraxt::IDs::dspFxParam1, 80);
         setInt(processor, swaraxt::IDs::dspFxParam2, 40);
     }
@@ -328,16 +354,18 @@ CaseResult measureCc120(const char* name, double rate, int blockSize, int eventO
     result.eventOffset = clampedOffset;
     const int eventAbs = holdBlocks * blockSize + clampedOffset;
     const int budget = architecturalSilenceBudget(rate);
+    const int end = static_cast<int>(rendered.left.size());
     result.peakBefore = peakOf(rendered.left, 0, eventAbs);
-    result.peakAfterBudget = peakOf(rendered.left, eventAbs + budget,
-                                    static_cast<int>(rendered.left.size()));
-    result.lastAudibleSample = lastAudible(rendered.left, eventAbs,
-                                           static_cast<int>(rendered.left.size()),
-                                           silenceCeiling(result.peakBefore));
-    result.residualSamples = result.lastAudibleSample < eventAbs
+    result.peakAfterEvent = peakOf(rendered.left, eventAbs, end);
+    result.peakAfterBudget = peakOf(rendered.left, eventAbs + budget, end);
+    result.rmsAfterBudget = rmsOf(rendered.left, eventAbs + budget, end);
+    result.lastPracticalSample = lastAudible(rendered.left, eventAbs, end, kPracticalSilence);
+    result.residualSamples = result.lastPracticalSample < eventAbs
         ? 0
-        : result.lastAudibleSample - eventAbs + 1;
-    result.step = maxStep(rendered.left, eventAbs, eventAbs + 16);
+        : result.lastPracticalSample - eventAbs + 1;
+    result.samplesToPractical = result.residualSamples;
+    result.digitalSilence = peakOf(rendered.left, eventAbs + budget, end) <= kDigitalSilence;
+    result.step = maxStep(rendered.left, eventAbs, std::min(end, eventAbs + 16));
     result.envelopeDead = part(processor).voice().amplitude_envelope_dead();
 
     if (arp)
@@ -361,8 +389,8 @@ CaseResult measureCc120(const char* name, double rate, int blockSize, int eventO
     expect(finiteSamples(rendered), "CC120 output remains finite");
     expect(result.peakBefore > kAudible, "note was audible before CC120");
     expect(result.envelopeDead, "amplitude envelope is DEAD after CC120");
-    expect(result.peakAfterBudget <= silenceCeiling(result.peakBefore),
-           "host output after the SRC budget is silent");
+    expect(result.peakAfterBudget <= kPracticalSilence,
+           "host output after the latency budget is practically silent");
     expect(result.recovered, "Note On after CC120 restores synthesis");
     report(result);
     return result;
@@ -370,15 +398,14 @@ CaseResult measureCc120(const char* name, double rate, int blockSize, int eventO
 
 void audioQualification()
 {
-    std::printf("CC120 host-output measurements (budget is SRC group delay + one native block):\n");
-    measureCc120("dry-osc", 48000, 64, 0, true, false, false, false, false);
-    measureCc120("long-release", 48000, 256, 17, true, false, false, false, false);
-    measureCc120("classic-reso", 48000, 64, 0, true, true, false, false, false);
-    measureCc120("experimental-svf", 48000, 64, 8, true, true, true, false, false);
-    measureCc120("board-delay", 48000, 64, 0, true, false, false, true, false);
-    measureCc120("delay-feedback", 48000, 128, 0, true, false, false, true, false);
-    measureCc120("sustain-mod", 48000, 64, 0, true, false, false, false, false);
-    measureCc120("arp", 48000, 256, 0, true, false, false, false, true);
+    std::printf("CC120 host-output measurements (budget is filter+FIR latency, no 25 ms floor):\n");
+    measureCc120("dry-osc", 48000, 64, 0, true, false, false, 0, false);
+    measureCc120("long-release", 48000, 256, 17, true, false, false, 0, false);
+    measureCc120("classic-reso", 48000, 64, 0, true, true, false, 0, false);
+    measureCc120("experimental-svf", 48000, 64, 8, true, true, true, 0, false);
+    measureCc120("board-delay", 48000, 64, 0, true, false, false, 6, false);
+    measureCc120("delay-feedback", 48000, 128, 0, true, false, false, 7, false);
+    measureCc120("arp", 48000, 256, 0, true, false, false, 0, true);
 }
 
 void contrastReleaseVsKill()
@@ -406,7 +433,7 @@ void contrastReleaseVsKill()
 
     std::printf("contrast: CC120 tail=%.6f CC123 tail=%.6f NoteOff tail=%.6f (budget=%d)\n",
                 killTail, releaseTail, noteOffTail, budget);
-    expect(killTail <= silenceCeiling(0.55f), "CC120 does not keep the long-release tail");
+    expect(killTail <= kPracticalSilence, "CC120 does not keep the long-release tail");
     expect(releaseTail > kAudible, "CC123 still has the long-release tail");
     expect(noteOffTail > kAudible, "ordinary Note Off still has the long-release tail");
     expect(killTail < 0.05f * releaseTail, "CC120 tail is far below the CC123 release tail");
@@ -414,16 +441,47 @@ void contrastReleaseVsKill()
     expect(! part(releaseProc).voice().amplitude_envelope_dead(), "CC123 envelope not DEAD");
 }
 
-void sameBlockRetrigger()
+float hostPeakAfter(Processor& processor, int blockSize, int blocks)
 {
+    float peak = 0.0f;
+    juce::AudioBuffer<float> audio(2, blockSize);
+    for (int i = 0; i < blocks; ++i)
+    {
+        juce::MidiBuffer idle;
+        processor.processBlock(audio, idle);
+        peak = std::max(peak, peakOf(
+            std::vector<float>(audio.getReadPointer(0), audio.getReadPointer(0) + blockSize),
+            0, blockSize));
+    }
+    return peak;
+}
+
+void expectRetriggerAudible(const char* name, int blockSize, int panicOffset, int noteOffset,
+                            bool noteInNextBlock)
+{
+    Processor panicOnly;
+    applyDryLongRelease(panicOnly, true);
+    panicOnly.prepareToPlay(48000, blockSize);
+    juce::AudioBuffer<float> audio(2, blockSize);
+    juce::MidiBuffer idle;
+    panicOnly.processBlock(audio, idle);
+    for (int i = 0; i < 12; ++i)
+    {
+        juce::MidiBuffer midi;
+        if (i == 0)
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100), 0);
+        panicOnly.processBlock(audio, midi);
+    }
+    juce::MidiBuffer panic;
+    panic.addEvent(juce::MidiMessage::allSoundOff(1), panicOffset);
+    panicOnly.processBlock(audio, panic);
+    const float residue = hostPeakAfter(panicOnly, blockSize, recoveryBlocks(48000, blockSize));
+
     Processor processor;
     applyDryLongRelease(processor, true);
-    processor.prepareToPlay(48000, 256);
-    juce::AudioBuffer<float> audio(2, 256);
-    juce::MidiBuffer idle;
+    processor.prepareToPlay(48000, blockSize);
     processor.processBlock(audio, idle);
-
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 12; ++i)
     {
         juce::MidiBuffer midi;
         if (i == 0)
@@ -432,24 +490,52 @@ void sameBlockRetrigger()
     }
 
     juce::MidiBuffer packed;
-    packed.addEvent(juce::MidiMessage::allSoundOff(1), 16);
-    packed.addEvent(juce::MidiMessage::noteOn(1, 67, (juce::uint8) 110), 180);
+    packed.addEvent(juce::MidiMessage::allSoundOff(1), panicOffset);
+    if (! noteInNextBlock)
+        packed.addEvent(juce::MidiMessage::noteOn(1, 67, (juce::uint8) 110), noteOffset);
     processor.processBlock(audio, packed);
-    expect(part(processor).num_notes() == 1, "same-block Note On after CC120 is owned");
-    expect(! part(processor).voice().amplitude_envelope_dead(),
-           "same-block Note On restarts the envelope");
+    if (noteInNextBlock)
+    {
+        juce::MidiBuffer next;
+        next.addEvent(juce::MidiMessage::noteOn(1, 67, (juce::uint8) 110), noteOffset);
+        processor.processBlock(audio, next);
+    }
 
-    const float afterNote = peakOf(
-        std::vector<float>(audio.getReadPointer(0), audio.getReadPointer(0) + 256), 180, 256);
-    expect(afterNote > kAudible || part(processor).voice().vca() != 0,
-           "same-block retrigger produces a live voice");
+    expect(part(processor).num_notes() == 1, name);
+    expect(! part(processor).voice().amplitude_envelope_dead(), name);
+    const float recovered = hostPeakAfter(processor, blockSize, recoveryBlocks(48000, blockSize));
+    expect(recovered > kAudible, name);
+    expect(recovered > residue + kPracticalSilence, name);
+}
 
+void sameBlockRetrigger()
+{
+    expectRetriggerAudible("retrigger 16 then 180 owns and sounds", 256, 16, 180, false);
+    expectRetriggerAudible("retrigger 40 then 41 owns and sounds", 128, 40, 41, false);
+    expectRetriggerAudible("retrigger same sample owns and sounds", 128, 16, 16, false);
+    expectRetriggerAudible("retrigger next block owns and sounds", 64, 63, 0, true);
+
+    Processor processor;
+    applyDryLongRelease(processor, true);
+    processor.prepareToPlay(48000, 256);
+    juce::AudioBuffer<float> audio(2, 256);
+    juce::MidiBuffer idle;
+    processor.processBlock(audio, idle);
+    juce::MidiBuffer note;
+    note.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100), 0);
+    processor.processBlock(audio, note);
+    for (int i = 0; i < 8; ++i)
+        processor.processBlock(audio, idle);
     juce::MidiBuffer twice;
     twice.addEvent(juce::MidiMessage::allSoundOff(1), 0);
     twice.addEvent(juce::MidiMessage::allSoundOff(1), 200);
+    twice.addEvent(juce::MidiMessage::noteOn(1, 72, (juce::uint8) 110), 220);
     processor.processBlock(audio, twice);
-    expect(part(processor).voice().amplitude_envelope_dead(),
-           "multiple CC120 in one block remain DEAD");
+    expect(part(processor).num_notes() == 1, "repeated CC120 then Note On is owned");
+    expect(! part(processor).voice().amplitude_envelope_dead(),
+           "repeated CC120 then Note On starts the envelope");
+    expect(hostPeakAfter(processor, 256, recoveryBlocks(48000, 256)) > kAudible,
+           "repeated CC120 then Note On reaches the host");
 }
 
 void ignoredChannelAudio()
@@ -508,27 +594,198 @@ void timingMatrix()
 
 void sequencerDoesNotStickTheKilledVoice()
 {
+    // Host-clock SEQ with no transport: after panic the killed step must stay
+    // dead. Internal-clock SEQ may emit a later step by design; that is not
+    // tested as a failure here.
     Processor processor;
     applyDryLongRelease(processor, true);
     setInt(processor, swaraxt::IDs::seqMode, 2);
     setInt(processor, swaraxt::IDs::seqTempo, 140);
+    setInt(processor, swaraxt::IDs::seqClockMode, 1);
     processor.prepareToPlay(48000, 256);
     juce::AudioBuffer<float> audio(2, 256);
+    juce::MidiBuffer idle;
+    processor.processBlock(audio, idle);
+    expect(part(processor).sequencer_settings().seq_tempo == 0,
+           "host-clock mode disables the internal sequencer clock");
+
     juce::MidiBuffer note;
     note.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100), 0);
     processor.processBlock(audio, note);
     for (int i = 0; i < 6; ++i)
-    {
-        juce::MidiBuffer idle;
         processor.processBlock(audio, idle);
-    }
+
+    const auto generatedBefore = part(processor).generated_note_count_for_tests();
     juce::MidiBuffer cc120;
     cc120.addEvent(juce::MidiMessage::allSoundOff(1), 0);
     processor.processBlock(audio, cc120);
-    expect(part(processor).voice().amplitude_envelope_dead()
-               || part(processor).generated_note_count_for_tests() == 0,
-           "CC120 kills the current sequencer voice or clears generated owners");
+    expect(part(processor).voice().amplitude_envelope_dead(),
+           "CC120 terminates the sounding sequencer voice");
+    expect(part(processor).generated_note_count_for_tests() == 0,
+           "CC120 clears generated-note owners");
     expect(part(processor).num_notes() == 0, "CC120 clears pressed keys while the sequencer runs");
+    for (int i = 0; i < 8; ++i)
+        processor.processBlock(audio, idle);
+    expect(part(processor).voice().amplitude_envelope_dead(),
+           "without a host clock the killed voice stays dead");
+    expect(part(processor).generated_note_count_for_tests() == 0,
+           "without a host clock no new generated notes appear");
+    expect(generatedBefore >= 0, "sequencer ownership was observable before panic");
+}
+
+void sustainAndModulationPanic()
+{
+    Processor processor;
+    applyDryLongRelease(processor, true);
+    setInt(processor, swaraxt::IDs::lfo1Wave, 1);
+    setInt(processor, swaraxt::IDs::lfo1Rate, 120);
+    setInt(processor, swaraxt::IDs::lfo1Attack, 0);
+    setInt(processor, swaraxt::IDs::filterLfoDepth, 63);
+    processor.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(2, 64);
+    juce::MidiBuffer idle;
+    processor.processBlock(audio, idle);
+
+    juce::MidiBuffer note;
+    note.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100), 0);
+    processor.processBlock(audio, note);
+    for (int i = 0; i < 8; ++i)
+        processor.processBlock(audio, idle);
+
+    juce::MidiBuffer pedal;
+    pedal.addEvent(juce::MidiMessage::controllerEvent(1, 64, 127), 0);
+    pedal.addEvent(juce::MidiMessage::controllerEvent(1, 1, 127), 1);
+    pedal.addEvent(juce::MidiMessage::noteOff(1, 60), 2);
+    processor.processBlock(audio, pedal);
+    expect(part(processor).latched(), "sustain is engaged");
+    expect(part(processor).num_notes() == 1, "the note stays latched after Note Off");
+    expect(part(processor).voice().modulation_source(avrlib_hd::kModSourceWheel) > 0,
+           "mod wheel modulation is active");
+    bool lfoMoved = false;
+    auto lfoBefore = part(processor).voice().modulation_source(avrlib_hd::kModSourceLfo1);
+    for (int i = 0; i < 16; ++i)
+    {
+        processor.processBlock(audio, idle);
+        const auto now = part(processor).voice().modulation_source(avrlib_hd::kModSourceLfo1);
+        lfoMoved = lfoMoved || now != lfoBefore;
+        lfoBefore = now;
+    }
+    expect(lfoMoved, "LFO modulation is running");
+
+    juce::MidiBuffer panic;
+    panic.addEvent(juce::MidiMessage::allSoundOff(1), 0);
+    processor.processBlock(audio, panic);
+    expect(part(processor).num_notes() == 0, "CC120 clears the latched owner");
+    expect(! part(processor).latched(), "CC120 clears the sustain pedal");
+    expect(part(processor).voice().amplitude_envelope_dead(), "CC120 envelope is DEAD");
+
+    juce::MidiBuffer pedalUp;
+    pedalUp.addEvent(juce::MidiMessage::controllerEvent(1, 64, 0), 0);
+    processor.processBlock(audio, pedalUp);
+    expect(part(processor).num_notes() == 0, "pedal-up does not restore the old note");
+    expect(part(processor).voice().amplitude_envelope_dead(), "pedal-up leaves the envelope DEAD");
+
+    juce::MidiBuffer again;
+    again.addEvent(juce::MidiMessage::noteOn(1, 67, (juce::uint8) 110), 0);
+    processor.processBlock(audio, again);
+    expect(part(processor).num_notes() == 1, "fresh Note On after sustain panic is owned");
+    expect(hostPeakAfter(processor, 64, recoveryBlocks(48000, 64)) > kAudible,
+           "fresh Note On after sustain panic reaches the host");
+}
+
+void feedbackDelayIsLiveBeforePanic()
+{
+    Processor dry;
+    applyDryLongRelease(dry, false);
+    auto dryTail = holdThenEvent(dry, 48000, 64, juce::MidiMessage::noteOff(1, 60), 0, 16, 40);
+    const float dryPeak = peakOf(dryTail.left, 20 * 64, static_cast<int>(dryTail.left.size()));
+
+    Processor feedback;
+    applyDryLongRelease(feedback, false);
+    setInt(feedback, swaraxt::IDs::dspFxProgram, 7);
+    setInt(feedback, swaraxt::IDs::dspFxParam1, 96);
+    setInt(feedback, swaraxt::IDs::dspFxParam2, 63);
+    auto tail = holdThenEvent(feedback, 48000, 64, juce::MidiMessage::noteOff(1, 60), 0, 16, 40);
+    const float fbPeak = peakOf(tail.left, 20 * 64, static_cast<int>(tail.left.size()));
+    expect(fbPeak > kAudible, "delay feedback is still sounding after the voice releases");
+    expect(fbPeak > dryPeak + kAudible, "feedback tail exceeds the dry release");
+}
+
+void looperSurvivesPanic()
+{
+    Processor processor;
+    applyDryLongRelease(processor, false);
+    setInt(processor, swaraxt::IDs::dspFxProgram, 15);
+    setInt(processor, swaraxt::IDs::dspFxParam1, 32);
+    setInt(processor, swaraxt::IDs::dspFxParam2, 0);
+    processor.prepareToPlay(48000, 64);
+    juce::AudioBuffer<float> audio(2, 64);
+    juce::MidiBuffer idle;
+    processor.processBlock(audio, idle);
+    juce::MidiBuffer note;
+    note.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8) 100), 0);
+    processor.processBlock(audio, note);
+    for (int i = 0; i < 80; ++i)
+        processor.processBlock(audio, idle);
+    expect(processor.engineForTests().boardProcessorForTests().hasValidLoop(),
+           "looper recorded nonzero content");
+
+    juce::MidiBuffer release;
+    release.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+    processor.processBlock(audio, release);
+    for (int i = 0; i < 20 && ! part(processor).voice().amplitude_envelope_dead(); ++i)
+        processor.processBlock(audio, idle);
+
+    setInt(processor, swaraxt::IDs::dspFxParam2, 40);
+    float playPeak = 0.0f;
+    for (int i = 0; i < 40; ++i)
+    {
+        processor.processBlock(audio, idle);
+        if (i >= 8)
+            playPeak = std::max(playPeak, peakOf(
+                std::vector<float>(audio.getReadPointer(0), audio.getReadPointer(0) + 64), 0, 64));
+    }
+    expect(part(processor).voice().amplitude_envelope_dead(), "loop playback is not the synthesizer voice");
+    expect(playPeak > kAudible, "recorded loop plays back");
+
+    juce::MidiBuffer panic;
+    panic.addEvent(juce::MidiMessage::allSoundOff(1), 0);
+    processor.processBlock(audio, panic);
+    expect(processor.engineForTests().boardProcessorForTests().hasValidLoop(),
+           "CC120 keeps the recorded loop");
+    expect(processor.engineForTests().boardProcessorForTests().loopPlaybackHeld(),
+           "CC120 stops autonomous looper playback");
+    expect(part(processor).voice().amplitude_envelope_dead(), "CC120 kills the voice during loop playback");
+    const int skip = architecturalSilenceBudget(48000) / 64 + 2;
+    for (int i = 0; i < skip; ++i)
+        processor.processBlock(audio, idle);
+    const float held = hostPeakAfter(processor, 64, 20);
+    expect(held <= kPracticalSilence, "held loop does not replay by itself");
+
+    juce::MidiBuffer again;
+    again.addEvent(juce::MidiMessage::allSoundOff(1), 0);
+    processor.processBlock(audio, again);
+    expect(processor.engineForTests().boardProcessorForTests().hasValidLoop(),
+           "a second CC120 still keeps the loop");
+    expect(hostPeakAfter(processor, 64, 10) <= kPracticalSilence,
+           "repeated CC120 stays silent");
+
+    setInt(processor, swaraxt::IDs::dspFxParam2, 48);
+    float resume = 0.0f;
+    for (int i = 0; i < 40; ++i)
+    {
+        processor.processBlock(audio, idle);
+        resume = std::max(resume, peakOf(
+            std::vector<float>(audio.getReadPointer(0), audio.getReadPointer(0) + 64), 0, 64));
+    }
+    expect(part(processor).voice().amplitude_envelope_dead(), "resume does not require a new recording");
+    expect(resume > kAudible, "the original loop plays again after the play control changes");
+
+    juce::MidiBuffer fresh;
+    fresh.addEvent(juce::MidiMessage::noteOn(1, 64, (juce::uint8) 100), 0);
+    processor.processBlock(audio, fresh);
+    expect(! part(processor).voice().amplitude_envelope_dead(),
+           "Note On after looper panic starts the voice");
 }
 
 }  // namespace
@@ -541,6 +798,9 @@ int main()
     envelopeQualification();
     contrastReleaseVsKill();
     sameBlockRetrigger();
+    sustainAndModulationPanic();
+    feedbackDelayIsLiveBeforePanic();
+    looperSurvivesPanic();
     ignoredChannelAudio();
     sequencerDoesNotStickTheKilledVoice();
     audioQualification();

@@ -25,9 +25,14 @@ constexpr int choiceFromEffect(Effect effect) noexcept
 class BoardEffects {
 public:
     void reset(bool offsetBinarySilence = false) noexcept;
+    // Stop circulating delay, comb, and looper playback. A recorded loop's
+    // samples and boundaries stay intact; playback stays stopped until the
+    // existing play control (CV2) changes while still in replay.
+    void silenceSoundingState(bool offsetBinaryLine = false) noexcept;
     void process(Block&, Effect, std::uint8_t cv1, std::uint8_t cv2, std::uint8_t tempo) noexcept;
     friend void delayWrapTests();
     bool hasRecordedLoop() const noexcept { return recordedLoop_; }
+    bool loopPlaybackHeld() const noexcept { return loopPlaybackHeld_; }
 private:
     void distortion(Block&, std::uint8_t, std::uint8_t) noexcept;
     void crush(Block&, std::uint8_t, std::uint8_t) noexcept;
@@ -36,6 +41,7 @@ private:
     void delay(Block&, Effect, std::uint8_t, std::uint8_t, std::uint8_t) noexcept;
     void loopRecord(Block&, std::uint8_t) noexcept;
     void loopReplay(Block&, std::uint8_t) noexcept;
+    bool releaseHeldLoop(std::uint8_t cv2) noexcept;
     void pitch(Block&, std::uint8_t, std::uint8_t) noexcept;
     std::array<std::int8_t, 1281> line_{};
     std::uint16_t delayPtr_ = 0, ringPhase_ = 0;
@@ -45,5 +51,8 @@ private:
     std::uint8_t loopPitch_ = 0;
     std::uint32_t loopPhase_ = 0, pitchPhase_ = 0;
     bool recordedLoop_ = false;
+    bool loopPlaybackHeld_ = false;
+    bool holdCvLatched_ = false;
+    std::uint8_t holdCv2_ = 0;
 };
 }
