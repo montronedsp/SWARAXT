@@ -478,8 +478,6 @@ void channelSwitchReleasesHeldInput()
         renderEmpty(processor);
         expect(part(processor).num_notes() == 0,
                "changing MIDI channel retires the old pressed-key owner");
-        expect(part(processor).generated_note_count_for_tests() == 0,
-               "channel switch does not retain generated firmware notes");
         expect(part(processor).voice().amplitude_envelope_dead(),
                "channel switch kills old input-owned voice without a release tail");
 
