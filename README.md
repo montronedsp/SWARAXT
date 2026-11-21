@@ -2,6 +2,12 @@
 
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=montronedsp_SWARAXT&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=montronedsp_SWARAXT) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15241/badge)](https://www.bestpractices.dev/projects/15241)
 
+<p align="center">
+  <a href="https://www.montronedsp.com/products.html#swara">
+    <img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/hero-jungle-1600.webp" alt="SWARA XT synthesizer interface — Jungle / PCB Trace finish" width="960">
+  </a>
+</p>
+
 **SWARA XT** is an open-source synthesizer by MontroneDSP, built around a
 Shruthi-derived monophonic voice. Two digital oscillators, nonlinear filtering
 and a twelve-slot modulation matrix give it a distinctive range of basses,
