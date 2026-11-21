@@ -139,7 +139,16 @@ ReleaseResult release(int route, int cal, int fx, double rate, int size, int off
     if (!artifacts.empty() && fx == 6) { measured.reserve(static_cast<size_t>(end)); unchanged.reserve(static_cast<size_t>(end)); }
     for (int pos = 0; pos < end; pos += size) {
         if (pos == 0) { m.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(110)), 0); if (control) cm = m; }
-        if (pos == off) { m.addEvent(offCode ? juce::MidiMessage::controllerEvent(1, offCode, 0) : juce::MidiMessage::noteOff(1, 48), 0); if (control) cm = m; }
+        if (pos == off) {
+            m.addEvent(offCode ? juce::MidiMessage::controllerEvent(1, offCode, 0) : juce::MidiMessage::noteOff(1, 48), 0);
+            if (control) cm = m;
+            // CC120 at host offset 0 runs applyEmergencySilence before native
+            // audio and clears DualOutputDelay. Mirror that ownership break in
+            // the independent FIFO oracle; otherwise delayed-equality falsely
+            // fails for the remainder of the drain.
+            if (offCode == 120)
+                result.trace.clearFifo();
+        }
         process(*p, b, m, &result.trace); if (control) process(*control, c, cm);
         const bool asleep = p->engineForTests().dormantForTests();
         if (asleep && result.sleepHost < 0) result.sleepHost = pos + size;

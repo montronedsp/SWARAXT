@@ -54,10 +54,18 @@ double effectiveCutoff(const SwaraXtAudioProcessor& p) {
         v.matrixCutoffOctaves);
 }
 void authority(const SwaraXtAudioProcessor& p) {
-    const auto cv = p.engineForTests().shruthiPart().voice().cutoff();
+    const auto& engine = p.engineForTests();
+    const auto cv = engine.shruthiPart().voice().cutoff();
+    const auto& params = engine.filter().paramsForTests();
     const double expected = std::clamp(20000. * std::exp2((static_cast<double>(cv) - 254.) / 24.), 10., 20000.);
     check(std::abs(effectiveCutoff(p) - expected) < .01, "final Shruthi cutoff CV is authoritative exactly once");
-    check(std::abs(p.engineForTests().filter().paramsForTests().boardCutoffCvVolts - cv * (5.0 / 255.0)) < 1.e-12,
+    // Classic board CV joins the firmware byte with post-clip tracking trim and
+    // the knob's sub-semitone remainder. Panel-Hz clipping is still not authority.
+    const double expectedBoardCv = std::clamp(
+        (static_cast<double>(cv) + 24.0 * params.matrixCutoffOctaves
+            + static_cast<double>(engine.knobCutoffTrimBytesForTests())) * (5.0 / 255.0),
+        0.0, 5.0);
+    check(std::abs(params.boardCutoffCvVolts - expectedBoardCv) < 1.e-12,
         "hardware consumes final native CV directly without panel-Hz clipping");
 }
 void routingAndState() {
