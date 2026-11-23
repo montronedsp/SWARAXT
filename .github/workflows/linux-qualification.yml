@@ -1,0 +1,144 @@
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Linux VST3 qualification
+run-name: SWARA XT Linux qualification ${{ inputs.source_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed revision, must match the selected ref
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: swaraxt-linux-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      REVIEWED_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Verify revision and portable harness controls
+        shell: bash
+        run: |
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+          cd scripts/ci
+          python -m unittest test_common test_native_reference test_dual_svf_reference test_windows_reference_policy
+  native:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { compiler: gcc, profile: Release }
+          - { compiler: gcc, profile: Debug }
+          - { compiler: clang, profile: Release }
+          - { compiler: clang, profile: Debug }
+          - { compiler: clang, profile: asan-ubsan }
+          - { compiler: clang, profile: tsan }
+          - { compiler: clang, profile: rtsan }
+          - { compiler: clang, profile: fuzz }
+    env:
+      REVIEWED_SHA: ${{ inputs.source_sha }}
+      PROFILE: ${{ matrix.profile }}
+      COMPILER: ${{ matrix.compiler }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Verify revision and install pinned build frontend
+        shell: bash
+        run: |
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+          python -m pip install --only-binary :all: --require-hashes -r scripts/ci/requirements-frontend.txt
+      - name: Native Linux dependencies
+        run: bash scripts/ci/setup-linux.sh "$COMPILER"
+      - name: TSan runner address-space compatibility
+        if: matrix.profile == 'tsan'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Complete native qualification
+        shell: bash
+        run: xvfb-run -a -s "-screen 0 1600x1200x24" bash scripts/ci/run-linux.sh python scripts/ci/desktop.py native --compiler "$COMPILER" --profile "$PROFILE" --root "$RUNNER_TEMP/swara-native"
+      - name: Qualification evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: native-linux-${{ env.COMPILER }}-${{ matrix.profile }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/swara-native/*.log
+            ${{ runner.temp }}/swara-native/*.json
+            ${{ runner.temp }}/swara-native/*.xml
+            ${{ runner.temp }}/swara-native/*.png
+            ${{ runner.temp }}/swara-native/*-negative.cpp
+            ${{ runner.temp }}/swara-native/native-reference/*.json
+            ${{ runner.temp }}/swara-native/native-reference/manifest.sha256
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTAudioParityTests
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTDspFxIntegratedExactParityTests
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTHostSrcExactParityTests
+            ${{ runner.temp }}/swara-native/build/Tests/**/SwaraXTDualSvfHeadlessTests
+            ${{ runner.temp }}/swara-native/build/Testing/Temporary/**
+            ${{ runner.temp }}/swara-native/build/Tests/sonic-*/**
+            ${{ runner.temp }}/swara-native/*-crashes/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Unsigned VST3 candidate
+        if: success() && matrix.profile == 'Release'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: candidate-linux-${{ env.COMPILER }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/swara-native/swaraxt-*.zip
+            ${{ runner.temp }}/swara-native/swaraxt-*.sha256
+          if-no-files-found: error
+          retention-days: 14
+  qualification-gate:
+    if: always()
+    needs: [preflight, native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+      NATIVE_RESULT: ${{ needs.native.result }}
+    steps:
+      - name: Require every native profile
+        run: test "$PREFLIGHT_RESULT" = success && test "$NATIVE_RESULT" = success
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: native-linux-*-${{ github.sha }}
+          path: ${{ runner.temp }}/native-evidence
+      - name: Independently verify all source-bound reports and CTest results
+        run: >-
+          python scripts/ci/desktop.py gate --platform Linux
+          --evidence "$RUNNER_TEMP/native-evidence" > "$RUNNER_TEMP/linux-gate.json"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: gate-linux-${{ github.sha }}
+          path: ${{ runner.temp }}/linux-gate.json
+          if-no-files-found: error
+          retention-days: 14

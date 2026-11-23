@@ -1,0 +1,3 @@
+*.sh text eol=lf
+# JUCE 9.0.1 APVTS blobs use CRLF; this patch must stay CRLF to apply with --binary.
+cmake/Juce901RestoreCompletion.patch binary

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SWARA XT background template (SVG).
+
+  Load via: right-click editor � Background � Load PNG or SVG&
+  Installed as: skin_assets/background.svg
+
+  Rules:
+    - .svg only for this file, max 256 KiB.
+    - Paths and solid fills. Filters, masks, text, and embedded images are dropped.
+    - Colours are kept as authored. The skin does not recolour a background.
+    - Design surface is 1113�521. Any viewBox is stretched to fill it.
+    - Panels paint over the background, so art shows in the gaps.
+    - A file that fails these rules is rejected. The built-in background stays.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1113 521" version="1.1">
+  <rect width="1113" height="521" fill="#1a171b"/>
+  <rect x="0" y="0" width="1113" height="86" fill="#241f26"/>
+  <path fill="#3a2a22" d="M0 521 L1113 430 L1113 521 Z"/>
+  <g fill="none" stroke="#c4a574" stroke-width="1.2" opacity="0.55">
+    <path d="M40 40 H1073"/>
+    <path d="M40 481 H1073"/>
+  </g>
+</svg>

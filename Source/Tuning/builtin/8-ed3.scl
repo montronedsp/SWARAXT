@@ -1,0 +1,14 @@
+! 8-ed3.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Mathematical 8 equal divisions of 3:1, without a historical or regional attribution.
+! Independently authored; definition and references: README.md
+8-ED3
+8
+237.744375108173
+475.488750216347
+713.233125324520
+950.977500432694
+1188.721875540867
+1426.466250649040
+1664.210625757214
+3/1

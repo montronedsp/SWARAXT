@@ -1,0 +1,912 @@
+// Copyright 2026 MontroneDSP.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include "Plugin/PluginEditor.h"
+
+#include "Ui/SwaraXtUiPalette.h"
+#include "Ui/SwaraXtText.h"
+
+namespace {
+
+// Explicit popup activation also reloads the current preset. ComboBox's normal
+// value-change notification deliberately omits an unchanged item ID.
+class PresetActivation final : public juce::PopupMenu::CustomCallback {
+public:
+    explicit PresetActivation(std::function<void()> action) : action_(std::move(action)) {}
+    bool menuItemTriggered() override { action_(); return false; }
+private:
+    std::function<void()> action_;
+};
+
+const juce::Rectangle<float> companyWordmarkBounds { 489.5f, 24.0f, 134.0f, 21.0f };
+const juce::Rectangle<float> stoneWordmarkBounds { 492.5f, 19.5f, 128.0f, 30.0f };
+const juce::Rectangle<float> presetFrameBounds { 391.0f, 58.0f, 330.0f, 37.0f };
+
+constexpr int presetSelectorX = 426;
+constexpr int presetSelectorY = 64;
+constexpr int presetSelectorWidth = 218;
+constexpr int presetControlHeight = 25;
+constexpr int presetArrowWidth = 24;
+constexpr int presetControlGap = 4;
+
+void paintMaterialBackground(juce::Graphics& g, juce::Rectangle<float> bounds,
+                             swaraxt::ui::SkinId skin)
+{
+    using namespace swaraxt::ui;
+    if (skin == SkinId::midnightGold)
+    {
+        const auto base = Palette::background();
+        const auto top = base.brighter(0.055f);
+        const auto bottom = base.darker(0.045f);
+        g.setGradientFill({ top, bounds.getCentreX(), bounds.getY(),
+                            bottom, bounds.getCentreX(), bounds.getBottom(), false });
+        g.fillRect(bounds);
+
+        juce::ColourGradient light(
+            juce::Colour(0x24251c38), bounds.getCentreX(), bounds.getY() + 34.0f,
+            juce::Colours::transparentBlack, bounds.getCentreX(), bounds.getBottom(), true);
+        light.addColour(0.55, juce::Colour(0x0f171226));
+        g.setGradientFill(light);
+        g.fillRect(bounds);
+        return;
+    }
+
+    if (skin == SkinId::neonCobalt)
+        return;
+
+    const auto top = Palette::background().brighter(skin == SkinId::pastel ? 0.16f : 0.05f);
+    const auto bottom = skin == SkinId::pastel
+        ? Palette::panel().darker(0.08f)
+        : Palette::panelDeep().darker(0.16f);
+    g.setGradientFill({ top, bounds.getTopLeft(), bottom, bounds.getBottomRight(), false });
+    g.fillRect(bounds);
+
+    g.setColour(Palette::panel().withAlpha(skin == SkinId::pastel ? 0.15f : 0.10f));
+    for (int i = 0; i < 7; ++i)
+    {
+        const auto x = -80.0f + static_cast<float>(i) * 205.0f;
+        const auto y = 35.0f + static_cast<float>((i * 73) % 260);
+        g.fillEllipse({ x, y, 310.0f, 92.0f });
+    }
+}
+
+class PresetNameWindow final : public juce::AlertWindow {
+ public:
+    PresetNameWindow()
+        : juce::AlertWindow("Save user preset", "Enter a name for the complete Swara XT state.",
+                            juce::MessageBoxIconType::NoIcon)
+    {
+        setLookAndFeel(&lookAndFeel_);
+    }
+    ~PresetNameWindow() override { setLookAndFeel(nullptr); }
+ private:
+    swaraxt::ui::SwaraXtLookAndFeel lookAndFeel_;
+};
+
+class AboutPanel final : public juce::Component,
+                         private juce::Button::Listener {
+ public:
+    explicit AboutPanel(std::shared_ptr<swaraxt::ui::SwaraXtLookAndFeel> panelLookAndFeel)
+        : lookAndFeel_(std::move(panelLookAndFeel)),
+          email_("Support: support@montronedsp.com",
+                 juce::URL("mailto:support@montronedsp.com"))
+    {
+        addAndMakeVisible(email_);
+        email_.setFont(lookAndFeel_->font(swaraxt::ui::TextRole::aboutBody), false);
+        addAndMakeVisible(close_);
+        close_.addListener(this);
+        setSize(360, 270);
+    }
+
+    ~AboutPanel() override { close_.removeListener(this); }
+
+    void setCloseCallback(std::function<void()> callback) { closeCallback_ = std::move(callback); }
+
+    void paint(juce::Graphics& g) override
+    {
+        using namespace swaraxt::ui;
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour(Palette::panelDeep());
+        g.fillRoundedRectangle(bounds, 8.0f);
+        g.setColour(Palette::line());
+        g.drawRoundedRectangle(bounds.reduced(0.75f), 8.0f, 1.5f);
+
+        g.setColour(Palette::skin().displayText);
+        singleLineText(lookAndFeel_->font(TextRole::aboutHeading), "SWARA XT",
+                       { 20.0f, 14.0f, 320.0f, 28.0f }, juce::Justification::centred).draw(g);
+
+        g.setColour(Palette::skin().displayText.withAlpha(0.85f));
+        g.setFont(lookAndFeel_->font(swaraxt::ui::TextRole::aboutBody));
+        g.drawFittedText(juce::String::fromUTF8("MontroneDSP\nAuthor: Andrea Montrone\n\xc2\xa9 2026 MontroneDSP\n\nLicensed under the GNU GPL v3 or later.\n\nContains software derived in part from\nMutable Instruments Shruthi firmware.\n\nVersion: " SWARAXT_VERSION_STRING),
+                         22, 45, 316, 174, juce::Justification::centred, 10);
+    }
+
+    void resized() override
+    {
+        email_.setBounds(52, 218, 256, 22);
+        close_.setBounds(150, 243, 60, 22);
+    }
+
+    void lookAndFeelChanged() override
+    {
+        using namespace swaraxt::ui;
+        email_.setColour(juce::HyperlinkButton::textColourId, Palette::accent());
+        close_.setColour(juce::TextButton::buttonColourId, Palette::panel());
+        close_.setColour(juce::TextButton::textColourOffId, Palette::cream());
+        repaint();
+    }
+
+ private:
+    void buttonClicked(juce::Button*) override
+    {
+        if (closeCallback_)
+            closeCallback_();
+    }
+
+    std::shared_ptr<swaraxt::ui::SwaraXtLookAndFeel> lookAndFeel_;
+    juce::HyperlinkButton email_;
+    juce::TextButton close_ { "Close" };
+    std::function<void()> closeCallback_;
+};
+
+}  // namespace
+
+SwaraXtAudioProcessorEditor::SwaraXtAudioProcessorEditor(SwaraXtAudioProcessor& audioProcessor)
+    : AudioProcessorEditor(&audioProcessor),
+      processor_(audioProcessor)
+{
+    setLookAndFeel(lookAndFeel_.get());
+    setResizable(false, false);
+    skinId_ = swaraxt::ui::UiPreferences::loadSkin();
+    decorationId_ = swaraxt::ui::UiPreferences::loadDecoration();
+    manufacturerMark_ = swaraxt::ui::UiPreferences::loadManufacturerMark();
+    swaraxt::ui::SkinRegistry::setActive(skinId_);
+    swaraxt::ui::SkinColourOverride::refresh();
+    lookAndFeel_->applySkin();
+    guiSize_ = swaraxt::ui::UiPreferences::loadGuiSize();
+    filterQuality_ = processor_.filterQuality();
+    addAndMakeVisible(designSurface_);
+    designSurface_.addMouseListener(this, true);
+    swaraxt::ui::setTextRole(presetSelector_, swaraxt::ui::TextRole::presetName);
+    presetSelector_.setJustificationType(juce::Justification::centred);
+    presetSelector_.setScrollWheelEnabled(false);
+    presetSelector_.addListener(this);
+    designSurface_.addAndMakeVisible(presetSelector_);
+
+    for (auto* button : { &prevPresetButton_, &nextPresetButton_, &savePresetButton_ })
+    {
+        designSurface_.addAndMakeVisible(button);
+        button->addListener(this);
+        button->setClickingTogglesState(false);
+    }
+    prevPresetButton_.getProperties().set("swaraxtPresetNavigation", true);
+    nextPresetButton_.getProperties().set("swaraxtPresetNavigation", true);
+    savePresetButton_.getProperties().set("swaraxtSecondaryAction", true);
+
+    designSurface_.addAndMakeVisible(aboutBrandButton_);
+    aboutBrandButton_.addListener(this);
+    aboutBrandButton_.setTooltip("About Swara XT");
+
+    designSurface_.addAndMakeVisible(mainPanel_);
+    mainPanel_.toBack();
+    mainPanel_.attach(processor_);
+    mainPanel_.workspaceChanged = [this] { designSurface_.repaint(); };
+    applySkin(skinId_, false);
+    refreshPresetList();
+    applyGuiSize(guiSize_, false);
+    designSurface_.addChildComponent(restoreNotificationLabel_);
+    designSurface_.addChildComponent(dismissRestoreNotification_);
+    restoreNotificationLabel_.setFont(lookAndFeel_->font(swaraxt::ui::TextRole::aboutBody));
+    restoreNotificationLabel_.setJustificationType(juce::Justification::centredLeft);
+    restoreNotificationLabel_.setColour(juce::Label::backgroundColourId, juce::Colour(0xffffe2a8));
+    restoreNotificationLabel_.setColour(juce::Label::textColourId, juce::Colour(0xff231b10));
+    restoreNotificationLabel_.setTitle("Project sound warning");
+    dismissRestoreNotification_.onClick = [this] {
+        processor_.acknowledgeRestoreNotification(displayedRestoreNotification_);
+        refreshRestoreNotification();
+    };
+    resized();
+    refreshRestoreNotification();
+    startTimerHz(4);
+}
+
+SwaraXtAudioProcessorEditor::~SwaraXtAudioProcessorEditor()
+{
+    stopTimer();
+    // Include popups whose modal state ended before deferred destruction.
+    auto& desktop = juce::Desktop::getInstance();
+    for (int i = desktop.getNumComponents(); --i >= 0;)
+    {
+        auto* modal = desktop.getComponent(i);
+        if (modal != nullptr && modal != this && &modal->getLookAndFeel() == lookAndFeel_.get())
+        {
+            juce::ModalComponentManager::getInstance()->attachCallback(modal,
+                juce::ModalCallbackFunction::create([appearance = lookAndFeel_](int) {
+                    juce::ignoreUnused(appearance);
+                }));
+            modal->exitModalState(0);
+        }
+    }
+    designSurface_.removeMouseListener(this);
+    presetSelector_.removeListener(this);
+    for (auto* button : { &prevPresetButton_, &nextPresetButton_, &savePresetButton_ })
+        button->removeListener(this);
+    aboutBrandButton_.removeListener(this);
+    setLookAndFeel(nullptr);
+}
+
+void SwaraXtAudioProcessorEditor::paint(juce::Graphics& g)
+{
+    g.fillAll(swaraxt::ui::Palette::background());
+}
+
+void SwaraXtAudioProcessorEditor::resized()
+{
+    const float scale = swaraxt::ui::GuiGeometry::scaleFor(guiSize_);
+    designSurface_.setTransform(juce::AffineTransform::scale(scale));
+    designSurface_.setBounds(0, 0, swaraxt::ui::GuiGeometry::designWidth,
+                             swaraxt::ui::GuiGeometry::designHeight);
+
+    presetSelector_.setBounds(presetSelectorX, presetSelectorY,
+                              presetSelectorWidth, presetControlHeight);
+    prevPresetButton_.setBounds(presetSelectorX - presetControlGap - presetArrowWidth,
+                                presetSelectorY, presetArrowWidth, presetControlHeight);
+    nextPresetButton_.setBounds(presetSelectorX + presetSelectorWidth + presetControlGap,
+                                presetSelectorY, presetArrowWidth, presetControlHeight);
+    savePresetButton_.setBounds(presetSelectorX + presetSelectorWidth + 2 * presetControlGap + presetArrowWidth,
+                                presetSelectorY, 38, presetControlHeight);
+    aboutBrandButton_.setBounds(companyWordmarkBounds.toNearestInt());
+
+    mainPanel_.setBounds(0, 0, swaraxt::ui::GuiGeometry::designWidth,
+                         swaraxt::ui::GuiGeometry::designHeight);
+    mainPanel_.reflow();
+    const int warningY = swaraxt::ui::GuiGeometry::designHeight - 68;
+    restoreNotificationLabel_.setBounds(12, warningY, swaraxt::ui::GuiGeometry::designWidth - 108, 56);
+    dismissRestoreNotification_.setBounds(swaraxt::ui::GuiGeometry::designWidth - 92, warningY + 14, 80, 28);
+}
+
+void SwaraXtAudioProcessorEditor::paintDesignSurface(juce::Graphics& g)
+{
+    using namespace swaraxt::ui;
+    const auto bounds = designSurface_.getLocalBounds().toFloat();
+    g.fillAll(Palette::background());
+    paintMaterialBackground(g, bounds, skinId_);
+    if (const auto* customBackground = assets_.getBackgroundOverride())
+    {
+        customBackground->drawWithin(g, bounds, juce::RectanglePlacement::stretchToFit, 1.0f);
+    }
+    else if (skinId_ != SkinId::midnightGold)
+    {
+        if (const auto* backdrop = assets_.get(AssetRole::backdrop))
+            backdrop->drawWithin(g, bounds, juce::RectanglePlacement::stretchToFit, 1.0f);
+    }
+    g.setColour(Palette::line());
+    g.drawRect(bounds.reduced(0.5f), 1.0f);
+
+    const auto* separator = decorationAssets_.get();
+    if (separator == nullptr)
+        separator = assets_.get(AssetRole::braid);
+    if (separator != nullptr)
+    {
+        const auto sourceBounds = separator->getDrawableBounds();
+        const float width = sourceBounds.getHeight() > 0.0f
+            ? 513.0f * sourceBounds.getWidth() / sourceBounds.getHeight() : 9.4f;
+        for (const float centreX : { 362.0f, 750.0f })
+            separator->drawWithin(g, { centreX - width * 0.5f, 4.0f, width, 513.0f },
+                                  juce::RectanglePlacement::centred, 1.0f);
+    }
+    if (const auto* customMark = assets_.getManufacturerOverride())
+    {
+        customMark->drawWithin(g, companyWordmarkBounds, juce::RectanglePlacement::centred, 1.0f);
+    }
+    else
+    {
+        const bool stone = manufacturerMark_ == ManufacturerMark::stone;
+        if (const auto* company = assets_.get(stone ? AssetRole::stoneWordmark : AssetRole::companyWordmark))
+            company->drawWithin(g, stone ? stoneWordmarkBounds : companyWordmarkBounds,
+                                juce::RectanglePlacement::centred, 1.0f);
+    }
+
+    g.setColour(Palette::skin().displayBackground);
+    g.fillRoundedRectangle(presetFrameBounds, 8.0f);
+    g.setColour(Palette::skin().displayBorder);
+    g.drawRoundedRectangle(presetFrameBounds, 8.0f, 1.2f);
+
+    if (!mainPanel_.showingSequencer())
+        if (const auto* lockup = assets_.get(AssetRole::productLockup))
+            lockup->drawWithin(g, productLockupBoundsForTests(),
+                               juce::RectanglePlacement::stretchToFit, 1.0f);
+}
+
+void SwaraXtAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
+{
+    if (event.mods.isPopupMenu())
+        showContextMenu();
+}
+
+void SwaraXtAudioProcessorEditor::showContextMenu()
+{
+    using namespace swaraxt::ui;
+    juce::PopupMenu skinMenu;
+    skinMenu.addItem(102, "Pastel", true, skinId_ == SkinId::pastel);
+    skinMenu.addItem(100, "Midnight Gold", true, skinId_ == SkinId::midnightGold);
+    skinMenu.addItem(101, "Neon Cobalt", true, skinId_ == SkinId::neonCobalt);
+    skinMenu.addItem(103, "Jungle", true, skinId_ == SkinId::jungle);
+    skinMenu.addItem(104, "Rossocorsa", true, skinId_ == SkinId::rossocorsa);
+
+    const bool decorationFile = SkinUserSvg::hasDecoration();
+    const bool decorationActive = decorationAssets_.usingCustom();
+    juce::PopupMenu decorationMenu;
+    for (size_t i = 0; i < DecorationRegistry::all.size(); ++i)
+    {
+        const auto id = DecorationRegistry::all[i];
+        decorationMenu.addItem(150 + static_cast<int>(i), DecorationRegistry::get(id).displayName,
+                               true, ! decorationActive && decorationId_ == id);
+    }
+    decorationMenu.addSeparator();
+    decorationMenu.addItem(170, decorationFile && ! decorationActive
+                                    ? "Custom SVG invalid — using built-in"
+                                    : "Custom SVG",
+                           false, decorationActive);
+    decorationMenu.addItem(171, "Load SVG...");
+    decorationMenu.addItem(172, "Clear custom SVG", decorationFile, false);
+
+    juce::PopupMenu sizeMenu;
+    sizeMenu.addItem(201, "Small", true, guiSize_ == GuiSize::small);
+    sizeMenu.addItem(202, "Medium", true, guiSize_ == GuiSize::medium);
+    sizeMenu.addItem(203, "Large", true, guiSize_ == GuiSize::large);
+
+    juce::PopupMenu qualityMenu;
+    qualityMenu.addItem(301, "High", true, filterQuality_ == swaraxt::FilterQuality::high);
+    qualityMenu.addItem(302, "Normal", true, filterQuality_ == swaraxt::FilterQuality::normal);
+    qualityMenu.addItem(303, "Eco", true, filterQuality_ == swaraxt::FilterQuality::eco);
+
+    juce::PopupMenu midiMenu;
+    const int midiChannel = static_cast<int>(processor_.getApvts().getRawParameterValue(swaraxt::IDs::midiChannel)->load());
+    for (int channel = 0; channel <= 16; ++channel)
+        midiMenu.addItem(400 + channel, channel == 0 ? "Omni" : "Channel " + juce::String(channel),
+                         true, channel == midiChannel);
+    const bool markFile = SkinUserSvg::hasManufacturerMark();
+    const bool markActive = assets_.getManufacturerOverride() != nullptr;
+    juce::PopupMenu markMenu;
+    markMenu.addItem(500, ManufacturerMarkDefinition::displayName(ManufacturerMark::montroneDspWordmark), true,
+                     ! markActive && manufacturerMark_ == ManufacturerMark::montroneDspWordmark);
+    markMenu.addItem(501, ManufacturerMarkDefinition::displayName(ManufacturerMark::stone), true,
+                     ! markActive && manufacturerMark_ == ManufacturerMark::stone);
+    markMenu.addSeparator();
+    markMenu.addItem(502, markFile && ! markActive ? "Custom SVG invalid — using built-in" : "Custom SVG",
+                     false, markActive);
+    markMenu.addItem(503, "Load SVG...");
+    markMenu.addItem(504, "Clear custom SVG", markFile, false);
+
+    const bool backgroundFile = SkinUserSvg::hasBackground();
+    const bool backgroundActive = assets_.getBackgroundOverride() != nullptr;
+    juce::PopupMenu backgroundMenu;
+    backgroundMenu.addItem(180, "Built-in", true, ! backgroundActive);
+    backgroundMenu.addItem(181, backgroundFile && ! backgroundActive
+                                    ? "Custom file invalid — using built-in"
+                                    : "Custom PNG / SVG",
+                           false, backgroundActive);
+    backgroundMenu.addItem(182, "Load PNG or SVG...");
+    backgroundMenu.addItem(183, "Clear custom", backgroundFile, false);
+
+    juce::PopupMenu menu;
+    menu.setLookAndFeel(lookAndFeel_.get());
+    menu.addSubMenu("MIDI Channel", midiMenu);
+    menu.addSubMenu("Filter Quality", qualityMenu);
+    menu.addSeparator();
+    menu.addSubMenu("Manufacturer Mark", markMenu);
+    menu.addSubMenu("Background", backgroundMenu);
+    const bool colourFile = SkinColourOverride::hasFile();
+    const bool colourActive = SkinColourOverride::active();
+    juce::PopupMenu colourMenu;
+    colourMenu.addItem(190, "Built-in skin colours", true, ! colourActive);
+    colourMenu.addItem(191, colourFile && ! colourActive
+                                ? "Custom file invalid — using built-in"
+                                : "Custom colour file",
+                       false, colourActive);
+    colourMenu.addItem(192, "Load colour text...");
+    colourMenu.addItem(193, "Clear custom colours", colourFile, false);
+
+    menu.addSubMenu("Skin", skinMenu);
+    menu.addSubMenu("Interface Colours", colourMenu);
+    menu.addSubMenu("Decoration", decorationMenu);
+    menu.addSubMenu("GUI Size", sizeMenu);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withDeletionCheck(*this),
+                       contextMenuCallback());
+}
+
+std::function<void(int)> SwaraXtAudioProcessorEditor::contextMenuCallback()
+{
+    using namespace swaraxt::ui;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    return [safeThis](int result) {
+        if (safeThis == nullptr) return;
+        if (result >= 400 && result <= 416)
+        {
+            auto* parameter = safeThis->processor_.getApvts().getParameter(swaraxt::IDs::midiChannel);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(result - 400)));
+            parameter->endChangeGesture();
+        }
+        if (result == 500) safeThis->applyManufacturerMark(ManufacturerMark::montroneDspWordmark, true);
+        if (result == 501) safeThis->applyManufacturerMark(ManufacturerMark::stone, true);
+        if (result == 503) safeThis->promptLoadManufacturerMarkSvg();
+        if (result == 504) safeThis->clearManufacturerMarkSvg();
+        if (result == 180 || result == 183) safeThis->clearBackground();
+        if (result == 182) safeThis->promptLoadBackground();
+        if (result == 100) safeThis->applySkin(SkinId::midnightGold, true);
+        if (result == 101) safeThis->applySkin(SkinId::neonCobalt, true);
+        if (result == 102) safeThis->applySkin(SkinId::pastel, true);
+        if (result == 103) safeThis->applySkin(SkinId::jungle, true);
+        if (result == 104) safeThis->applySkin(SkinId::rossocorsa, true);
+        if (result == 190 || result == 193) safeThis->clearColourFile();
+        if (result == 192) safeThis->promptLoadColourFile();
+        if (result >= 150 && result < 150 + static_cast<int>(DecorationRegistry::all.size()))
+            safeThis->applyDecoration(DecorationRegistry::all[static_cast<size_t>(result - 150)], true);
+        if (result == 171) safeThis->promptLoadDecorationSvg();
+        if (result == 172) safeThis->clearDecorationSvg();
+        if (result == 201) safeThis->applyGuiSize(GuiSize::small, true);
+        if (result == 202) safeThis->applyGuiSize(GuiSize::medium, true);
+        if (result == 203) safeThis->applyGuiSize(GuiSize::large, true);
+        if (result == 301) safeThis->applyFilterQuality(swaraxt::FilterQuality::high, true);
+        if (result == 302) safeThis->applyFilterQuality(swaraxt::FilterQuality::normal, true);
+        if (result == 303) safeThis->applyFilterQuality(swaraxt::FilterQuality::eco, true);
+        safeThis->mainPanel_.refreshExperimentalSvf();
+    };
+}
+
+void SwaraXtAudioProcessorEditor::reloadSkinAssets()
+{
+    swaraxt::ui::SkinColourOverride::refresh();
+    assets_.load(swaraxt::ui::SkinRegistry::get(skinId_));
+    decorationAssets_.load(decorationId_, swaraxt::ui::SkinColourOverride::resolved());
+    mainPanel_.setSkinAssets(assets_);
+    designSurface_.repaint();
+    repaint();
+}
+
+void SwaraXtAudioProcessorEditor::showSvgLoadError(const juce::String& message)
+{
+    juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
+                                           "File not loaded", message);
+}
+
+void SwaraXtAudioProcessorEditor::promptLoadManufacturerMarkSvg()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load manufacturer mark SVG", juce::File(), "*.svg");
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinUserSvg::install(results.getReference(0),
+                                                swaraxt::ui::SkinUserSvg::manufacturerMarkFile(),
+                                                error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->reloadSkinAssets();
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearManufacturerMarkSvg()
+{
+    swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::manufacturerMarkFile());
+    reloadSkinAssets();
+}
+
+void SwaraXtAudioProcessorEditor::promptLoadDecorationSvg()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load decoration SVG", juce::File(), "*.svg");
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinUserSvg::install(results.getReference(0),
+                                                swaraxt::ui::SkinUserSvg::decorationFile(),
+                                                error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->reloadSkinAssets();
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearDecorationSvg()
+{
+    swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::decorationFile());
+    reloadSkinAssets();
+}
+
+void SwaraXtAudioProcessorEditor::promptLoadBackground()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load background PNG or SVG", juce::File(), "*.png;*.svg");
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinUserSvg::installBackground(results.getReference(0), error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->reloadSkinAssets();
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearBackground()
+{
+    swaraxt::ui::SkinUserSvg::clearBackground();
+    reloadSkinAssets();
+}
+
+void SwaraXtAudioProcessorEditor::promptLoadColourFile()
+{
+    fileChooser_ = std::make_unique<juce::FileChooser>(
+        "Load interface colour text", juce::File(), "*.txt");
+    constexpr auto browserFlags = juce::FileBrowserComponent::openMode
+                                | juce::FileBrowserComponent::canSelectFiles;
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    fileChooser_->launchAsync(browserFlags, [safeThis](const juce::FileChooser& chooser) {
+        if (safeThis == nullptr) return;
+        const auto results = chooser.getResults();
+        if (results.isEmpty()) return;
+        juce::String error;
+        if (! swaraxt::ui::SkinColourOverride::install(results.getReference(0), error))
+        {
+            safeThis->showSvgLoadError(error);
+            return;
+        }
+        safeThis->applySkin(safeThis->skinId_, false);
+    });
+}
+
+void SwaraXtAudioProcessorEditor::clearColourFile()
+{
+    swaraxt::ui::SkinColourOverride::clear();
+    applySkin(skinId_, false);
+}
+
+void SwaraXtAudioProcessorEditor::applySkin(swaraxt::ui::SkinId skin, bool persist)
+{
+    skinId_ = skin;
+    swaraxt::ui::SkinRegistry::setActive(skin);
+    swaraxt::ui::SkinColourOverride::refresh();
+    assets_.load(swaraxt::ui::SkinRegistry::get(skin));
+    decorationAssets_.load(decorationId_, swaraxt::ui::SkinColourOverride::resolved());
+    lookAndFeel_->applySkin();
+    prevPresetButton_.setColour(juce::TextButton::textColourOffId,
+                                swaraxt::ui::Palette::skin().displayText);
+    nextPresetButton_.setColour(juce::TextButton::textColourOffId,
+                                swaraxt::ui::Palette::skin().displayText);
+    savePresetButton_.setColour(juce::TextButton::textColourOffId,
+                                swaraxt::ui::Palette::skin().displayText.withAlpha(0.78f));
+    mainPanel_.setSkinAssets(assets_);
+    sendLookAndFeelChange();
+    repaint();
+    if (persist)
+        swaraxt::ui::UiPreferences::save(skinId_, decorationId_, guiSize_);
+}
+
+void SwaraXtAudioProcessorEditor::applyManufacturerMark(swaraxt::ui::ManufacturerMark mark, bool persist)
+{
+    if (swaraxt::ui::SkinUserSvg::hasManufacturerMark())
+    {
+        swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::manufacturerMarkFile());
+        reloadSkinAssets();
+    }
+    if (manufacturerMark_ == mark) return;
+    manufacturerMark_ = mark;
+    if (persist) swaraxt::ui::UiPreferences::saveManufacturerMark(mark);
+    designSurface_.repaint();
+}
+
+void SwaraXtAudioProcessorEditor::applyDecoration(swaraxt::ui::DecorationId decoration,
+                                                  bool persist)
+{
+    if (swaraxt::ui::SkinUserSvg::hasDecoration())
+        swaraxt::ui::SkinUserSvg::clear(swaraxt::ui::SkinUserSvg::decorationFile());
+    decorationId_ = decoration;
+    decorationAssets_.load(decorationId_, swaraxt::ui::SkinColourOverride::resolved());
+    repaint();
+    if (persist)
+        swaraxt::ui::UiPreferences::save(skinId_, decorationId_, guiSize_);
+}
+
+void SwaraXtAudioProcessorEditor::applyGuiSize(swaraxt::ui::GuiSize size, bool persist)
+{
+    guiSize_ = size;
+    const auto bounds = swaraxt::ui::GuiGeometry::editorBounds(size);
+    setSize(bounds.getWidth(), bounds.getHeight());
+    if (persist)
+        swaraxt::ui::UiPreferences::save(skinId_, decorationId_, guiSize_);
+}
+
+void SwaraXtAudioProcessorEditor::applyFilterQuality(swaraxt::FilterQuality quality, bool persist)
+{
+    filterQuality_ = quality;
+    processor_.setFilterQuality(quality);
+    if (persist)
+        swaraxt::ui::UiPreferences::saveFilterQuality(quality);
+}
+
+void SwaraXtAudioProcessorEditor::showAboutPopup()
+{
+    auto panel = std::make_unique<AboutPanel>(lookAndFeel_);
+    auto* panelPointer = panel.get();
+    auto& callout = juce::CallOutBox::launchAsynchronously(
+        std::move(panel), aboutBrandButton_.getBounds(), &designSurface_);
+    juce::Component::SafePointer<juce::CallOutBox> safeCallout(&callout);
+    panelPointer->setCloseCallback([safeCallout] {
+        if (safeCallout != nullptr)
+            safeCallout->dismiss();
+    });
+}
+
+void SwaraXtAudioProcessorEditor::setGuiSizeForTests(swaraxt::ui::GuiSize size)
+{
+    applyGuiSize(size, false);
+}
+
+void SwaraXtAudioProcessorEditor::setSkinForTests(swaraxt::ui::SkinId skin)
+{
+    applySkin(skin, false);
+}
+
+void SwaraXtAudioProcessorEditor::setDecorationForTests(
+    swaraxt::ui::DecorationId decoration)
+{
+    applyDecoration(decoration, false);
+}
+
+void SwaraXtAudioProcessorEditor::refreshPresetList()
+{
+    const auto currentName = processor_.currentPresetName();
+    const bool currentIsUser = processor_.currentPresetIsUser();
+    presetEntries_ = processor_.getPresetEntries();
+
+    // Detach while rebuilding so population cannot load a preset.
+    const juce::ScopedValueSetter<bool> guard(refreshingPresets_, true);
+    presetSelector_.removeListener(this);
+    presetSelector_.clear(juce::dontSendNotification);
+    presetSelector_.addSectionHeading("FACTORY");
+    int firstUser = -1;
+    for (size_t index = 0; index < presetEntries_.size(); ++index)
+    {
+        if (! presetEntries_[index].isFactory && firstUser < 0)
+        {
+            firstUser = static_cast<int>(index);
+            presetSelector_.addSeparator();
+            presetSelector_.addSectionHeading("USER");
+        }
+        presetSelector_.addItem(presetEntries_[index].name, static_cast<int>(index) + 1);
+    }
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    for (juce::PopupMenu::MenuItemIterator it(*presetSelector_.getRootMenu(), false); it.next();)
+    {
+        auto& item = it.getItem();
+        if (item.itemID > 0)
+        {
+            const auto entry = presetEntries_[static_cast<size_t>(item.itemID - 1)];
+            item.customCallback = new PresetActivation([safeThis, entry] {
+                if (safeThis == nullptr) return;
+                juce::String error;
+                const bool loaded = safeThis->processor_.loadPresetEntry(entry, error);
+                if (safeThis == nullptr) return;
+                safeThis->refreshPresetList();
+                if (!loaded) safeThis->showPresetError(error);
+            });
+        }
+    }
+
+    int selected = 0;
+    for (size_t index = 0; index < presetEntries_.size(); ++index)
+        if (presetEntries_[index].name == currentName
+            && presetEntries_[index].isFactory != currentIsUser)
+            selected = static_cast<int>(index) + 1;
+
+    if (selected > 0)
+        presetSelector_.setSelectedId(selected, juce::dontSendNotification);
+    else
+        // Keep the authoritative processor name visible without selecting another entry.
+        presetSelector_.setText(currentName, juce::dontSendNotification);
+
+    presetSelector_.addListener(this);
+}
+
+void SwaraXtAudioProcessorEditor::comboBoxChanged(juce::ComboBox* combo)
+{
+    if (refreshingPresets_ || combo != &presetSelector_)
+        return;
+    const int index = presetSelector_.getSelectedId() - 1;
+    if (index < 0 || index >= static_cast<int>(presetEntries_.size()))
+        return;
+
+    const auto& entry = presetEntries_[static_cast<size_t>(index)];
+    juce::String error;
+    const juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    const bool loaded = processor_.loadPresetEntry(entry, error);
+    if (safeThis == nullptr) return;
+    refreshPresetList();
+    if (! loaded)
+        showPresetError(error);
+}
+
+void SwaraXtAudioProcessorEditor::buttonClicked(juce::Button* button)
+{
+    if (button == &aboutBrandButton_)
+    {
+        showAboutPopup();
+        return;
+    }
+
+    if (button == &savePresetButton_)
+    {
+        promptForPresetName();
+        return;
+    }
+
+    if (presetEntries_.empty())
+        return;
+    int index = presetSelector_.getSelectedId() - 1;
+    if (button == &prevPresetButton_)
+        index = (index + static_cast<int>(presetEntries_.size()) - 1)
+            % static_cast<int>(presetEntries_.size());
+    else if (button == &nextPresetButton_)
+        index = (index + 1) % static_cast<int>(presetEntries_.size());
+    else
+        return;
+    presetSelector_.setSelectedId(index + 1, juce::sendNotificationSync);
+}
+
+void SwaraXtAudioProcessorEditor::promptForPresetName()
+{
+    auto* window = new PresetNameWindow();
+    window->addTextEditor("name", processor_.currentPresetName(), "Preset name");
+    window->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+    window->enterModalState(true,
+        juce::ModalCallbackFunction::create([safeThis, window](int result) {
+            if (result == 1 && safeThis != nullptr)
+                safeThis->savePresetWithName(window->getTextEditorContents("name"), false);
+        }), true);
+}
+
+void SwaraXtAudioProcessorEditor::savePresetWithName(const juce::String& name, bool overwrite)
+{
+    juce::String error;
+    if (processor_.saveUserPreset(name, overwrite, error))
+    {
+        refreshPresetList();
+        return;
+    }
+
+    if (! overwrite && error.containsIgnoreCase("already exists"))
+    {
+        juce::Component::SafePointer<SwaraXtAudioProcessorEditor> safeThis(this);
+        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon,
+            "Replace user preset?", error + " Replace it?", "Replace", "Cancel", this,
+            juce::ModalCallbackFunction::create([safeThis, name](int result) {
+                if (result != 0 && safeThis != nullptr)
+                    safeThis->savePresetWithName(name, true);
+            }));
+        return;
+    }
+    showPresetError(error);
+}
+
+void SwaraXtAudioProcessorEditor::showPresetError(const juce::String& message)
+{
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                           "Preset error", message);
+}
+
+void SwaraXtAudioProcessorEditor::refreshRestoreNotification()
+{
+    const auto notification = processor_.restoreNotification();
+    if (notification.revision == displayedRestoreNotification_.revision
+        && notification.result == displayedRestoreNotification_.result)
+        return;
+    displayedRestoreNotification_ = notification;
+    using Result = SwaraXtAudioProcessor::RestoreResult;
+    juce::String message;
+    switch (notification.result)
+    {
+        case Result::success: break;
+        case Result::defaultTuning:
+            message = "The project's tuning could not be loaded. Standard tuning is in use. Keep the original project file and check the tuning.";
+            break;
+        case Result::invalid:
+            message = "The project's saved sound was not loaded. Keep the original file. Load a known preset or recover an earlier project copy.";
+            break;
+        case Result::reentrant:
+        case Result::tuningBusy:
+        case Result::tuningUnavailable:
+            message = "The saved sound could not be loaded while the instrument was busy. Keep the original project file and try the operation again.";
+            break;
+        case Result::preparationFailed:
+            message = "There was not enough memory to load the saved sound. Keep the original project file. Free memory, then try the operation again.";
+            break;
+        case Result::incomplete:
+#if defined(SWARAXT_JUCE_RESTORE_COMPLETION)
+            message = "The saved sound was loaded, but some controls could not refresh. Keep the original project file and reopen the instrument window.";
+            break;
+#endif
+        case Result::uncertain:
+            message = "The saved sound could not be loaded completely. Sound and settings may differ. Keep the original project file and reopen a copy.";
+            break;
+    }
+    restoreNotificationLabel_.setText(message, juce::dontSendNotification);
+    restoreNotificationLabel_.setVisible(message.isNotEmpty());
+    dismissRestoreNotification_.setVisible(message.isNotEmpty());
+    restoreNotificationLabel_.toFront(false);
+    dismissRestoreNotification_.toFront(false);
+}
+
+void SwaraXtAudioProcessorEditor::timerCallback()
+{
+    refreshRestoreNotification();
+    mainPanel_.refreshExperimentalSvf();
+    const int index = presetSelector_.getSelectedId() - 1;
+    const bool identityMatches = index >= 0 && index < static_cast<int>(presetEntries_.size())
+        && presetEntries_[static_cast<size_t>(index)].name == processor_.currentPresetName()
+        && presetEntries_[static_cast<size_t>(index)].isFactory != processor_.currentPresetIsUser();
+    if (presetSelector_.getText() != processor_.currentPresetName()
+        || (index >= 0 && !identityMatches))
+        refreshPresetList();
+}
+
+void SwaraXtAudioProcessorEditor::setModuleViewsForTests(bool modulation, bool sequencer)
+{
+    mainPanel_.setLocalViews(modulation, sequencer);
+}
+
+void SwaraXtAudioProcessorEditor::setSequencerHostSyncForTests(bool enabled)
+{
+    mainPanel_.setSequencerHostSyncForTests(enabled);
+}
+
+
+void SwaraXtAudioProcessorEditor::setSequencerPatternForTests(int pattern)
+{
+    mainPanel_.setSequencerPatternForTests(pattern);
+}
+
+int SwaraXtAudioProcessorEditor::sequencerPatternForTests() const
+{
+    return mainPanel_.sequencerPatternForTests();
+}
+
+void SwaraXtAudioProcessorEditor::setSequenceLayoutForTests(int length, int rotation, int groove)
+{
+    mainPanel_.setSequenceLayoutForTests(length, rotation, groove);
+}
+
+void SwaraXtAudioProcessorEditor::setSequenceStepForTests(int step, int note, int event,
+                                                          int velocity, int value)
+{
+    mainPanel_.setSequenceStepForTests(step, note, event, velocity, value);
+}
+
+juce::Rectangle<float> SwaraXtAudioProcessorEditor::productLockupBoundsForTests() const
+{
+    return swaraxt::ui::ProductLockupGeometry::editorPlacement();
+}

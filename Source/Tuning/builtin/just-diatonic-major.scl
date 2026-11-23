@@ -1,0 +1,13 @@
+! just-diatonic-major.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Independently calculated mathematical tuning.
+! Independently authored; definition and references: README.md
+5-limit diatonic major
+7
+9/8
+5/4
+4/3
+3/2
+5/3
+15/8
+2/1

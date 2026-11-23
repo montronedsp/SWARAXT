@@ -1,0 +1,172 @@
+--- a/modules/juce_audio_processors/utilities/juce_AudioProcessorValueTreeState.cpp
++++ b/modules/juce_audio_processors/utilities/juce_AudioProcessorValueTreeState.cpp
+@@ -31,6 +31,8 @@
+ 
+   ==============================================================================
+ */
++
++#include <exception>
+ 
+ namespace juce
+ {
+@@ -100,7 +102,7 @@
+ 
+     void setDenormalisedValue (float value)
+     {
+-        if (! approximatelyEqual (value, (float) unnormalisedValue))
++        if (listenersNeedCalling || ! approximatelyEqual (value, (float) unnormalisedValue))
+             setNormalisedValue (normalise (value));
+     }
+ 
+@@ -153,9 +155,17 @@
+             return;
+ 
+         unnormalisedValue = newValue;
+-        listeners.call ([this] (Listener& l) { l.parameterChanged (parameter.paramID, unnormalisedValue); });
+         listenersNeedCalling = false;
+         needsUpdate = true;
++        try
++        {
++            listeners.call ([this] (Listener& l) { l.parameterChanged (parameter.paramID, unnormalisedValue); });
++        }
++        catch (...)
++        {
++            listenersNeedCalling = true;
++            throw;
++        }
+     }
+ 
+     float denormalise (float normalised) const
+@@ -173,7 +183,18 @@
+         if (ignoreParameterChangedCallbacks)
+             return;
+ 
+-        parameter.setValueNotifyingHost (value);
++        try
++        {
++            parameter.setValueNotifyingHost (value);
++        }
++        catch (...)
++        {
++            // A parameter listener may throw before this adapter is called.
++            unnormalisedValue = denormalise (parameter.getValue());
++            listenersNeedCalling = true;
++            needsUpdate = true;
++            throw;
++        }
+     }
+ 
+     class LockedListeners
+@@ -397,7 +418,32 @@
+ {
+     ScopedLock lock (valueTreeChanging);
+ 
+-    state = newState;
++    const bool redirectExpected = state != newState;
++    bool redirected = false;
++    const ScopedValueSetter<bool*> redirectScope (stateRedirectedDuringReplace, &redirected);
++    std::exception_ptr failure;
++    try
++    {
++        state = newState;
++    }
++    catch (...)
++    {
++        failure = std::current_exception();
++    }
++    // ValueTree's listener iterator, or an earlier listener, may fail before
++    // the APVTS redirect callback. Connect once if it was never reached.
++    if (redirectExpected && state == newState && ! redirected)
++    {
++        try
++        {
++            updateParameterConnectionsToChildTrees();
++        }
++        catch (...)
++        {
++            if (! failure) failure = std::current_exception();
++        }
++    }
++    if (failure) std::rethrow_exception (failure);
+ 
+     if (undoManager != nullptr)
+         undoManager->clearUndoHistory();
+@@ -421,8 +467,18 @@
+     for (auto& p : adapterTable)
+         p.second->tree = ValueTree();
+ 
++    std::exception_ptr failure;
+     for (const auto& child : state)
+-        setNewState (child);
++    {
++        try
++        {
++            setNewState (child);
++        }
++        catch (...)
++        {
++            if (! failure) failure = std::current_exception();
++        }
++    }
+ 
+     for (auto& p : adapterTable)
+     {
+@@ -436,7 +492,15 @@
+         }
+     }
+ 
+-    flushParameterValuesToValueTree();
++    try
++    {
++        flushParameterValuesToValueTree();
++    }
++    catch (...)
++    {
++        if (! failure) failure = std::current_exception();
++    }
++    if (failure) std::rethrow_exception (failure);
+ }
+ 
+ void AudioProcessorValueTreeState::valueTreePropertyChanged (ValueTree& tree, const Identifier&)
+@@ -454,7 +518,10 @@
+ void AudioProcessorValueTreeState::valueTreeRedirected (ValueTree& v)
+ {
+     if (v == state)
++    {
++        if (stateRedirectedDuringReplace != nullptr) *stateRedirectedDuringReplace = true;
+         updateParameterConnectionsToChildTrees();
++    }
+ }
+ 
+ bool AudioProcessorValueTreeState::flushParameterValuesToValueTree()
+@@ -463,8 +530,19 @@
+ 
+     bool anyUpdated = false;
+ 
++    std::exception_ptr failure;
+     for (auto& p : adapterTable)
+-        anyUpdated |= p.second->flushToTree (valuePropertyID, undoManager);
++    {
++        try
++        {
++            anyUpdated |= p.second->flushToTree (valuePropertyID, undoManager);
++        }
++        catch (...)
++        {
++            if (! failure) failure = std::current_exception();
++        }
++    }
++    if (failure) std::rethrow_exception (failure);
+ 
+     return anyUpdated;
+ }
+--- a/modules/juce_audio_processors/utilities/juce_AudioProcessorValueTreeState.h
++++ b/modules/juce_audio_processors/utilities/juce_AudioProcessorValueTreeState.h
+@@ -661,6 +661,7 @@
+ 
+     std::map<StringRef, std::unique_ptr<ParameterAdapter>, StringRefLessThan> adapterTable;
+ 
++    bool* stateRedirectedDuringReplace = nullptr;
+     CriticalSection valueTreeChanging;
+ 
+     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioProcessorValueTreeState)

@@ -1,0 +1,19 @@
+! bohlen-pierce-equal.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! 13 equal divisions of the tritave; step = 1200 log2(3)/13 cents.
+! Independently authored; definition and references: README.md
+Bohlen-Pierce equal (13-ED3)
+13
+146.304230835799
+292.608461671598
+438.912692507397
+585.216923343196
+731.521154178995
+877.825385014794
+1024.129615850593
+1170.433846686392
+1316.738077522191
+1463.042308357990
+1609.346539193789
+1755.650770029588
+3/1

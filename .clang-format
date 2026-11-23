@@ -1,0 +1,40 @@
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++17
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBraces: Attach
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+NamespaceIndentation: None
+PointerAlignment: Left
+ReferenceAlignment: Left
+SpaceAfterTemplateKeyword: true
+SpaceBeforeCpp11BracedList: false
+SpacesInAngles: false
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+ReflowComments: true
+
+# Keep project headers grouped reasonably for JUCE and Swara XT sources.
+IncludeCategories:
+  - Regex: '^<juce_'
+    Priority: 1
+  - Regex: '^"SwaraXt'
+    Priority: 2
+  - Regex: '^"Source/'
+    Priority: 2
+  - Regex: '^<'
+    Priority: 3
+  - Regex: '.*'
+    Priority: 4

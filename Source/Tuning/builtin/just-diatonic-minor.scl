@@ -1,0 +1,13 @@
+! just-diatonic-minor.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Independently calculated mathematical tuning.
+! Independently authored; definition and references: README.md
+5-limit minor (9/5 seventh)
+7
+9/8
+6/5
+4/3
+3/2
+8/5
+9/5
+2/1

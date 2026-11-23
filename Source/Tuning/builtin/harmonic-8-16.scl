@@ -1,0 +1,14 @@
+! harmonic-8-16.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Independently calculated mathematical tuning.
+! Independently authored; definition and references: README.md
+Harmonic series 8-16
+8
+9/8
+5/4
+11/8
+3/2
+13/8
+7/4
+15/8
+2/1

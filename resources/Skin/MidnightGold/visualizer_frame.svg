@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="25.5425" height="8.0800" viewBox="8.0552 60.3335 25.5425 8.0800">
+  <g id="asset">
+    <rect x="127.0" y="509.0" width="297.0" height="66.0" rx="5" ry="5" style="fill:none;stroke:#8e6b29;stroke-width:1.2" id="lfo-visualizer-frame" />
+    <path d="M 137.0,519 H 150.0" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path903" />
+    <path d="M 137.0,519 V 532" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path904" />
+    <path d="M 414.0,519 H 401.0" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path905" />
+    <path d="M 414.0,519 V 532" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path906" />
+    <path d="M 137.0,565 H 150.0" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path907" />
+    <path d="M 137.0,565 V 552" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path908" />
+    <path d="M 414.0,565 H 401.0" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path909" />
+    <path d="M 414.0,565 V 552" style="fill:none;stroke:#e7ca83;stroke-width:0.7;stroke-opacity:0.35;stroke-linecap:square" id="path910" />
+  </g>
+</svg>

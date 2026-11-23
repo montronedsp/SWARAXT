@@ -1,0 +1,15 @@
+! 9-edo.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! 9 equal divisions of the octave; step = 1200/9 cents.
+! Independently authored; definition and references: README.md
+9-EDO
+9
+133.333333333333
+266.666666666667
+400.000000000000
+533.333333333333
+666.666666666667
+800.000000000000
+933.333333333333
+1066.666666666667
+2/1

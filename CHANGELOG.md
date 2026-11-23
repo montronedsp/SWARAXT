@@ -1,0 +1,47 @@
+# Changelog
+
+## 1.3.3 — 2026-11-21
+
+- CC 120 All Sound Off kills the HD amplitude envelopes and clears panic-owned host-path stores without a release tail.
+- Recorded board-looper content is preserved across CC 120; playback stays stopped until the play control changes.
+- Emergency-silence and MIDI authority regressions cover host-output silence, sustain/modulation panic, delay feedback, and audible Note On recovery.
+- Product and package metadata identify SWARA XT 1.3.3.
+
+## 1.3.1 — 2026-11-06
+
+- Sequencer GUI source consolidation: shared widgets, oscillator/modulation/sequencer panels in dedicated translation units.
+- Realtime engine consolidation: bounded queue-fill loop and held MIDI-release retry extracted from process().
+- Shruthi-port compiler-warning cleanup: unused-variable annotation, comment-block correction, explicit cast, scoped diagnostic suppressions.
+- Diagnostic macro isolation: manual-switch capture gated behind debug-taps guard.
+- Removal of redundant Classic filter cascade; production path through Ir3109BoardCore only.
+- Restoration of native-runtime and production regression coverage.
+- Corrected Compact pitch-mode references and invalid-mode fallback documentation.
+
+## 1.3.0 — 2026-11-04
+
+- Align product and qualification package metadata for the feature-frozen 1.3.0 candidate.
+- Native release qualification remains required before publication.
+
+## 1.2.3
+
+- Public Windows x64 and Linux x86_64 VST3 and Standalone release.
+- 57 factory programs, including 40 official Shruthi patches.
+- Native filter ENV/LFO controls, a 12-slot modulation matrix, and 16 DSP-board effects plus Off.
+- Adriatica Next typography, five skins, fourteen decorations, and two manufacturer marks.
+
+## 1.2.2
+
+- Public Linux x86_64 release with VST3 and Standalone packages.
+
+## 1.1.0
+
+- Public repository and build workflow standardization.
+- Preset/program selection no longer changes on editor open/close or ordinary MIDI notes.
+- Filter CPU optimizations with High / Normal / Eco quality preference (default High).
+
+## 1.0.0
+
+- Initial Swara XT VST3 and Standalone codebase.
+- Shruthi-derived monophonic voice at its native render cadence.
+- Circuit-derived resonant four-pole filter and streaming host-rate conversion.
+- Regression suites for timing, initialization, filtering, state, and instances.

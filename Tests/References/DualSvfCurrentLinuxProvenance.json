@@ -1,0 +1,769 @@
+{
+  "cases": [
+    {
+      "case": "DualIndependent_Eagle_Cut40_Res32",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.5950781852006912,
+        "rms_error": 0.2411683682602326
+      },
+      "old": "7e874a740b73392e",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "7e874a740b73392e",
+          "raw_sha256": "de068fcf016aef9e071ac39daf936b29fa487f96cbf5ea6e606b7b423edb3eb5",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "811d9feadbc5c7d3",
+          "raw_sha256": "857c78dd07db0032c25165006d91e62403eb9fb1808f5a74b1f3905eb4ad2559",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "7e874a740b73392e",
+          "raw_sha256": "de068fcf016aef9e071ac39daf936b29fa487f96cbf5ea6e606b7b423edb3eb5",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualIndependent_Eagle_Cut90_Res32",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.33214157819747925,
+        "rms_error": 0.05240818536801498
+      },
+      "old": "f5f0dc043c0a672c",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "f5f0dc043c0a672c",
+          "raw_sha256": "82721c3b6ba32215553fe5f3c07a6c8680597e7f412f01a8c3d01505d5a6ce24",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "47b06b64de6c9b05",
+          "raw_sha256": "3d7f027b2bab89b4c9438f8e4200b3d26d57f0ae12e044fff6ac479935e703ed",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "f5f0dc043c0a672c",
+          "raw_sha256": "82721c3b6ba32215553fe5f3c07a6c8680597e7f412f01a8c3d01505d5a6ce24",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualIndependent_Eagle_Cut90_Res63",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.9404185935854912,
+        "rms_error": 0.25659024694365823
+      },
+      "old": "696ac69cd52ec5f4",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "696ac69cd52ec5f4",
+          "raw_sha256": "1b4e58e7224eeec91ce93ddd172e6348a10a21493f1f30f2b8b00c11af1156d8",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "7e672b793567f751",
+          "raw_sha256": "b29952c6e36e6b3643409633b3865d3d239cf133c71b3869d321b0ec6e2be902",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "696ac69cd52ec5f4",
+          "raw_sha256": "1b4e58e7224eeec91ce93ddd172e6348a10a21493f1f30f2b8b00c11af1156d8",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualIndependent_Paper_Cut40_Res32",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.768823504447937,
+        "rms_error": 0.321886353686796
+      },
+      "old": "ef139144414c5c37",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "ef139144414c5c37",
+          "raw_sha256": "fa1e72dabc772b4c54cf9fe79363681db48fb5941601a553cda50c74c51a6fdc",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "f666bfd056d076fc",
+          "raw_sha256": "8ab1a9bfebaf308eecfaa31b5979703d315614295572c49f433db9597472176a",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "ef139144414c5c37",
+          "raw_sha256": "fa1e72dabc772b4c54cf9fe79363681db48fb5941601a553cda50c74c51a6fdc",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualIndependent_Paper_Cut90_Res32",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.34939925372600555,
+        "rms_error": 0.05810929182925357
+      },
+      "old": "cfb4deaeda072793",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "cfb4deaeda072793",
+          "raw_sha256": "c572f3401ca145da35fbec21c4307848c01f9c98a4c40049c8a9dab63baf06de",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "3acfa698d58aa88e",
+          "raw_sha256": "df11fb3a31452e3679f17fe21b9769269670fedf5487d43179e0f87cd456484f",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "cfb4deaeda072793",
+          "raw_sha256": "c572f3401ca145da35fbec21c4307848c01f9c98a4c40049c8a9dab63baf06de",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualIndependent_Paper_Cut90_Res63",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 1.2081752717494965,
+        "rms_error": 0.36541616545269334
+      },
+      "old": "e3ae9c3d53ff973b",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "e3ae9c3d53ff973b",
+          "raw_sha256": "5e26cd9f80e97497483f8fd1d6f8888f6128c4479c1011961d9e937aeab3341b",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "3c42ee56a924fb6c",
+          "raw_sha256": "79bdf8ffef3491e02c020061a4de3a87eeb6b20269737c335cf39b6060553104",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "e3ae9c3d53ff973b",
+          "raw_sha256": "5e26cd9f80e97497483f8fd1d6f8888f6128c4479c1011961d9e937aeab3341b",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualRelative_Eagle_Center64",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.36380427330732346,
+        "rms_error": 0.1741375472963229
+      },
+      "old": "7998ba0118727a6e",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "7998ba0118727a6e",
+          "raw_sha256": "27010fe6e7c0fe2ac156b9f31aa3696be64c380630002d4a629f20e26f40ab5b",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "d9dbe8c95525e5b8",
+          "raw_sha256": "11006140ab075971024e7880d116491d480e07f99f294afe1b94a3b2503314f3",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "7998ba0118727a6e",
+          "raw_sha256": "27010fe6e7c0fe2ac156b9f31aa3696be64c380630002d4a629f20e26f40ab5b",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualRelative_Eagle_Minus12",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.3581582438200712,
+        "rms_error": 0.16753663784568912
+      },
+      "old": "2efe0fbc75874c4b",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "2efe0fbc75874c4b",
+          "raw_sha256": "39ae83c8f81bbf03ef20413248e633bf11482c5111e78cd45894e79b70ec8d18",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "0e9265e82289808a",
+          "raw_sha256": "09c4a1dc3f426efb177a94f9fdcdd708640e2017d8cb824e37f636747108022a",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "2efe0fbc75874c4b",
+          "raw_sha256": "39ae83c8f81bbf03ef20413248e633bf11482c5111e78cd45894e79b70ec8d18",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualRelative_Eagle_Plus12",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.381376251578331,
+        "rms_error": 0.177836067719243
+      },
+      "old": "d4a8fbe60fde8a40",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "d4a8fbe60fde8a40",
+          "raw_sha256": "3e5bc7c287eaffe898c675f4bcd3408db72b489884dab690d90d134fcec54ecd",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "ddc5f8a84b6c52a3",
+          "raw_sha256": "7927b687258e36cb65f3426f298c2546f55b0e2c16b56c1b6f67c0e2857203e5",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "d4a8fbe60fde8a40",
+          "raw_sha256": "3e5bc7c287eaffe898c675f4bcd3408db72b489884dab690d90d134fcec54ecd",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualRelative_Paper_Center64",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.36372058652341366,
+        "rms_error": 0.17471186537785427
+      },
+      "old": "d8b8558a76679c7b",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "d8b8558a76679c7b",
+          "raw_sha256": "819095638e4cd1608f4b501f96849445ee84b81230c286d0fe450bf8f5252c70",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "567ef6fb95cdb472",
+          "raw_sha256": "9e70c5cef0282722834f3fa9c84ff724549ded091c820256135d1ca884f5454b",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "d8b8558a76679c7b",
+          "raw_sha256": "819095638e4cd1608f4b501f96849445ee84b81230c286d0fe450bf8f5252c70",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualRelative_Paper_Minus12",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.35887665674090385,
+        "rms_error": 0.16809101716266564
+      },
+      "old": "97a5625193a2326d",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "97a5625193a2326d",
+          "raw_sha256": "26fa2894c3e326fb7ee824597ee62bf9ff1eaf0f05a2c56fe0ce30125c0bf9fe",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "a5418f72030ca56c",
+          "raw_sha256": "b474ade693343633477752c2a6860a57664313d57a261d2690d34a6fd6222e41",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "97a5625193a2326d",
+          "raw_sha256": "26fa2894c3e326fb7ee824597ee62bf9ff1eaf0f05a2c56fe0ce30125c0bf9fe",
+          "samples": 25600
+        }
+      }
+    },
+    {
+      "case": "DualRelative_Paper_Plus12",
+      "current_vs_historical": {
+        "first_different_sample": 314,
+        "max_absolute_error": 0.3843684121966362,
+        "rms_error": 0.17850362704004027
+      },
+      "old": "3af2d505b736708e",
+      "profiles": {
+        "bridge-only": {
+          "deterministic": true,
+          "hash": "3af2d505b736708e",
+          "raw_sha256": "071b6319478de68861f6fff581e9c401322ed588728cd11001555cbb06e01fd1",
+          "samples": 25600
+        },
+        "current": {
+          "deterministic": true,
+          "hash": "66ed4f4c07a50d83",
+          "raw_sha256": "4a38b2e4cfe6c3ac62aea11a5c8f41908cd8d5cc39be7461338d8396d856a43c",
+          "samples": 25600
+        },
+        "historical": {
+          "deterministic": true,
+          "hash": "3af2d505b736708e",
+          "raw_sha256": "071b6319478de68861f6fff581e9c401322ed588728cd11001555cbb06e01fd1",
+          "samples": 25600
+        }
+      }
+    }
+  ],
+  "cause": "Factory0 Saw bass explicitly selects public Sub64, Noise0. Historical direct assignment used firmware64; approved current conversion uses firmware32. Replacing only the two PatchBridge assignments in a private diagnostic restores all12 historical Q20 fingerprints. Noise is zero in these fixtures.",
+  "classification": "OBSOLETE_REFERENCE",
+  "current_golden": {
+    "file": "Tests/Filter/DualSvfCurrentLinuxGoldens.h",
+    "sha256": "e4113e7a066cbae70f2fe4fe5e56290832c79e51cdec00cef49dd2066688b26a"
+  },
+  "drivers": [
+    {
+      "file": "Tests/Filter/DualSvfHeadlessTestsMain.cpp",
+      "sha256": "2768b0f7696968243c7acd01b9c5133ef7f2eff3ef6578b490a1dcfd05e1b577"
+    },
+    {
+      "file": "Tests/Filter/DualSvfSection2TestsMain.cpp",
+      "sha256": "7b6ef093df70cfe2de8de6561ddc42a8c0683dd3dcc72ece020f1220b4a6f861"
+    }
+  ],
+  "fixture": {
+    "block_size": 256,
+    "blocks": 100,
+    "channels": 2,
+    "filter_quality": "Normal",
+    "hashed_channel": 0,
+    "midi_events": [
+      {
+        "block": 0,
+        "channel": 1,
+        "note": 48,
+        "offset": 0,
+        "velocity": 110
+      },
+      {
+        "block": 40,
+        "channel": 1,
+        "note": 60,
+        "offset": 0,
+        "velocity": 96
+      }
+    ],
+    "name": "Saw bass",
+    "noise_internal": 0,
+    "noise_public": 0,
+    "parameters": {
+      "arp.direction": 0.0,
+      "arp.gate": 7.0,
+      "arp.octaves": 1.0,
+      "arp.pattern": 1.0,
+      "dsp.fx": 0.0,
+      "dsp.param1": 64.0,
+      "dsp.param2": 0.0,
+      "dsp.route": 0.0,
+      "env1.attack": 0.0,
+      "env1.decay": 50.0,
+      "env1.release": 60.0,
+      "env1.sustain": 20.0,
+      "env2.attack": 0.0,
+      "env2.decay": 40.0,
+      "env2.release": 40.0,
+      "env2.sustain": 100.0,
+      "filter.model": 0.0,
+      "filter.shruthi_env": 45.0,
+      "filter.shruthi_lfo": 0.0,
+      "filter_cutoff": 600.0000610351562,
+      "filter_key_tracking": 0.400000005960464,
+      "filter_resonance": 0.349999994039536,
+      "lfo1.attack": 0.0,
+      "lfo1.division": 3.0,
+      "lfo1.rate": 80.0,
+      "lfo1.retrigger": 0.0,
+      "lfo1.sync": 0.0,
+      "lfo1.waveform": 1.0,
+      "lfo2.attack": 0.0,
+      "lfo2.division": 3.0,
+      "lfo2.rate": 3.0,
+      "lfo2.retrigger": 0.0,
+      "lfo2.sync": 0.0,
+      "lfo2.waveform": 1.0,
+      "master.level": 0.850000023841858,
+      "midi.channel": 0.0,
+      "midi.inputTuning": 0.0,
+      "mix.balance": 32.0,
+      "mix.inputConditioning": 1.0,
+      "mix.noise": 0.0,
+      "mix.postMixer": 0.0,
+      "mix.sub": 64.0,
+      "mix.subShape": 0.0,
+      "mod.row1.amount": 0.0,
+      "mod.row1.destination": 4.0,
+      "mod.row1.source": 0.0,
+      "mod.row10.amount": 16.0,
+      "mod.row10.destination": 1.0,
+      "mod.row10.source": 21.0,
+      "mod.row11.amount": 32.0,
+      "mod.row11.destination": 6.0,
+      "mod.row11.source": 8.0,
+      "mod.row12.amount": 16.0,
+      "mod.row12.destination": 6.0,
+      "mod.row12.source": 0.0,
+      "mod.row2.amount": 0.0,
+      "mod.row2.destination": 5.0,
+      "mod.row2.source": 19.0,
+      "mod.row3.amount": 0.0,
+      "mod.row3.destination": 2.0,
+      "mod.row3.source": 19.0,
+      "mod.row4.amount": 0.0,
+      "mod.row4.destination": 3.0,
+      "mod.row4.source": 0.0,
+      "mod.row5.amount": 0.0,
+      "mod.row5.destination": 8.0,
+      "mod.row5.source": 1.0,
+      "mod.row6.amount": 0.0,
+      "mod.row6.destination": 8.0,
+      "mod.row6.source": 2.0,
+      "mod.row7.amount": 0.0,
+      "mod.row7.destination": 2.0,
+      "mod.row7.source": 21.0,
+      "mod.row8.amount": 0.0,
+      "mod.row8.destination": 3.0,
+      "mod.row8.source": 21.0,
+      "mod.row9.amount": 63.0,
+      "mod.row9.destination": 1.0,
+      "mod.row9.source": 20.0,
+      "osc1.option": 0.0,
+      "osc1.parameter": 0.0,
+      "osc1.range": 0.0,
+      "osc1.shape": 1.0,
+      "osc2.option": 12.0,
+      "osc2.parameter": 16.0,
+      "osc2.range": -12.0,
+      "osc2.shape": 1.0,
+      "perf.legato": 0.0,
+      "perf.portamento": 0.0,
+      "seq.clockMode": 0.0,
+      "seq.gate": 50.0,
+      "seq.midiOut": 0.0,
+      "seq.mode": 0.0,
+      "seq.swing": 0.0,
+      "seq.tempo": 120.0
+    },
+    "program": 0,
+    "routing": "serial",
+    "sample_rate": 48000,
+    "samples_per_channel": 25600,
+    "section1_mode": "LP",
+    "section2_independent_mode": "BP",
+    "section2_relative_mode": "LP",
+    "sub_internal": 32,
+    "sub_public": 64
+  },
+  "hash_algorithm": {
+    "initial": 1469598103934665603,
+    "multiplier": 1099511628211,
+    "quantization": "llround(clamp(double(sample),-32,+32)*1048576)",
+    "recurrence": "one xor and multiply per left-channel sample, uint64 wrap; no byte iteration",
+    "signed_conversion": "int32 then uint32 bit pattern"
+  },
+  "historical": {
+    "cases": {
+      "DualIndependent_Eagle_Cut40_Res32": [
+        25600,
+        "7e874a740b73392e"
+      ],
+      "DualIndependent_Eagle_Cut90_Res32": [
+        25600,
+        "f5f0dc043c0a672c"
+      ],
+      "DualIndependent_Eagle_Cut90_Res63": [
+        25600,
+        "696ac69cd52ec5f4"
+      ],
+      "DualIndependent_Paper_Cut40_Res32": [
+        25600,
+        "ef139144414c5c37"
+      ],
+      "DualIndependent_Paper_Cut90_Res32": [
+        25600,
+        "cfb4deaeda072793"
+      ],
+      "DualIndependent_Paper_Cut90_Res63": [
+        25600,
+        "e3ae9c3d53ff973b"
+      ],
+      "DualRelative_Eagle_Center64": [
+        25600,
+        "7998ba0118727a6e"
+      ],
+      "DualRelative_Eagle_Minus12": [
+        25600,
+        "2efe0fbc75874c4b"
+      ],
+      "DualRelative_Eagle_Plus12": [
+        25600,
+        "d4a8fbe60fde8a40"
+      ],
+      "DualRelative_Paper_Center64": [
+        25600,
+        "d8b8558a76679c7b"
+      ],
+      "DualRelative_Paper_Minus12": [
+        25600,
+        "97a5625193a2326d"
+      ],
+      "DualRelative_Paper_Plus12": [
+        25600,
+        "3af2d505b736708e"
+      ]
+    },
+    "file": "Tests/Filter/DualSvfSection2Goldens.h",
+    "golden_commit": "72ed52daa5f654ee2e1f4054f9827961c71e1a47",
+    "sha256": "02ccf4fd24c54a5ccbc9b7afb7f6ee7578bde100dd586884ed237a4f0ea4ab5e"
+  },
+  "juce_sha": "3fb5cbc0340758596dac39f7c8de47d562b4896e",
+  "owner_contract": "Current public0..127 Sub/Noise maps to firmware0..63 using public>>1. Historical sonic compatibility is not required.",
+  "platform": "Linux x86_64",
+  "production_source_sha256": {
+    "Source/Engine/DspBoard/BoardArithmetic.h": "48d9fbb818209a605fe69745555760d70c8ef14ae42c9a1a31acbb78252b794b",
+    "Source/Engine/DspBoard/BoardControl.h": "8940250b1eb199028bbc54ef0aa21efd33fada0d5e454bd2ed8f12c20acc9122",
+    "Source/Engine/DspBoard/BoardEffects.cpp": "7a05752f96b3fafa75c3b36b59241b45cceba922c25fd70925e826e01b063016",
+    "Source/Engine/DspBoard/BoardEffects.h": "da2d16f247ec46139179844863423422d4fe0e5df463235b4785c32b76df5336",
+    "Source/Engine/DspBoard/BoardFilter.cpp": "afd06af5d3e74446d242fb50907bfb50e1422fd4ad972c2cd5257ab7738f7b54",
+    "Source/Engine/DspBoard/BoardFilter.h": "f67e5ac64d373df597a8e03c4d5548134e6bd24f50db0bbbb40448084bae7175",
+    "Source/Engine/DspBoard/BoardInputModel.h": "fde64357dc064dfa09c12328c0412e666ccc5de3ca8e9c297025077f0f66d4fa",
+    "Source/Engine/DspBoard/BoardOutputModel.h": "e9d748ee0c65ec61a98d23182a18b406ae307d03c7e5c6cb8037575c4bbbcdba",
+    "Source/Engine/DspBoard/BoardPostDacFilter.h": "06d208049122e5afa563ba438894abe0ba111d43c393e3e736cb24f33f870b2d",
+    "Source/Engine/DspBoard/BoardProcessor.cpp": "66afd6276b127c86e59f5f617d6cfae125b20e721ccc9a29a9f34786daafffc9",
+    "Source/Engine/DspBoard/BoardProcessor.h": "3b3f0fd058031726e7c2305df2575941e7f00d99fa1954e8afdc1814e7e9b93b",
+    "Source/Engine/DspBoard/BoardResources.cpp": "d40a9504d0ab5358ff0f4d08475919c79f6bae64906dc6f2430ab4e11a23b979",
+    "Source/Engine/DspBoard/BoardResources.h": "4ac1c4546356d9609f6c91f811d8c4c4a734882fbf6ba694255325b44b865182",
+    "Source/Engine/DspBoard/BoardResponse.h": "8be217547bfb9619075fee80dd6492abd6be776d4ab1665c297061e61cd34eb7",
+    "Source/Engine/Filter/Circuit/ActiveLoadPole.h": "a5ea8fb4eaf2518e91df41e0bdb8e0d1fc0dbfa3d84b646d3263d03af3f7603a",
+    "Source/Engine/Filter/Circuit/Ir3109BoardCore.h": "93ad34ead0c5ad010df984a84125fa3fc2f6fdffc19f971bc4de0813d166caab",
+    "Source/Engine/Filter/Circuit/Ir3109Pole.h": "af9d8f91aeca5e1f407479d85e849c0eabc66a829e63e83eb89f1ba10a53d7d4",
+    "Source/Engine/Filter/Circuit/Ir3109Types.h": "b15501445ae63819d2ea92063ef0113d8ebb46f8885fc96793870c1a838ea367",
+    "Source/Engine/Filter/Circuit/PassiveLoadPole.h": "a6fbe8f6a3664ea8aba6a0ca6579e6cab0861ef6959d0e4df30fb8b69f075217",
+    "Source/Engine/Filter/Circuit/ResonanceNetwork.h": "2290bb73bb391f8c752cc1fcfa54cb2e7131f97dd71c834738d8ad999074e218",
+    "Source/Engine/Filter/Control/CutoffMapper.h": "66c4f2b5e33e9e8dee60a6a5e65e66a0a25edb0f696bbcf9634151fb923a0e6e",
+    "Source/Engine/Filter/FilterQuality.h": "05ffc1b5235b8f9d9403c8ec1537c754fab69b617e0861b6734a784f645abb00",
+    "Source/Engine/Filter/FilterRateConverter.h": "4d3d4d5594b443b137235e241b8d757450fa01fc803529a93716dd0d12042cf8",
+    "Source/Engine/Filter/ShruthiSvf2p.h": "14f45f280e884a175826b7ee1d3f92291d5d6bf6f55a596932cb2042c5a97b68",
+    "Source/Engine/Filter/ShruthiSvfSection2Control.h": "2e7e9d25d19046b28b244868baba0df7df876d68a814e0f94429715feed3c615",
+    "Source/Engine/Filter/Smr4InputCoupling.h": "f99cb8882a9291d92bbb0f2acbbbb3902e19cf26f5cdfd1b4822d4f7708ca08a",
+    "Source/Engine/Filter/SwaraXtFilter.cpp": "2df3681dd70fad9b8088f15a46235309fa498bc6abbe9566a38222d4ef870a64",
+    "Source/Engine/Filter/SwaraXtFilter.h": "3dd0a530761824b6a90eabbc553b534a007351b02d21a57732f448ca3d3a1dd6",
+    "Source/Engine/FreeCvPitch.h": "e3f151433db94428ca5bc30283f60d16e037abeaa32efe472d270d9d6ad3d966",
+    "Source/Engine/HostTransport.h": "ecfc9e8d2e815a4651cd6f342967efb96e5091b1c2da352d12b4c9ebd592a5c2",
+    "Source/Engine/MidiInputTuning.h": "607646aba67c59b430a4f3d34ad1ca7dc53d0ef84dd034f46c1ba850f224484d",
+    "Source/Engine/MidiOutputCapacity.h": "a912a5d034f93aeea63398b50563f06e21610edc9e7ab13a4554c4be7f608a00",
+    "Source/Engine/ParameterCache.h": "fdecf8d6e10bb40b1a4c10519cb88545da0c2ece0a98b388e96398d38bd7dfc0",
+    "Source/Engine/PatchBridge.cpp": "53f6a903708ee5d0402a2b55bfda5e987cdf651293d1b56c7ae559753e219eab",
+    "Source/Engine/PatchBridge.h": "4fe094ed0c65312aec44156b9644913a11e8659a8bb2b66f5387450a68ba1060",
+    "Source/Engine/SampleRate/HostResampler.cpp": "c1e45d5587dfd78aac2dac4c87bc603e4e79d71a260698b7f492ee9e56423644",
+    "Source/Engine/SampleRate/HostResampler.h": "4a55ea7586b3eb7f9790282ba567708b5971b6669bccce61f2520e40470c80dc",
+    "Source/Engine/SampleRate/InternalSampleQueue.h": "70045d06078e851e8af1151830bb6e79f54c75b94c317cc2fea036c7169cc2cb",
+    "Source/Engine/SampleRate/PolyphaseFirResampler.h": "f06d731d6858b2a571a9d8443157fca01e8e9d23674b78bebaa1350d29dc4d6e",
+    "Source/Engine/SequenceState.h": "1e2ea073461908ef496bdd01dc00a96f7c0d164ac36551d6270d6f0e6a0101ae",
+    "Source/Engine/SequencerMidiRoute.h": "37d6234470ac4a70a20eaafe23c103d5a14630b77cc6fd203e3f8578fbdca96c",
+    "Source/Engine/ShruthiPort/adapted/UPSTREAM_COMMIT": "4968ac84161739c43b7fa4d7958ddf3bedd1d113a75c84cdd8f4471ea945f7b6",
+    "Source/Engine/ShruthiPort/adapted/avrlib/random.cc": "174b5fbe4a3205008cee1a1156bf19684b0173643d7608a673a21c06d81c2ea3",
+    "Source/Engine/ShruthiPort/adapted/avrlib/random.h": "756f6dded551f801b116d55f7cbd464b3a1d5415bd470662321eccf01592b3a4",
+    "Source/Engine/ShruthiPort/adapted/avrlib/string.cc": "26f8071283144afe7166283312aeaabbe92662078e0715d79f9ab35dcae61139",
+    "Source/Engine/ShruthiPort/adapted/shruthi/clock.cc": "c1e2cbb76338d9696610d2b93451e18896bad28d4750d28ae427bcb6f25a6a1e",
+    "Source/Engine/ShruthiPort/adapted/shruthi/clock.h": "717148a7aca8895c0ae8af533d9a498cffbe1935c76bd05bfc829fd4f00eb03b",
+    "Source/Engine/ShruthiPort/adapted/shruthi/envelope.h": "2ca566c5de6fa211bd5dc489a578c91ef54074635e37c1c7f0b649824a91438b",
+    "Source/Engine/ShruthiPort/adapted/shruthi/lfo.h": "5d672ec9542f5382ff392ee8b94c95f1730a0eedf03e1e7a31a6506408ec2da6",
+    "Source/Engine/ShruthiPort/adapted/shruthi/midi_dispatcher.cc": "8eb3a0dd97a24279a690f094a46c5049c20c709ccdceb872323bca1f9e7245fe",
+    "Source/Engine/ShruthiPort/adapted/shruthi/note_stack.cc": "9568b605ceb777f664bdce0c99def677740f6d02c4e90c2c3fb66dbc36679bd3",
+    "Source/Engine/ShruthiPort/adapted/shruthi/note_stack.h": "1bdfacb4bb1ab01aa69b52525ba8ede348a3e9aa50fc4ca8977305f6acb56f80",
+    "Source/Engine/ShruthiPort/adapted/shruthi/oscillator.cc": "b93a40ca17ac6f3d8a33d3a4aa4e897998e9bf456e24c21e3663dea0ff51f58d",
+    "Source/Engine/ShruthiPort/adapted/shruthi/oscillator.h": "0a15b8d63546285afcf44fadb43892ed937c2674db2689b0afddaeb9b93c7109",
+    "Source/Engine/ShruthiPort/adapted/shruthi/parameter.cc": "f6a1d1a53c870515fedd386133f88a769069d677ee39c9341d0f5cac2bd6d628",
+    "Source/Engine/ShruthiPort/adapted/shruthi/parameter.h": "b1d5fec744eb02a21482c58e8cca80e62f1707bdfda7c03668368810b9424aaf",
+    "Source/Engine/ShruthiPort/adapted/shruthi/part.cc": "c1cdca002fa020b3bb409f563a1ac89d1412c206e3f03fa8c6088630376bde9b",
+    "Source/Engine/ShruthiPort/adapted/shruthi/part.h": "260c2f1fec4128c743316872839f46e08c300a9c3eabcb7a3722baa3dfe6b556",
+    "Source/Engine/ShruthiPort/adapted/shruthi/patch.cc": "2f1ac037416c17eb393b2ed3fdb7a070d86473db1722dc636aa1409d5f69e337",
+    "Source/Engine/ShruthiPort/adapted/shruthi/sub_oscillator.h": "75377cd279a6cdd2923f416bbcd1a34e718f34fde5104dc2ac7d1c25f6dc1192",
+    "Source/Engine/ShruthiPort/adapted/shruthi/system_settings.cc": "6d58fb45d367ce9d494899e99f544662c380ef3eeb9a628e8b1260fc36e8814a",
+    "Source/Engine/ShruthiPort/adapted/shruthi/transient_generator.h": "803cf8e5c8ee21260a0b7fe90d76185c0c1006911f8b3466492d5a194a3a7ef2",
+    "Source/Engine/ShruthiPort/adapted/shruthi/voice.cc": "e1d425a2717217742e18a42e43292d01a15f6c8e0b2062e3e6331ffaad4da0d5",
+    "Source/Engine/ShruthiPort/adapted/shruthi/voice.h": "ac16a9802b8741cd90b76e7fe0293208e934d5d9d1d5b461481b4dc05775d607",
+    "Source/Engine/ShruthiPort/adapted/shruthi/voice_allocator.cc": "600885015e8330360873058abcde6ebda0163dcc53556187f493c04a387245f9",
+    "Source/Engine/ShruthiPort/adapted/shruthi/voice_allocator.h": "3d4afcb8c32c2c84d9be8606b6fda33ecfb6db4af454e52ed34c3a4f6664ac29",
+    "Source/Engine/ShruthiPort/host/audio_out.cc": "f92844edf17d3e4090ca0cf9f5b9b53c1c7b62cb7a2602549da016b7127eeeb0",
+    "Source/Engine/ShruthiPort/host/display.cc": "e8e1553913ac8cdf1cd02fd56ea3d69150d6f11461a8f736f343bc1b0aa2e370",
+    "Source/Engine/ShruthiPort/host/editor.cc": "b5e8dfd2911f5ba3ec6d2465ce91e683411d4557ff3b8ba21ea8391df23543e1",
+    "Source/Engine/ShruthiPort/host/storage.cc": "02a52a76eb4c6965335c08ad29292998b592875a01e3f2cf9f832e16c9cee3af",
+    "Source/Engine/ShruthiPort/include_first/avr/eeprom.h": "186d8eb916266c8ad215a8e6b649638135318959d355c845a99559d75df23cc7",
+    "Source/Engine/ShruthiPort/include_first/avr/io.h": "0277435f91a3a5074260256b44f94f9509e2e15771756447ffb08c1a4563ccd5",
+    "Source/Engine/ShruthiPort/include_first/avr/pgmspace.h": "bfb304f0c8d903a8901afa5137b6bd748b8802782f7113cdba4074e07055ce9f",
+    "Source/Engine/ShruthiPort/include_first/avrlib/avrlib.h": "acdd1443da7fa2a5ce4b4a7d54169516f7e0b01a92894601d14c4d4d642fc0bb",
+    "Source/Engine/ShruthiPort/include_first/avrlib/gpio.h": "842c4f6225bd1e2b01a0a3b38d2997c99793db837389add68f9f2b0293754079",
+    "Source/Engine/ShruthiPort/include_first/avrlib/op.h": "a1fede525892f505077cad9fc29ea0f88597f16d47565de9fd210ff0481c4fee",
+    "Source/Engine/ShruthiPort/include_first/avrlib/parallel_io.h": "4a7287fcd57a23615f78bc02b00c4f536d2b3ab6ee03699b91a6c9ffa4588c7c",
+    "Source/Engine/ShruthiPort/include_first/avrlib/resources_manager.h": "c44d093262276efdc1bf7e8f66d6c07397af0db082f736a9b7fad46f54618e16",
+    "Source/Engine/ShruthiPort/include_first/avrlib/ring_buffer.h": "779e0559572c252475efcbb667cb71b7bfff207130628caef510c44a0777b413",
+    "Source/Engine/ShruthiPort/include_first/avrlib/serial.h": "8fd5c6f0a5caaa23e1d972e64dde81f849bb382cd1e48a88b8878263c009439e",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/avrlib_hd.h": "fc120c0bc6867c866df25880da7585780f150dadd7bcc561daa34c79965770ef",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/envelope.h": "faf496813b3cf3bf9e83d8d30af83cb39dcff9654b85f1e6c75acb63c837ff54",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/filter.h": "65fbf0e42a7916b30ad6df77d7d4af54855fbde714a80f289e13b4920485b122",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/lfo.h": "18570bb7af1cca4336b75d1b2e43217c5601565ccea9b4f392cdd763eae3ef7a",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/mod_matrix.h": "532980e97de31e5ac74464ede4b9f5b463aede22b4acd8db318c4d67b122413d",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/op_float.h": "32c3cc1fa600e550eea8b5c2323e56523e18297a72805f944dc64fb8ba60cf8a",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/oscillator.h": "11a6efca5a2423fdef05f2d89e53c57c219ecac312bc2b20cadc8f1a5d20c06e",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/phase.h": "4f49ff551bf18a1447619b32b890bb15d25a33b1d6ad1690a1e3ebb68bb80c88",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/random.h": "40f66093ae481e5a0830703c681f691cbe9dbb258d15af266d8f7ba18af71539",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/resources.h": "292085af1f9d6fed0a61a59d06ec68c4164385b873cc9996524d45e5f1fba81b",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/resources_loader.h": "d54a1b7b003e6cdf9867d820f7e77979fa127e5446eff7a0b08fdd7690c0378b",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/sub_oscillator.h": "7a8e85d2f4730f5155fbcff046323cbbf0e364abfd6a1a2044b2a214e173880e",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/transient_generator.h": "d3a77046c72e75e119f3c63b1ea6a5319ed5576b103cd7d7f5a9ca317f1a69db",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/types.h": "ca4ca000c637f8295a4bd99b7386b6e0925ef133316746457e62213ad33b5b98",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/voice.h": "8f02e6f7273223f1d225f38157d66e378f006415becca601ee3b862999c538a6",
+    "Source/Engine/ShruthiPort/include_first/avrlib_hd/vowel.h": "62e3aa533ef901885b79f95e9bc765d80ce421c6a3403e8c735ffcaf83c34dbb",
+    "Source/Engine/ShruthiPort/include_first/midi/midi.h": "bc1d62502e847418a3df33b004dd0fb6015f9562e3b549cc2126c474f3a12e38",
+    "Source/Engine/ShruthiPort/include_first/shruthi/audio_out.h": "86ba5181873a8b8f00538b3b5d4adec6c33a456dac3be384a1fa82df84d181c6",
+    "Source/Engine/ShruthiPort/include_first/shruthi/display.h": "0500fe6dd2e407e2bb5483b44f07cc3de88a93e3e3d7d8b6fc34ed5b38572220",
+    "Source/Engine/ShruthiPort/include_first/shruthi/editor.h": "3f1027fcc8059af63dfdfdddc685f0d2f51e4c86cd682891ac1ba937e9649219",
+    "Source/Engine/ShruthiPort/include_first/shruthi/hardware_config.h": "f74077023ed307b53eed3e598dd4e89007802c884d608923cc69e47bd4f69488",
+    "Source/Engine/ShruthiPort/include_first/shruthi/midi_dispatcher.h": "1a8033910c4a0ce72a87494bee5a84492f066a7bc3f380c21354e6a36c67f786",
+    "Source/Engine/ShruthiPort/include_first/shruthi/oscillator.h": "f612bcaf7c70a057027a5f7e070d11e13ba893f4d16020036a1e2472566c3705",
+    "Source/Engine/ShruthiPort/include_first/shruthi/rom_resource_extensions.h": "6a25599d930bae6ed638775dcb81f325a709181c4d2b1acbb159d13d7d0b0fe5",
+    "Source/Engine/ShruthiPort/include_first/shruthi/sequencer_settings.h": "3494110b54703f5ec585eb73fd899ac347037de038f40b7ca41678248082af84",
+    "Source/Engine/ShruthiPort/include_first/shruthi/storage.h": "bb731c8cca30373bcd969a8fc1d35b1b68a05e2f7fbd3a924ae826b7a2759d4a",
+    "Source/Engine/ShruthiPort/include_first/swaraxt/shruthi_host.h": "a699ede9a17e93af7e1d33c2b6b460471c97c76de9488dbd0fb0719ae92d6c2a",
+    "Source/Engine/SwaraXtEngine.cpp": "ff1d405604772f9a7557a40b3b86bb8deff9399361747bc1c15c7a769d821516",
+    "Source/Engine/SwaraXtEngine.h": "1810494191fd521b986118904f5ba605bfa0aee2904975235e14d4e504dc6162",
+    "Source/Plugin/ApvtsFactoryPresetData.h": "d12f7fd7a6c2c999c21f4011d570acdc86363e158606ebc2332b5de8d9490cd8",
+    "Source/Plugin/ApvtsFactoryPresets.h": "07c67202f6c1159a1a9d97df5cc8cb57febf426a0bb3a92f61e5f648207648b0",
+    "Source/Plugin/PluginEditor.cpp": "a2f9c779517f578d82f0d21e89c725b7a095651feb9e179eb8b4fdeac7f820e8",
+    "Source/Plugin/PluginEditor.h": "00adb00c616a2cf1c9748e64a9dbe299a62ba563bda8f7d383b0c59731455f3e",
+    "Source/Plugin/PluginProcessor.cpp": "28e7afdbf2b74fdd0f5d5d41e7da4de3dfbe03eaae3b5f5382beea19278075c6",
+    "Source/Plugin/PluginProcessor.h": "af7f5a894d2d1f377ba156d4ab5048fc5282608c8c03e5ac5ce9ea12a2e3c8f5",
+    "Source/Plugin/SequenceParameters.h": "08044813e3ea268d485cb295a4200400af43a8cce359350a94dd50646cdd2714",
+    "Source/Plugin/ShruthiFactoryPresetData.h": "2a93c9275a071f1859a4fd99770ccf99bfcfdb50cd5f88aebe2f5405bf56e152",
+    "Source/Plugin/ShruthiFactoryPresets.cpp": "e28f18cc0dc6661470ef71b8a690139b6732074747b8d959bbbf18941088215d",
+    "Source/Plugin/ShruthiFactoryPresets.h": "5b319f84d1d36040bc8beef3b122120f97f6c10c5410815e8a773d26e49303ce",
+    "Source/Plugin/SwaraXtParameterLayout.cpp": "153216cba505a7ca18605832820d156efa0862300a05076a24c5e55e8d158c44",
+    "Source/Plugin/SwaraXtParameterLayout.h": "1b806fe8c98ca7df231a524ee8de3261a8fa6986ece2c87168a60f5a3d725169",
+    "Source/Tools/SkinEditor/SkinEditorMain.cpp": "d65877fedaab451c7e6d37f4853e36ef7088f536c7960c8b57b4211e76bb4fc3",
+    "Source/Tools/SkinEditor/SkinEditorPreview.cpp": "f771367a76afc2905fdb5f2dbde80157ee5b0c8f7294258bf07b3e1b84da065c",
+    "Source/Tools/SkinEditor/SkinEditorPreview.h": "d525b2b0964c9949fe652136f19a2380fe239e08713943c6ee93a9defd088b20",
+    "Source/Tools/SkinEditor/SkinEditorWindow.cpp": "858ab3884fa2d38a3145cc7303d3ea1961594bd1e6763117488e71f23c76c264",
+    "Source/Tools/SkinEditor/SkinEditorWindow.h": "a4ec827e151b525d08cc151e9d169ee389aaffae388c94f7c521c3981e76bcea",
+    "Source/Tools/TuningConverter/TuningConverterMain.cpp": "ae8627591a32a6185f5543e06d0691e713db8e0610b5790c6275c8f8da4915f5",
+    "Source/Tuning/PublishedTuning.h": "a91a923914f9b2a4fe50146318c096956c53e197e2e08f5d5f07bd076bb83ad8",
+    "Source/Tuning/ScalePitch.h": "ff5ba3daaf13acb19be5e0e0fcacde87ef50ae0512b70d09c768bcbc69c80ee2",
+    "Source/Tuning/TuningTable.cpp": "5d8b59f296ca3c7c88be7b974d3a63a420eee0f4e6be3f428d1238fef51e1b78",
+    "Source/Tuning/TuningTable.h": "1242014c42864b6b62e5d634dabbe29bc2e9ea777c92dfd5219d38a266c43c79",
+    "Source/Tuning/builtin/10-edo.scl": "48c4b50a85f2e57ff8965e5ea10b8886ee334deb5aef1e3c89ae975c5b01321b",
+    "Source/Tuning/builtin/11-edo.scl": "d4421b8a7417431de571067d2ff5d06e752283f2dadcfc174d40f50d672b548f",
+    "Source/Tuning/builtin/12-edo.scl": "86c70fdf29f9c29e6f5df7446739ed61f6a6cace65e798e4572c77146b7cb326",
+    "Source/Tuning/builtin/13-edo.scl": "d141be6e8606ce6e5f65264ddec0a093af8e7b18301de40cadb801a4da87465b",
+    "Source/Tuning/builtin/15-edo.scl": "9dc9ee1da017db16243682fc02eab3a4d63bee3f0a2a0441cb68ff01d85729a7",
+    "Source/Tuning/builtin/17-edo.scl": "24c802ca2bec588a8245e66f2daa6520f33025347ee9542b743e377f660fb351",
+    "Source/Tuning/builtin/19-edo.scl": "20dca6a611cfe45c6b9a71d6e08970307a088a90fbb249a5157a8fb749455ce1",
+    "Source/Tuning/builtin/22-edo.scl": "a972a95f4b63b607ca3c36e9a0cc2aca6482ba3ac22abbfb07f2d9981efa55c9",
+    "Source/Tuning/builtin/24-edo.scl": "e8bdd0ea3462ac9acbe679ce63af66a0b986b18f864d272a570aebc34aad4924",
+    "Source/Tuning/builtin/29-edo.scl": "d1e2e21902d000da68e1e306881ab67042dd9d760dfcb257219085485a5af097",
+    "Source/Tuning/builtin/31-edo.scl": "f0bd38a9042bca47a2f3a97e080990951ac2109a42ca74b8171cb720164a6169",
+    "Source/Tuning/builtin/41-edo.scl": "d89169eb88560d75093a3d73f2f8350b1a7d12edae8f220fd57f7b8a4ea6a53a",
+    "Source/Tuning/builtin/5-edo.scl": "6ec5368f94a30bfc0617a4b1e53816fed001d9e60881721a9ab5791297adede9",
+    "Source/Tuning/builtin/53-edo.scl": "6fc7b76044c78db1ef25051490126441fc1b4e54e973dd72cac0bd3ea535057c",
+    "Source/Tuning/builtin/7-edo.scl": "de9acb5f1d774f86f3003fdbb099b80dd3e019638f92c7b8b5538eb1ec56800c",
+    "Source/Tuning/builtin/72-edo.scl": "bfcb19c640cc66baa8fd65cf33f8f156212720ed066a84568375039ffc7af977",
+    "Source/Tuning/builtin/8-ed3.scl": "a06c734d87d8c3e57681785be825eaba08a5ce65acc7af9360576e2a08c01ede",
+    "Source/Tuning/builtin/9-edo.scl": "df63d21afa628f629af0d65beef81414b09634188efc3765a56ec0763abcec29",
+    "Source/Tuning/builtin/README.md": "de2eb3c4d55c0c16a3ba39e2ca3329198e770564d52537fa71b583d3b42e73a7",
+    "Source/Tuning/builtin/bohlen-pierce-equal.scl": "0d448864f15e1f365fbe6601e49ef9ea9760fab4320a1fd4dc51cb7d9301f7af",
+    "Source/Tuning/builtin/bohlen-pierce-just.scl": "6adb417bd2ce2c5018edf9eb202217fcc9df9b9a11c266706af70e916c13a587",
+    "Source/Tuning/builtin/gong-pythagorean.scl": "4fc9d8720180d79a32c0dbadc064fe9ff056fad54745cb127f84164100245871",
+    "Source/Tuning/builtin/harmonic-8-16.scl": "2a185cdf4adc91c8efdd044d6dc1a4980815149b50123c48a85160b7538686b7",
+    "Source/Tuning/builtin/hirajoshi-ellis.scl": "20054510339fe2ab21c5fab341aa09ff3284bbde86a6f48b36b3495ed9d2028c",
+    "Source/Tuning/builtin/just-diatonic-major.scl": "bfe8522f134a3a56ddeef4a78497447cdcf4b5adb647fa686f5f8473207a06e8",
+    "Source/Tuning/builtin/just-diatonic-minor.scl": "6a5b5f33e1889b2747894c448ba0513707a33c93df3781079237cb0928dddca6",
+    "Source/Tuning/builtin/just-major-pentatonic.scl": "8c13d78ba0852f1bcfc84d3cab654464315dbd18d7edf2838ffec345136bd742",
+    "Source/Tuning/builtin/just-major.scl": "206e584d1e24746cd0b388945fd6f96eecba176208cd99fcfe371f64cc401d67",
+    "Source/Tuning/builtin/kirnberger-iii.scl": "0e709e23c6ab0c8b57375476cdf4830c026ea1789980854a9297cdd816959c14",
+    "Source/Tuning/builtin/meantone-3.scl": "dbf902ce3b081b6394fcd2728ae2c99238bf39dcf0fc70991dd9c9b09d38a843",
+    "Source/Tuning/builtin/meantone-4.scl": "6b8d96da23277b376b300f76900620709bdd6d3ed1725c028abe6d3cf2bdc53c",
+    "Source/Tuning/builtin/meantone-6.scl": "2c447a7f763479c1c476ed5bdf959d0a16d1ea68fe7e4f666b543ec8dc5a766a",
+    "Source/Tuning/builtin/pythagorean-12.scl": "164faa2b23726e9a6479373fbeec700c0e5fa84cd5b28f1009d189d6d4557315",
+    "Source/Tuning/builtin/pythagorean-major.scl": "9de7ec10be5fd689a673602d71ee897335b0ad3dce61447ffee6767ed05384ea",
+    "Source/Tuning/builtin/rast-24edo.scl": "36dac637789448f5a291c32618dddd6e233207f60093ab7eaf3939b11c85e4b3",
+    "Source/Tuning/builtin/tritave.scl": "e95954ac2423043d79c81ccc9e1ba804544e84760a95cb967762aabd9fec9dab",
+    "Source/Tuning/builtin/vallotti.scl": "3ba16f6d7efc258dbf7f964da3334b47d1e9c2681ebbd21c167af3e669d624c2",
+    "Source/Tuning/builtin/werckmeister-iii.scl": "5cafd1d7a75c78d06e8223304d0378b665a040f13b766f9eac853a9a91210687",
+    "Source/Ui/SwaraXtBoardPanel.cpp": "447133caab7157bbc62b0c671392c1f4939db38086a882b4c71f756b75f1642b",
+    "Source/Ui/SwaraXtBoardPanel.h": "cba86574968eccb29adce9b9a014fa57906b8f81d70b25db080a8a61d1f7a7c5",
+    "Source/Ui/SwaraXtDualSvfPanel.cpp": "bfc540187fd7733c2458d170fdfe798151a2d0c9339b3325bcf25e3922d9da3f",
+    "Source/Ui/SwaraXtDualSvfPanel.h": "c6b267f57a66f17461219f9620898a0a849b8d8a97fc959f73f9ade3dc6a8369",
+    "Source/Ui/SwaraXtLfoVisualizer.h": "442533453fdf18fb79fc4ea697a133cc50119a5e5cbdfed32b2d0f898e238786",
+    "Source/Ui/SwaraXtLookAndFeel.cpp": "973e5627f17dbfd64715d7a164fc2809c090715acdfcd3f7ef5730c0a6f7db34",
+    "Source/Ui/SwaraXtLookAndFeel.h": "e4e3415d32e88d435c1fef9a0b47c89688340846326282a47fede7a09d87add9",
+    "Source/Ui/SwaraXtModulationNames.h": "dd44e35a5513a837e4cb508e9732b4a78e085df66a8c25440350e7246db3f72d",
+    "Source/Ui/SwaraXtPanels.cpp": "c730f4738cba52aa5908f6a72469e62e0a2b3cf5f718b444a7c4da28c577d833",
+    "Source/Ui/SwaraXtPanels.h": "aca5e3e7c3534e7c758d593e9f41fd25aad8851df4c2a48cc273a9f4a15d4f57",
+    "Source/Ui/SwaraXtSkin.cpp": "4faea07990d8c7d7d6544cdc4e77bc851f1ebfc57c15cd1e21722a86fb6672b8",
+    "Source/Ui/SwaraXtSkin.h": "4f5b815fe1a24ffae0a575e67ef298aabdc12766a2bd901528d980d5842b616c",
+    "Source/Ui/SwaraXtText.h": "f12ed01e65dea79131195bcccea5f8bc306b6ca7613a2cdb27d6c8f570be5d02",
+    "Source/Ui/SwaraXtTypography.h": "afc847d3403054010b80bc1d30610965ee15edb78b207a286affaa8dcc1f89d8",
+    "Source/Ui/SwaraXtUiPalette.h": "d176144de552fc2cf73ca8283aa9d0b821c0272f96a0a4f92e639e5690b33fab"
+  },
+  "qualification": {
+    "current_positive_profiles": {
+      "clang-asan-ubsan": "PASS_12_EXACT_AND_SHARED_DSP_CONTROLS",
+      "clang-debug": "PASS_12_EXACT_AND_SHARED_DSP_CONTROLS",
+      "clang-release": "PASS_12_EXACT_AND_SHARED_DSP_CONTROLS",
+      "gcc-release": "PASS_12_EXACT_AND_SHARED_DSP_CONTROLS"
+    },
+    "headless_extraction": "Original DSP/control/render functions retained; observational capture matches previous four-profile actual fingerprints",
+    "independent_python_Q20": "12/12 raw rehash matches C++ recurrence, with explicit signed rounding",
+    "private_historical_bridge": "12/12 exact historical fingerprints",
+    "private_historical_bridge_and_factory": "12/12 exact historical fingerprints",
+    "raw_compilers": "12/12 Clang Release == GCC Release == Clang Debug",
+    "raw_repeat": "12/12 bit-exact repeated captures",
+    "reference_change_approved_basis": "Causal historical negative control plus owner-approved current integer mixer contract, independent raw hash implementation, cross-compiler raw identity and production DSP invariants. No tolerances or production algorithms changed."
+  },
+  "schema": 1,
+  "source_base_sha": "a21530355b03d78749f30afc3c1048d7ca36000d",
+  "windows": "NOT_RUNTIME_QUALIFIED; historical header unchanged, these Linux current fingerprints are not MSVC authority"
+}

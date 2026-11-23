@@ -1,0 +1,13 @@
+! rast-24edo.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Ascending 24-EDO theoretical model, C D E-half-flat F G A B-half-flat C. Not a full maqam or a claim of universal performance intonation.
+! Independently authored; definition and references: README.md
+Rast (24-EDO model)
+7
+200.0
+350.0
+500.0
+700.0
+900.0
+1050.0
+2/1

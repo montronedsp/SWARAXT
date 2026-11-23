@@ -1,0 +1,13 @@
+! 7-edo.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! 7 equal divisions of the octave; step = 1200/7 cents.
+! Independently authored; definition and references: README.md
+7-EDO
+7
+171.428571428571
+342.857142857143
+514.285714285714
+685.714285714286
+857.142857142857
+1028.571428571429
+2/1

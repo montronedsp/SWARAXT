@@ -1,0 +1,717 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "qual-linux-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../swaraxt-builds/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "SWARA_BUILD_TESTS": "ON",
+        "SWARA_BUILD_SKIN_EDITOR": "OFF",
+        "SWARAXT_SHARE_TEST_JUCE": "ON",
+        "SWARAXT_SHARE_TEST_PRODUCTION": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-release",
+      "inherits": "qual-linux-base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-debug",
+      "inherits": "qual-linux-base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "qual-linux-clang-release",
+      "inherits": "qual-linux-base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "qual-linux-clang-debug",
+      "inherits": "qual-linux-base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-asan-ubsan",
+      "inherits": "qual-linux-gcc-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_SANITIZER": "asan-ubsan"
+      }
+    },
+    {
+      "name": "qual-linux-clang-asan-ubsan",
+      "inherits": "qual-linux-clang-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_SANITIZER": "asan-ubsan"
+      }
+    },
+    {
+      "name": "qual-linux-clang-tsan",
+      "inherits": "qual-linux-clang-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_SANITIZER": "tsan"
+      }
+    },
+    {
+      "name": "qual-linux-clang-rtsan",
+      "inherits": "qual-linux-clang-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_SANITIZER": "rtsan"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-warnings",
+      "inherits": "qual-linux-gcc-release",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_WARNINGS": "ON"
+      }
+    },
+    {
+      "name": "qual-linux-clang-warnings",
+      "inherits": "qual-linux-clang-release",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_WARNINGS": "ON"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-analyzer",
+      "inherits": "qual-linux-gcc-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_GCC_ANALYZER": "ON"
+      }
+    },
+    {
+      "name": "qual-linux-clang-tidy",
+      "inherits": "qual-linux-clang-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_CLANG_TIDY": "ON"
+      }
+    },
+    {
+      "name": "qual-linux-coverage",
+      "inherits": "qual-linux-clang-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "qual-linux-libfuzzer",
+      "inherits": "qual-linux-clang-debug",
+      "cacheVariables": {
+        "SWARAXT_DIAGNOSTICS_MODULE": "$env{SWARAXT_DIAGNOSTICS_MODULE}",
+        "DIAG_FUZZER": "libfuzzer",
+        "DIAG_SANITIZER": "asan-ubsan"
+      }
+    },
+    {
+      "name": "qual-windows",
+      "binaryDir": "${sourceDir}/../swaraxt-builds/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "cacheVariables": {
+        "SWARA_BUILD_TESTS": "ON",
+        "SWARA_BUILD_SKIN_EDITOR": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "qual-linux-gcc-release",
+      "configurePreset": "qual-linux-gcc-release",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-gcc-debug",
+      "configurePreset": "qual-linux-gcc-debug",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-clang-release",
+      "configurePreset": "qual-linux-clang-release",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-clang-debug",
+      "configurePreset": "qual-linux-clang-debug",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-gcc-asan-ubsan",
+      "configurePreset": "qual-linux-gcc-asan-ubsan",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-clang-asan-ubsan",
+      "configurePreset": "qual-linux-clang-asan-ubsan",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-clang-tsan",
+      "configurePreset": "qual-linux-clang-tsan",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-clang-rtsan",
+      "configurePreset": "qual-linux-clang-rtsan",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-gcc-warnings",
+      "configurePreset": "qual-linux-gcc-warnings",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-clang-warnings",
+      "configurePreset": "qual-linux-clang-warnings",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-gcc-analyzer",
+      "configurePreset": "qual-linux-gcc-analyzer",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-clang-tidy",
+      "configurePreset": "qual-linux-clang-tidy",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-coverage",
+      "configurePreset": "qual-linux-coverage",
+      "jobs": 1
+    },
+    {
+      "name": "qual-linux-libfuzzer",
+      "configurePreset": "qual-linux-libfuzzer",
+      "jobs": 1
+    },
+    {
+      "name": "qual-windows",
+      "configurePreset": "qual-windows",
+      "jobs": 1,
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "qual-linux-gcc-release-quick",
+      "configurePreset": "qual-linux-gcc-release",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-release-extended",
+      "configurePreset": "qual-linux-gcc-release",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-debug-quick",
+      "configurePreset": "qual-linux-gcc-debug",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-debug-extended",
+      "configurePreset": "qual-linux-gcc-debug",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-release-quick",
+      "configurePreset": "qual-linux-clang-release",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-release-extended",
+      "configurePreset": "qual-linux-clang-release",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-debug-quick",
+      "configurePreset": "qual-linux-clang-debug",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-debug-extended",
+      "configurePreset": "qual-linux-clang-debug",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-asan-ubsan-quick",
+      "configurePreset": "qual-linux-gcc-asan-ubsan",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-asan-ubsan-extended",
+      "configurePreset": "qual-linux-gcc-asan-ubsan",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-asan-ubsan-quick",
+      "configurePreset": "qual-linux-clang-asan-ubsan",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-asan-ubsan-extended",
+      "configurePreset": "qual-linux-clang-asan-ubsan",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-tsan-quick",
+      "configurePreset": "qual-linux-clang-tsan",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-tsan-extended",
+      "configurePreset": "qual-linux-clang-tsan",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-rtsan-quick",
+      "configurePreset": "qual-linux-clang-rtsan",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-rtsan-extended",
+      "configurePreset": "qual-linux-clang-rtsan",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-warnings-quick",
+      "configurePreset": "qual-linux-gcc-warnings",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-warnings-extended",
+      "configurePreset": "qual-linux-gcc-warnings",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-warnings-quick",
+      "configurePreset": "qual-linux-clang-warnings",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-warnings-extended",
+      "configurePreset": "qual-linux-clang-warnings",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-analyzer-quick",
+      "configurePreset": "qual-linux-gcc-analyzer",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-gcc-analyzer-extended",
+      "configurePreset": "qual-linux-gcc-analyzer",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-tidy-quick",
+      "configurePreset": "qual-linux-clang-tidy",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-clang-tidy-extended",
+      "configurePreset": "qual-linux-clang-tidy",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-coverage-quick",
+      "configurePreset": "qual-linux-coverage",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-coverage-extended",
+      "configurePreset": "qual-linux-coverage",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-libfuzzer-quick",
+      "configurePreset": "qual-linux-libfuzzer",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-linux-libfuzzer-extended",
+      "configurePreset": "qual-linux-libfuzzer",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-windows-quick",
+      "configurePreset": "qual-windows",
+      "configuration": "Release",
+      "filter": {
+        "include": {
+          "label": "^quick$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "qual-windows-extended",
+      "configurePreset": "qual-windows",
+      "configuration": "Release",
+      "filter": {
+        "include": {
+          "label": "^extended$"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "jobs": 1,
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}

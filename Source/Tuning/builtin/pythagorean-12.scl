@@ -1,0 +1,18 @@
+! pythagorean-12.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! Pure-fifth chain Eb-Bb-F-C-G-D-A-E-B-F#-C#-G#, octave reduced.
+! Independently authored; definition and references: README.md
+Pythagorean 12 (Eb-G#)
+12
+2187/2048
+9/8
+32/27
+81/64
+4/3
+729/512
+3/2
+6561/4096
+27/16
+16/9
+243/128
+2/1

@@ -1,0 +1,783 @@
+// Copyright 2026 MontroneDSP.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include <JuceHeader.h>
+
+#include <cmath>
+#include <cstdio>
+#include <filesystem>
+#include <limits>
+
+#include "Plugin/PluginEditor.h"
+#include "Plugin/PluginProcessor.h"
+#include "Plugin/SwaraXtParameterLayout.h"
+#include "Ui/SwaraXtModulationNames.h"
+#include "shruthi/patch.h"
+
+namespace {
+
+int failures = 0;
+
+void expect(bool condition, const char* message)
+{
+    if (! condition)
+    {
+        std::printf("FAIL: %s\n", message);
+        ++failures;
+    }
+}
+
+void setInt(SwaraXtAudioProcessor& processor, const char* id, int value)
+{
+    auto* parameter = processor.getApvts().getParameter(id);
+    expect(parameter != nullptr, id);
+    if (parameter != nullptr)
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(value)));
+}
+
+class TestPlayHead : public juce::AudioPlayHead {
+ public:
+    Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo position;
+        position.setBpm(bpm);
+        if (providePpq)
+            position.setPpqPosition(ppq);
+        position.setIsPlaying(playing);
+        return position;
+    }
+
+    double bpm = 120.0;
+    double ppq = 0.0;
+    bool playing = true;
+    bool providePpq = true;
+};
+
+void processSamples(SwaraXtAudioProcessor& processor,
+                    TestPlayHead& playHead,
+                    int totalSamples,
+                    const std::vector<int>& blockSizes,
+                    bool sendNote)
+{
+    int processed = 0;
+    int blockIndex = 0;
+    while (processed < totalSamples)
+    {
+        const int block = juce::jmin(blockSizes[static_cast<size_t>(blockIndex % blockSizes.size())],
+                                     totalSamples - processed);
+        juce::AudioBuffer<float> buffer(2, block);
+        juce::MidiBuffer midi;
+        if (sendNote && processed == 0)
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+        processor.processBlock(buffer, midi);
+        playHead.ppq += static_cast<double>(block) * playHead.bpm / (60.0 * 48000.0);
+        processed += block;
+        ++blockIndex;
+    }
+}
+
+void testInvalidHostPositions()
+{
+    constexpr double maximumPpq = 4294967296.0;
+    expect(swaraxt::isValidHostPpq(maximumPpq), "maximum precise host position accepted");
+    for (double invalid : { std::numeric_limits<double>::quiet_NaN(),
+                            std::numeric_limits<double>::infinity(),
+                            -std::numeric_limits<double>::infinity(), -1.0,
+                            maximumPpq + 1.0, 1.0e300,
+                            std::numeric_limits<double>::max() })
+    {
+        expect(! swaraxt::isValidHostPpq(invalid), "invalid host position rejected");
+        SwaraXtAudioProcessor malformed, missing;
+        TestPlayHead badHost, absentHost;
+        badHost.ppq = invalid;
+        absentHost.providePpq = false;
+        malformed.setPlayHead(&badHost);
+        missing.setPlayHead(&absentHost);
+        for (auto* processor : { &malformed, &missing })
+        {
+            processor->prepareToPlay(48000.0, 128);
+            setInt(*processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+            setInt(*processor, swaraxt::IDs::seqClockMode, 1);
+        }
+        expect(malformed.getParameters().size() == missing.getParameters().size(),
+               "PPQ processors start with identical parameter inventories");
+        for (int index = 0; index < malformed.getParameters().size(); ++index)
+            expect(malformed.getParameters()[index]->getValue() == missing.getParameters()[index]->getValue(),
+                   "PPQ processors start with identical parameter values");
+        juce::AudioBuffer<float> badAudio(2, 128), reference(2, 128);
+        bool audibleBeforeResume = false, audibleAfterResume = false;
+        for (int block = 0; block < 256; ++block)
+        {
+            if (block == 128)
+            {
+                badHost.ppq = absentHost.ppq = 2.0;
+                absentHost.providePpq = true;
+            }
+            juce::MidiBuffer midi;
+            if (block == 0)
+                midi.addEvent(juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)), 0);
+            // processBlock consumes MIDI: copy before either processor runs.
+            juce::MidiBuffer referenceMidi(midi);
+            malformed.processBlock(badAudio, midi);
+            missing.processBlock(reference, referenceMidi);
+            for (int channel = 0; channel < 2; ++channel)
+            for (int sample = 0; sample < 128; ++sample)
+            {
+                if (std::abs(reference.getSample(channel, sample)) > 1.0e-6f)
+                    (block < 128 ? audibleBeforeResume : audibleAfterResume) = true;
+                expect(std::isfinite(badAudio.getSample(channel, sample))
+                           && badAudio.getSample(channel, sample) == reference.getSample(channel, sample),
+                       "invalid PPQ uses identical fallback and resumes valid host timing");
+            }
+            // Independent timing oracle: 128 blocks * 128 frames at 48 kHz,
+            // 120 BPM and 24 ticks/quarter contains ticks 0..16. Resuming at
+            // PPQ 2 contains ticks 48..64, for another 17 events.
+            if (block == 127 || block == 255)
+                expect(malformed.engineForTests().hostClockEventCountForTests()
+                           == static_cast<uint64_t>(block == 127 ? 17 : 34),
+                       "fallback advances across blocks and valid PPQ resumes at the correct tick");
+            if (block >= 128)
+                badHost.ppq = absentHost.ppq += 128.0 / 24000.0;
+        }
+        expect(audibleBeforeResume && audibleAfterResume,
+               "PPQ comparison exercises audible MIDI before and after resume");
+        expect(malformed.engineForTests().hostClockEventCountForTests()
+                   == missing.engineForTests().hostClockEventCountForTests(),
+               "malformed and missing PPQ clock identically");
+    }
+}
+
+void testHostClockAndLfoSync()
+{
+    SwaraXtAudioProcessor processor;
+    TestPlayHead playHead;
+    processor.setPlayHead(&playHead);
+    processor.prepareToPlay(48000.0, 257);
+    setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+    setInt(processor, swaraxt::IDs::seqClockMode, 1);
+    setInt(processor, swaraxt::IDs::arpGate, 7);
+    setInt(processor, swaraxt::IDs::seqGate, 50);
+    setInt(processor, swaraxt::IDs::lfo1Sync, 1);
+    setInt(processor, swaraxt::IDs::lfo1Division, 3);
+
+    processSamples(processor, playHead, 24000, { 63, 64, 65, 127, 128, 129, 257 }, true);
+    expect(processor.engineForTests().hostClockEventCountForTests() == 24,
+           "host clock emits exactly 24 ticks per quarter note");
+    expect(processor.engineForTests().shruthiPart().step() == 3,
+           "six-clock division advances four steps per quarter note");
+    expect(processor.engineForTests().shruthiPart().lfo_phase_increment_for_tests(0) == 134,
+           "synchronized quarter-note LFO uses native control-rate increment");
+
+    const auto beforeTempoChange = processor.engineForTests().hostClockEventCountForTests();
+    playHead.bpm = 174.0;
+    processSamples(processor, playHead, 24000, { 65, 129, 63 }, false);
+    expect(processor.engineForTests().hostClockEventCountForTests() > beforeTempoChange + 33,
+           "host clock follows a running BPM change without block-size quantization");
+    expect(processor.engineForTests().shruthiPart().lfo_phase_increment_for_tests(0) == 194,
+           "synchronized LFO follows a running BPM change");
+
+    setInt(processor, swaraxt::IDs::seqSwing, 100);
+    const auto beforeSwing = processor.engineForTests().hostClockEventCountForTests();
+    processSamples(processor, playHead, 48000, { 63, 257, 64, 129, 65 }, false);
+    const auto swingTicks = processor.engineForTests().hostClockEventCountForTests() - beforeSwing;
+    expect(swingTicks >= 68 && swingTicks <= 71,
+           "swing preserves average host-clock rate");
+
+    playHead.playing = false;
+    processSamples(processor, playHead, 128, { 128 }, false);
+    expect(! processor.engineForTests().shruthiPart().running(),
+           "host stop releases synchronized sequencer transport");
+
+    playHead.playing = true;
+    playHead.ppq = 9.25;
+    processSamples(processor, playHead, 128, { 63, 65 }, false);
+    expect(processor.engineForTests().shruthiPart().running(),
+           "host restart aligns at a non-zero PPQ position");
+    setInt(processor, swaraxt::IDs::seqClockMode, 0);
+    processSamples(processor, playHead, 128, { 63, 65 }, false);
+    expect(processor.engineForTests().shruthiPart().running(),
+           "switching from host sync to free clock preserves the running sequencer");
+    processor.releaseResources();
+}
+
+void testHostTempoCoverage()
+{
+    for (const double bpm : { 60.0, 120.0, 128.0, 174.0 })
+    {
+        SwaraXtAudioProcessor processor;
+        TestPlayHead playHead;
+        playHead.bpm = bpm;
+        processor.setPlayHead(&playHead);
+        processor.prepareToPlay(48000.0, 257);
+        setInt(processor, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+        setInt(processor, swaraxt::IDs::seqClockMode, 1);
+        processSamples(processor, playHead, 48000, { 63, 64, 65, 127, 128, 129, 257 }, true);
+        const auto expected = static_cast<uint64_t>(std::ceil(bpm * 24.0 / 60.0));
+        expect(processor.engineForTests().hostClockEventCountForTests() == expected,
+               "host clock tick count follows 60, 120, 128, and 174 BPM");
+    }
+
+    SwaraXtAudioProcessor fallback;
+    TestPlayHead noPpq;
+    noPpq.bpm = 128.0;
+    noPpq.providePpq = false;
+    fallback.setPlayHead(&noPpq);
+    fallback.prepareToPlay(48000.0, 129);
+    setInt(fallback, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+    setInt(fallback, swaraxt::IDs::seqClockMode, 1);
+    processSamples(fallback, noPpq, 48000, { 63, 65, 129 }, true);
+    expect(fallback.engineForTests().hostClockEventCountForTests() == 52,
+           "host clock remains deterministic when the host omits PPQ position");
+}
+
+void testFreeClockAndGate()
+{
+    SwaraXtAudioProcessor freeClock;
+    TestPlayHead playHead;
+    freeClock.setPlayHead(&playHead);
+    freeClock.prepareToPlay(48000.0, 65);
+    setInt(freeClock, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+    setInt(freeClock, swaraxt::IDs::seqClockMode, 0);
+    setInt(freeClock, swaraxt::IDs::seqTempo, 128);
+    processSamples(freeClock, playHead, 48000, { 63, 64, 65 }, true);
+    expect(freeClock.engineForTests().hostClockEventCountForTests() == 0,
+           "free-clock mode does not consume host clock events");
+    expect(freeClock.engineForTests().shruthiPart().running(),
+           "free-clock mode retains the native Shruthi sequencer clock");
+
+    SwaraXtAudioProcessor gated;
+    TestPlayHead gatedPlayHead;
+    gated.setPlayHead(&gatedPlayHead);
+    gated.prepareToPlay(48000.0, 64);
+    setInt(gated, swaraxt::IDs::seqMode, shruthi::SEQUENCER_MODE_ARP);
+    setInt(gated, swaraxt::IDs::seqClockMode, 1);
+    setInt(gated, swaraxt::IDs::arpGate, 7);
+    setInt(gated, swaraxt::IDs::seqGate, 25);
+    processSamples(gated, gatedPlayHead, 4500, { 63, 64, 65 }, true);
+    expect(gated.engineForTests().shruthiPart().gate_counter_for_tests() == 0
+               && gated.engineForTests().shruthiPart().generated_note_count_for_tests() == 0,
+           "host-synchronized sequencer gate closes before the next step");
+}
+
+void testLfoRateIndependence()
+{
+    for (double sampleRate : { 44100.0, 48000.0, 96000.0 })
+    {
+        for (int block : { 63, 64, 65 })
+        {
+            SwaraXtAudioProcessor processor;
+            TestPlayHead playHead;
+            processor.setPlayHead(&playHead);
+            processor.prepareToPlay(sampleRate, block);
+            setInt(processor, swaraxt::IDs::lfo1Sync, 1);
+            setInt(processor, swaraxt::IDs::lfo1Division, 2);
+            juce::AudioBuffer<float> buffer(2, block);
+            juce::MidiBuffer midi;
+            processor.processBlock(buffer, midi);
+            expect(processor.engineForTests().shruthiPart().lfo_phase_increment_for_tests(0) == 267,
+                   "synchronized eighth-note LFO is host-rate and block-size independent");
+        }
+    }
+
+    SwaraXtAudioProcessor divisions;
+    TestPlayHead playHead;
+    divisions.setPlayHead(&playHead);
+    divisions.prepareToPlay(48000.0, 64);
+    setInt(divisions, swaraxt::IDs::lfo1Sync, 1);
+    juce::AudioBuffer<float> buffer(2, 64);
+    juce::MidiBuffer midi;
+    setInt(divisions, swaraxt::IDs::lfo1Division, 1);
+    divisions.processBlock(buffer, midi);
+    expect(divisions.engineForTests().shruthiPart().lfo_phase_increment_for_tests(0) == 535,
+           "synchronized sixteenth-note LFO uses the requested beat division");
+    setInt(divisions, swaraxt::IDs::lfo1Division, 6);
+    divisions.processBlock(buffer, midi);
+    expect(divisions.engineForTests().shruthiPart().lfo_phase_increment_for_tests(0) == 17,
+           "synchronized two-bar LFO uses the requested slow beat division");
+
+    setInt(divisions, swaraxt::IDs::lfo1Sync, 0);
+    setInt(divisions, swaraxt::IDs::lfo1Rate, 80);
+    playHead.bpm = 60.0;
+    divisions.processBlock(buffer, midi);
+    const auto freeIncrement = divisions.engineForTests().shruthiPart().lfo_phase_increment_for_tests(0);
+    playHead.bpm = 174.0;
+    divisions.processBlock(buffer, midi);
+    expect(divisions.engineForTests().shruthiPart().lfo_phase_increment_for_tests(0) == freeIncrement,
+           "free-running LFO remains independent of host BPM");
+}
+
+void testLfoRetrigger()
+{
+    SwaraXtAudioProcessor processor;
+    TestPlayHead playHead;
+    processor.setPlayHead(&playHead);
+    processor.prepareToPlay(48000.0, 65);
+    setInt(processor, swaraxt::IDs::lfo1Sync, 1);
+    setInt(processor, swaraxt::IDs::lfo1Division, 3);
+    setInt(processor, swaraxt::IDs::lfo1Retrig, 1);
+    processSamples(processor, playHead, 4096, { 63, 64, 65 }, false);
+    const auto phaseBeforeNote = processor.engineForTests().shruthiPart().lfo_phase_for_tests(0);
+    processSamples(processor, playHead, 65, { 65 }, true);
+    const auto phaseAfterNote = processor.engineForTests().shruthiPart().lfo_phase_for_tests(0);
+    expect(phaseBeforeNote > 1000 && phaseAfterNote < 1000,
+           "note retrigger resets a host-synchronized LFO without changing its rate source");
+}
+
+void testUserPresets()
+{
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("swaraxt-preset-test", {}, false);
+    expect(root.createDirectory().wasOk(), "create isolated preset test directory");
+
+    SwaraXtAudioProcessor processor;
+    processor.setUserPresetDirectoryForTests(root);
+    if (auto* cutoff = processor.getApvts().getParameter(swaraxt::IDs::filterCutoff))
+        cutoff->setValueNotifyingHost(cutoff->convertTo0to1(432.0f));
+
+    juce::String error;
+    expect(processor.saveUserPreset("Focused Bass", false, error), "save complete user preset");
+    expect(! processor.saveUserPreset("Focused Bass", false, error), "duplicate requires overwrite");
+    expect(processor.saveUserPreset("Focused Bass", true, error), "explicit overwrite succeeds");
+    expect(! processor.saveUserPreset("../escape", false, error), "path traversal is rejected");
+    expect(processor.saveUserPreset("Saw Bass", false, error),
+           "a factory-named save creates a separate user preset");
+    expect(root.getChildFile("Saw Bass.swaraxtpreset").existsAsFile(),
+           "factory presets are never overwritten in place");
+
+    auto entries = processor.getPresetEntries();
+    auto user = std::find_if(entries.begin(), entries.end(), [](const auto& entry) {
+        return ! entry.isFactory && entry.name == "Focused Bass";
+    });
+    expect(user != entries.end(), "saved user preset is rediscovered immediately");
+
+    processor.setCurrentProgram(0);
+    if (user != entries.end())
+        expect(processor.loadPresetEntry(*user, error), "reload user preset");
+    expect(std::abs(swaraxt::getParameterValue(processor.getApvts(), swaraxt::IDs::filterCutoff)
+                    - 432.0f) < 0.1f,
+           "saved preset recalls authoritative APVTS state");
+
+    if (auto* cutoff = processor.getApvts().getParameter(swaraxt::IDs::filterCutoff))
+        cutoff->setValueNotifyingHost(cutoff->convertTo0to1(987.0f));
+    expect(processor.saveUserPreset("Focused Lead", false, error), "save independent second preset");
+    processor.loadPresetEntry(*user, error);
+    auto refreshed = processor.getPresetEntries();
+    const auto lead = std::find_if(refreshed.begin(), refreshed.end(), [](const auto& entry) {
+        return ! entry.isFactory && entry.name == "Focused Lead";
+    });
+    expect(lead != refreshed.end() && processor.loadPresetEntry(*lead, error),
+           "second preset reloads after a different preset");
+    expect(std::abs(swaraxt::getParameterValue(processor.getApvts(), swaraxt::IDs::filterCutoff)
+                    - 987.0f) < 0.1f,
+           "preset B recall does not depend on preset A state");
+
+    const auto beforeMalformed = processor.getApvts().copyState().createCopy();
+    const auto malformed = root.getChildFile("Malformed.swaraxtpreset");
+    expect(malformed.replaceWithText("not a Swara XT state"), "write malformed test fixture");
+    SwaraXtAudioProcessor::PresetEntry bad { "Malformed", malformed, -1, false };
+    expect(! processor.loadPresetEntry(bad, error), "malformed preset fails safely");
+    expect(processor.getApvts().copyState().isEquivalentTo(beforeMalformed),
+           "malformed preset does not partially apply state");
+
+    juce::MemoryBlock versionOneData;
+    processor.getStateInformation(versionOneData);
+    if (auto xml = juce::AudioProcessor::getXmlFromBinary(versionOneData.getData(),
+                                                           static_cast<int>(versionOneData.getSize())))
+    {
+        xml->setAttribute("stateVersion", 1);
+        juce::MemoryBlock compatible;
+        juce::AudioProcessor::copyXmlToBinary(*xml, compatible);
+        processor.setStateInformation(compatible.getData(), static_cast<int>(compatible.getSize()));
+        expect(processor.getApvts().state.isValid(), "version-one state remains loadable");
+    }
+    else
+    {
+        expect(false, "decode version-one compatibility fixture");
+    }
+
+    expect(root.deleteRecursively(), "remove isolated preset test directory");
+}
+
+void writeScreenshot(SwaraXtAudioProcessorEditor& editor,
+                     const std::filesystem::path& output,
+                     bool modulation,
+                     bool sequencer)
+{
+    editor.setModuleViewsForTests(modulation, sequencer);
+    editor.resized();
+    auto image = editor.createComponentSnapshot(editor.getLocalBounds());
+    juce::PNGImageFormat png;
+    const juce::File outputFile(output.string());
+    outputFile.deleteFile();
+    juce::FileOutputStream stream(outputFile);
+    expect(stream.openedOk() && png.writeImageToStream(image, stream), "write GUI screenshot");
+}
+
+juce::Label* comboTextLabel(juce::ComboBox& combo)
+{
+    for (int child = 0; child < combo.getNumChildComponents(); ++child)
+        if (auto* label = dynamic_cast<juce::Label*>(combo.getChildComponent(child)))
+            return label;
+    return nullptr;
+}
+
+void testEditorAndScreenshots(const std::filesystem::path& outputRoot)
+{
+    SwaraXtAudioProcessor processor;
+    SwaraXtAudioProcessorEditor editor(processor);
+    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::medium);
+    expect(! editor.isResizable(), "editor remains fixed-size");
+    expect(editor.getWidth() == 1113 && editor.getHeight() == 521,
+           "medium editor uses the canonical SVG dimensions");
+    const auto lockup = editor.productLockupBoundsForTests();
+    expect(std::abs(lockup.getX() - 433.340f) < 0.001f
+               && std::abs(lockup.getY() - 130.590f) < 0.001f
+               && std::abs(lockup.getWidth() - 246.674f) < 0.001f
+               && std::abs(lockup.getHeight() - 44.282f) < 0.001f,
+           "product lockup preserves canonical geometry with the refined group offset");
+    expect(editor.presetBoundsForTests().getCentreX() == 535,
+           "preset name leaves room for navigation and Save within the center column");
+    expect(juce::String(SWARAXT_VERSION_STRING) == "1.3.3",
+           "GUI and build metadata report SWARA XT 1.3.3");
+
+    for (int oscillator = 0; oscillator < 2; ++oscillator)
+    {
+        auto& panel = editor.oscillatorForTests(oscillator);
+        expect(panel.modelIsSelector(), "oscillator model remains a discrete selector");
+        expect(panel.pitchIsRotary(), "oscillator pitch is a rotary control");
+        expect(panel.waveVariationIsRotary(), "oscillator wave variation is a rotary control");
+        expect(panel.pitchSlider().getInterval() == 1.0
+                   && panel.pitchSlider().getMinimum() == -48.0
+                   && panel.pitchSlider().getMaximum() == 48.0,
+               "pitch rotary reaches only authoritative integer semitone states");
+        expect(panel.waveVariationSlider().getInterval() == 1.0
+                   && panel.waveVariationSlider().getMinimum() == 0.0
+                   && panel.waveVariationSlider().getMaximum() == 127.0,
+               "wave variation rotary reaches only authoritative integer states");
+
+        const auto originalPitch = panel.pitchSlider().getValue();
+        const auto originalVariation = panel.waveVariationSlider().getValue();
+        const auto* pitchId = oscillator == 0 ? swaraxt::IDs::osc1Range : swaraxt::IDs::osc2Range;
+        const auto* variationId = oscillator == 0 ? swaraxt::IDs::osc1Param : swaraxt::IDs::osc2Param;
+
+        for (int pitch = -48; pitch <= 48; ++pitch)
+        {
+            panel.pitchSlider().setValue(static_cast<double>(pitch), juce::sendNotificationSync);
+            expect(panel.pitchSlider().getValue() == static_cast<double>(pitch),
+                   "pitch rotary never lands between valid states");
+            expect(std::lround(processor.getApvts().getRawParameterValue(pitchId)->load()) == pitch,
+                   "pitch rotary remains attached to authoritative automation state");
+        }
+        for (int variation = 0; variation <= 127; ++variation)
+        {
+            panel.waveVariationSlider().setValue(static_cast<double>(variation),
+                                                  juce::sendNotificationSync);
+            expect(panel.waveVariationSlider().getValue() == static_cast<double>(variation),
+                   "wave variation rotary never lands between valid states");
+            expect(std::lround(processor.getApvts().getRawParameterValue(variationId)->load()) == variation,
+                   "wave variation remains attached to authoritative automation state");
+        }
+        panel.pitchSlider().setValue(originalPitch, juce::sendNotificationSync);
+        panel.waveVariationSlider().setValue(originalVariation, juce::sendNotificationSync);
+    }
+
+    auto& keyTrack = editor.filterKeyTrackForTests();
+    expect(keyTrack.isVisible(), "Filter Key Track control is visible");
+    expect(keyTrack.knobSize() == swaraxt::ui::KnobSize::standard,
+           "Filter Key Track uses the standard knob size");
+    expect(! keyTrack.getBounds().isEmpty(), "Filter Key Track has usable layout bounds");
+    expect(processor.getApvts().getParameter(swaraxt::IDs::filterKeyTracking) != nullptr,
+           "Filter Key Track uses the existing APVTS parameter");
+    const auto originalKeyTrack = keyTrack.slider().getValue();
+    for (const double value : { 0.0, 0.5, 1.0 })
+    {
+        keyTrack.slider().setValue(value, juce::sendNotificationSync);
+        expect(std::abs(processor.getApvts()
+                            .getRawParameterValue(swaraxt::IDs::filterKeyTracking)->load()
+                        - static_cast<float>(value)) < 1.0e-6f,
+               "Filter Key Track GUI remains attached to authoritative automation state");
+    }
+    keyTrack.slider().setValue(originalKeyTrack, juce::sendNotificationSync);
+
+    auto& osc1 = editor.oscillatorForTests(0);
+    expect(osc1.modelComboForTests().getNumItems() == swaraxt::ui::oscillatorNames().size(),
+           "OSC MODEL combo lists every valid waveform");
+    expect(osc1.modelComboForTests().getNumItems() == static_cast<int>(shruthi::WAVEFORM_LAST),
+           "OSC MODEL combo does not include WAVEFORM_LAST");
+    for (int i = 0; i < osc1.modelComboForTests().getNumItems(); ++i)
+        expect(osc1.modelComboForTests().getItemText(i) != "Reserved",
+               "OSC MODEL does not contain Reserved");
+
+    for (int lfo = 0; lfo < 2; ++lfo)
+    {
+        auto& combo = editor.lfoWaveComboForTests(lfo);
+        expect(combo.getNumItems() == static_cast<int>(shruthi::LFO_WAVEFORM_LAST),
+               "LFO waveform combo lists every Shruthi waveform");
+        const auto* id = lfo == 0 ? swaraxt::IDs::lfo1Wave : swaraxt::IDs::lfo2Wave;
+        for (const int waveform : { 1, 14, 20, 3, 1 })
+        {
+            setInt(processor, id, waveform);
+            expect(combo.getSelectedId() == waveform + 1,
+                   "LFO waveform combo follows APVTS preset switching");
+        }
+    }
+
+    auto& operatorCombo = editor.mixOperatorComboForTests();
+    expect(operatorCombo.getNumItems() == 14,
+           "mixer operator combo lists every Shruthi operator");
+    for (int op = 0; op < 14; ++op)
+    {
+        setInt(processor, swaraxt::IDs::osc1Option, op);
+        expect(operatorCombo.getSelectedId() == op + 1,
+               "mixer operator combo preserves the Shruthi operator code");
+    }
+
+    auto& subCombo = editor.subShapeComboForTests();
+    expect(operatorCombo.getHeight() == swaraxt::ui::Layout::selectorHeight
+               && subCombo.getHeight() == swaraxt::ui::Layout::selectorHeight,
+           "Mixer Operator and Sub Shape use the canonical ComboBox height");
+    expect(operatorCombo.getBounds().getCentreY() == subCombo.getBounds().getCentreY(),
+           "Mixer Operator and Sub Shape share a visual baseline");
+
+    const auto canonicalComboFont = operatorCombo.getLookAndFeel().getComboBoxFont(operatorCombo);
+    const auto expectCanonicalComboFont = [&](juce::ComboBox& combo,
+                                               const juce::String& description) {
+        const auto* label = comboTextLabel(combo);
+        expect(label != nullptr
+                   && label->getFont().getTypefaceName() == canonicalComboFont.getTypefaceName()
+                   && std::abs(label->getFont().getHeight() - canonicalComboFont.getHeight()) < 0.001f,
+               description.toRawUTF8());
+    };
+    expectCanonicalComboFont(osc1.modelComboForTests(),
+                             "OSC selectors use canonical embedded ComboBox typography");
+    expectCanonicalComboFont(subCombo,
+                             "Sub selector uses canonical embedded ComboBox typography");
+    expectCanonicalComboFont(editor.lfoWaveComboForTests(0),
+                             "LFO selectors use canonical embedded ComboBox typography");
+
+    editor.setModuleViewsForTests(false, false);
+    expect(editor.modMatrixHeaderVisibleForTests(),
+           "Mod Matrix header is visible with the synth and matrix editor");
+
+    editor.setModuleViewsForTests(false, true);
+    expect(! editor.modMatrixHeaderVisibleForTests(),
+           "Mod Matrix header is hidden behind the ARP editor");
+    const auto navigation = editor.sequenceNavigationBoundsForTests();
+    for (int selector = 0; selector < 6; ++selector)
+    {
+        expect(! editor.arpComboBoundsForTests(selector).intersects(navigation),
+               "ARP ComboBoxes leave the Mod Matrix navigation button unobstructed");
+        expectCanonicalComboFont(editor.arpComboForTests(selector),
+                                 "ARP selectors use canonical embedded ComboBox typography");
+    }
+
+    expectCanonicalComboFont(editor.sequenceEventComboForTests(),
+                             "Sequence Event uses canonical embedded ComboBox typography");
+    expect(! editor.modMatrixHeaderVisibleForTests(),
+           "Mod Matrix header is hidden behind the SEQ editor");
+    expect(editor.sequenceStartBoundsForTests().getX()
+               > editor.sequenceLengthBoundsForTests().getX(),
+           "Sequence Start follows Length in the shared clock row");
+    const auto noteBounds = editor.sequenceNoteBoundsForTests();
+    const auto velocityBounds = editor.sequenceVelocityBoundsForTests();
+    const auto eventBounds = editor.sequenceEventComboBoundsForTests();
+    expect(eventBounds.getY() >= noteBounds.getY() && eventBounds.getBottom() <= noteBounds.getBottom()
+               && noteBounds.getY() == velocityBounds.getY(),
+           "Sequence Event is contained in the aligned step-edit row");
+
+    editor.setModuleViewsForTests(true, false);
+    auto& mod = editor.modulationForTests();
+    expect(mod.destinationComboForTests(0).getNumItems()
+               == swaraxt::ui::pluginVisibleModulationDestinationCount(),
+           "Mod destination combo lists plugin-valid destinations only");
+    expect(mod.sourceComboForTests(0).getNumItems()
+               == swaraxt::ui::pluginVisibleModulationSourceCount(),
+           "Mod source combo lists plugin-valid sources only");
+    bool sawTimbre1 = false;
+    bool sawTimbre2 = false;
+    for (int i = 0; i < mod.destinationComboForTests(0).getNumItems(); ++i)
+    {
+        const auto text = mod.destinationComboForTests(0).getItemText(i);
+        expect(! text.startsWith("Dest "), "Mod destination combo has no Dest NN placeholders");
+        expect(text != "PWM 1" && text != "PWM 2",
+               "Mod destination combo does not use PWM labels");
+        expect(text != "CV 1" && text != "CV 2",
+               "Mod destination combo hides hardware-only CV outputs");
+        if (text == "Timbre 1")
+        {
+            sawTimbre1 = true;
+            expect(mod.destinationComboForTests(0).getItemId(i) == shruthi::MOD_DST_PWM_1 + 1,
+                   "Timbre 1 maps to the original oscillator-parameter-1 destination ID");
+        }
+        if (text == "Timbre 2")
+        {
+            sawTimbre2 = true;
+            expect(mod.destinationComboForTests(0).getItemId(i) == shruthi::MOD_DST_PWM_2 + 1,
+                   "Timbre 2 maps to the original oscillator-parameter-2 destination ID");
+        }
+    }
+    expect(sawTimbre1 && sawTimbre2, "Timbre 1 and Timbre 2 are visible destinations");
+    for (int i = 0; i < mod.sourceComboForTests(0).getNumItems(); ++i)
+    {
+        const auto text = mod.sourceComboForTests(0).getItemText(i);
+        expect(! text.startsWith("CV "), "Mod source combo hides hardware-only CV inputs");
+    }
+    expect(mod.slot12TooltipForTests().containsIgnoreCase("Mod Wheel"),
+           "Slot 12 discloses Mod Wheel scaling");
+
+
+    std::filesystem::create_directories(outputRoot);
+    const auto expectComboGeometry = [&](swaraxt::ui::GuiSize size,
+                                         int expectedWidth,
+                                         int expectedHeight,
+                                         const char* sizeName) {
+        editor.setGuiSizeForTests(size);
+        const auto editorSizeDescription = juce::String(sizeName)
+            + " editor uses the approved proportional size";
+        expect(editor.getWidth() == expectedWidth && editor.getHeight() == expectedHeight,
+               editorSizeDescription.toRawUTF8());
+        for (auto* combo : { &osc1.modelComboForTests(), &subCombo, &operatorCombo,
+                            &editor.lfoWaveComboForTests(0),
+                            &editor.sequenceEventComboForTests() })
+        {
+            combo->resized();
+            const auto* label = comboTextLabel(*combo);
+            const auto geometryDescription = juce::String(sizeName)
+                + " ComboBox text geometry is deterministic";
+            expect(label != nullptr
+                       && label->getBounds()
+                              == combo->getLocalBounds().reduced(0, 1)
+                                     .withTrimmedLeft(6).withTrimmedRight(22),
+                   geometryDescription.toRawUTF8());
+            expectCanonicalComboFont(*combo, juce::String(sizeName)
+                                                + " ComboBox uses the embedded SWARA font");
+        }
+    };
+    expectComboGeometry(swaraxt::ui::GuiSize::small, 891, 417, "Small");
+    expectComboGeometry(swaraxt::ui::GuiSize::medium, 1113, 521, "Normal");
+    expectComboGeometry(swaraxt::ui::GuiSize::large, 1391, 651, "Large");
+    expectComboGeometry(swaraxt::ui::GuiSize::medium, 1113, 521, "Normal after Large");
+    expectComboGeometry(swaraxt::ui::GuiSize::small, 891, 417, "Small after Normal");
+    expectComboGeometry(swaraxt::ui::GuiSize::large, 1391, 651, "Large after Small");
+
+    const auto savedSkin = swaraxt::ui::UiPreferences::loadSkin();
+    const auto savedDecoration = swaraxt::ui::UiPreferences::loadDecoration();
+    const auto savedSize = swaraxt::ui::UiPreferences::loadGuiSize();
+    expect(juce::String(swaraxt::ui::ManufacturerMarkDefinition::displayName(
+               swaraxt::ui::ManufacturerMark::stone)) == "Stones", "manufacturer display name");
+    expect(juce::String(swaraxt::ui::ManufacturerMarkDefinition::stableId(
+               swaraxt::ui::ManufacturerMark::stone)) == "stone", "manufacturer stable ID unchanged");
+    for (const auto decoration : swaraxt::ui::DecorationRegistry::all)
+    {
+        swaraxt::ui::UiPreferences::save(savedSkin, decoration, savedSize);
+        expect(swaraxt::ui::UiPreferences::loadDecoration() == decoration,
+               "decoration preference round-trip");
+        editor.setDecorationForTests(decoration);
+        for (const auto skin : {swaraxt::ui::SkinId::midnightGold, swaraxt::ui::SkinId::neonCobalt,
+                               swaraxt::ui::SkinId::pastel, swaraxt::ui::SkinId::jungle,
+                               swaraxt::ui::SkinId::rossocorsa})
+        {
+            swaraxt::ui::DecorationAssetCache assets(decoration, swaraxt::ui::SkinRegistry::get(skin).palette);
+            expect(decoration == swaraxt::ui::DecorationId::legacy
+                       ? assets.get() == nullptr
+                       : assets.get() != nullptr && !assets.get()->getDrawableBounds().isEmpty(),
+                   "decoration vector loads with every skin");
+            editor.setSkinForTests(skin);
+        }
+    }
+    swaraxt::ui::UiPreferences::save(savedSkin, savedDecoration, savedSize);
+
+    editor.setDecorationForTests(swaraxt::ui::DecorationId::legacy);
+    editor.setSkinForTests(swaraxt::ui::SkinId::pastel);
+    const auto pastelComboText = swaraxt::ui::Palette::skin().comboText;
+    expect(pastelComboText == juce::Colour(0xfff7e8bd),
+           "Pastel ComboBox text uses the intended light palette foreground");
+    expect(operatorCombo.findColour(juce::ComboBox::textColourId) == pastelComboText,
+           "Pastel ComboBox resolves the light foreground colour");
+    expect(comboTextLabel(operatorCombo)->findColour(juce::Label::textColourId)
+               == pastelComboText,
+           "Pastel ComboBox internal Label receives the light foreground colour");
+    expect(operatorCombo.getLookAndFeel().findColour(juce::PopupMenu::textColourId)
+               == pastelComboText,
+           "Pastel ComboBox popup text uses the light foreground colour");
+    expect(operatorCombo.getLookAndFeel().findColour(juce::PopupMenu::backgroundColourId)
+               == swaraxt::ui::Palette::skin().comboBackground,
+           "Pastel popup uses the dark control background for light text contrast");
+    expect(operatorCombo.getLookAndFeel().findColour(
+               juce::PopupMenu::highlightedTextColourId) == pastelComboText,
+           "Pastel highlighted popup text uses the light foreground colour");
+    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::small);
+    writeScreenshot(editor, outputRoot / "pastel-legacy-small.png", false, false);
+    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::medium);
+    writeScreenshot(editor, outputRoot / "pastel-legacy-normal.png", false, false);
+    editor.setGuiSizeForTests(swaraxt::ui::GuiSize::large);
+    writeScreenshot(editor, outputRoot / "pastel-legacy-large.png", false, false);
+    const auto expectActiveSkinComboText = [&](const char* description) {
+        expect(operatorCombo.findColour(juce::ComboBox::textColourId)
+                   == swaraxt::ui::Palette::skin().comboText,
+               description);
+    };
+    editor.setSkinForTests(swaraxt::ui::SkinId::midnightGold);
+    expectActiveSkinComboText("Midnight Gold preserves its ComboBox foreground");
+    writeScreenshot(editor, outputRoot / "midnight-gold-legacy-large.png", false, false);
+    editor.setSkinForTests(swaraxt::ui::SkinId::neonCobalt);
+    expectActiveSkinComboText("Neon Cobalt preserves its ComboBox foreground");
+    writeScreenshot(editor, outputRoot / "neon-cobalt-legacy-large.png", false, false);
+    editor.setSkinForTests(swaraxt::ui::SkinId::jungle);
+    expectActiveSkinComboText("Jungle preserves its ComboBox foreground");
+    writeScreenshot(editor, outputRoot / "jungle-legacy-large.png", false, false);
+    editor.setSkinForTests(swaraxt::ui::SkinId::rossocorsa);
+    expectActiveSkinComboText("Rossocorsa preserves its ComboBox foreground");
+    writeScreenshot(editor, outputRoot / "rossocorsa-legacy-large.png", false, false);
+    editor.setSkinForTests(swaraxt::ui::SkinId::pastel);
+    expect(operatorCombo.findColour(juce::ComboBox::textColourId) == pastelComboText
+               && comboTextLabel(operatorCombo)->findColour(juce::Label::textColourId)
+                      == pastelComboText,
+           "Pastel colour is restored after switching skins");
+    editor.setDecorationForTests(swaraxt::ui::DecorationId::pcbTrace);
+    writeScreenshot(editor, outputRoot / "pastel-pcb-trace-large.png", false, false);
+    writeScreenshot(editor, outputRoot / "swara-1.2-arp-large.png", false, true);
+    writeScreenshot(editor, outputRoot / "swara-1.2-seq-large.png", false, true);
+    std::function<swaraxt::ui::SwaraXtKnob*(juce::Component&)> findCutoff;
+    findCutoff = [&findCutoff](juce::Component& component) -> swaraxt::ui::SwaraXtKnob* {
+        if (auto* knob = dynamic_cast<swaraxt::ui::SwaraXtKnob*>(&component))
+            if (knob->labelText() == "CUTOFF") return knob;
+        for (int i = 0; i < component.getNumChildComponents(); ++i)
+            if (auto* knob = findCutoff(*component.getChildComponent(i))) return knob;
+        return nullptr;
+    };
+    auto* cutoff = findCutoff(editor);
+    expect(cutoff != nullptr, "cutoff value control exists");
+    if (cutoff != nullptr) {
+        auto& slider = cutoff->slider();
+        const auto display = slider.getTextFromValue(531.294);
+        std::printf("Cutoff display probe: %s\n", display.toRawUTF8());
+        expect(display == "531 Hz", "frequency readout uses compact parameter units");
+        expect(std::abs(slider.getValueFromText("8.00 kHz") - 8000.0) < 0.1,
+               "compact frequency display preserves kHz entry parsing");
+    }
+
+}
+
+}  // namespace
+
+int main(int argc, char** argv)
+{
+    juce::ScopedJuceInitialiser_GUI juce;
+    std::filesystem::path outputRoot = std::filesystem::current_path() / "artifacts" / "gui";
+    if (argc > 1)
+        outputRoot = argv[1];
+
+    testInvalidHostPositions();
+    testHostClockAndLfoSync();
+    testHostTempoCoverage();
+    testFreeClockAndGate();
+    testLfoRateIndependence();
+    testLfoRetrigger();
+    testUserPresets();
+    testEditorAndScreenshots(outputRoot);
+    std::printf(failures == 0 ? "Swara XT GUI/sync tests: PASSED\n"
+                              : "Swara XT GUI/sync tests: FAILED (%d)\n",
+                failures);
+    return failures == 0 ? 0 : 1;
+}

@@ -1,0 +1,17 @@
+! 11-edo.scl
+! Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
+! 11 equal divisions of the octave; step = 1200/11 cents.
+! Independently authored; definition and references: README.md
+11-EDO
+11
+109.090909090909
+218.181818181818
+327.272727272727
+436.363636363636
+545.454545454545
+654.545454545455
+763.636363636364
+872.727272727273
+981.818181818182
+1090.909090909091
+2/1

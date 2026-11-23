@@ -1,0 +1,11 @@
+Creative Commons Attribution-ShareAlike 3.0 Unported
+
+The adapted panel artwork in this directory is licensed under CC BY-SA 3.0.
+
+License summary:
+https://creativecommons.org/licenses/by-sa/3.0/
+
+Full legal code:
+https://creativecommons.org/licenses/by-sa/3.0/legalcode
+
+Attribution and modification details are in ATTRIBUTION.md.

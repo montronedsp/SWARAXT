@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 MontroneDSP
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Generate SWARA-designed APVTS factory presets.
+
+Rules:
+  * ends with FINALFIX/FIXED -> excluded historical Shruthi workarounds
+  * only the explicit shipping shortlist -> factory preset
+  * exclusions: LFO MOD, duo pong, voweano (case-insensitive; optional CA prefix)
+
+Pass the read-only preset directory via --preset-dir. Do not commit raw presets.
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import struct
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+FACTORY_HEADER = REPO / "Source/Plugin/ShruthiFactoryPresetData.h"
+OUT = REPO / "Source/Plugin/ApvtsFactoryPresetData.h"
+
+SHIPPING_NAMES = ("1996 Sub Bass", "Ibiza Bass", "Pong Fun", "Sport Sub", "Unwanted Truths", "Vowel drone")
+# Native dedicated depths for the shipping bank, fitted to cutoff-CV trajectories.
+FILTER_DEPTHS = {
+    "1996 Sub Bass": (32, 0), "Ibiza Bass": (48, 0), "Pong Fun": (54, 24),
+    "Sport Sub": (32, 0), "Unwanted Truths": (38, 0), "Vowel drone": (41, 0),
+}
+EXCLUSIONS = {"lfo mod", "duo pong", "voweano"}
+
+
+def decode_preset(path: Path) -> dict:
+    data = path.read_bytes()
+    if data[:4] != b"VC2!":
+        raise ValueError(f"Not a JUCE binary XML preset: {path}")
+    size = struct.unpack_from("<I", data, 4)[0]
+    xml = data[8 : 8 + size].decode("utf-8")
+    name_m = re.search(r'presetName="([^"]*)"', xml)
+    ver_m = re.search(r'stateVersion="(\d+)"', xml)
+    params = [(i, float(v)) for i, v in re.findall(r'<PARAM id="([^"]+)" value="([^"]+)"/>', xml)]
+    return {
+        "file": path.name,
+        "name": name_m.group(1) if name_m else path.stem,
+        "version": int(ver_m.group(1)) if ver_m else 0,
+        "params": params,
+    }
+
+
+def load_factory_names() -> list[str]:
+    text = FACTORY_HEADER.read_text(encoding="utf-8")
+    return re.findall(r'\{\s*"([^"]+)",\s*"[^"]+",\s*"[^"]+"', text)
+
+
+def strip_correction_suffix(name: str) -> tuple[str | None, str | None]:
+    """Return (base_name, kind) where kind is FINALFIX|FIXED|None."""
+    m = re.search(r"(?i)[\s_]*finalfix$", name)
+    if m:
+        return name[: m.start()].rstrip(), "FINALFIX"
+    m = re.search(r"(?i)[\s_]*fixed$", name)
+    if m:
+        return name[: m.start()].rstrip(), "FIXED"
+    return None, None
+
+
+def is_excluded(name: str) -> bool:
+    lower = name.strip().lower()
+    bare = re.sub(r"(?i)^ca\s+", "", lower).strip()
+    return bare in EXCLUSIONS or lower in EXCLUSIONS
+
+
+def c_escape(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def emit_params(params: list[tuple[str, float]]) -> str:
+    return "\n".join(f'        {{ "{c_escape(pid)}", {val!r} }},' for pid, val in params)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate APVTS factory preset data from saved .swaraxtpreset files."
+    )
+    parser.add_argument(
+        "--preset-dir",
+        type=Path,
+        required=True,
+        help="Read-only directory of saved .swaraxtpreset files (not committed).",
+    )
+    args = parser.parse_args()
+    preset_dir: Path = args.preset_dir
+    if not preset_dir.is_dir():
+        raise SystemExit(f"Preset directory not found: {preset_dir}")
+
+    factory_names = load_factory_names()
+    if len(factory_names) != 40:
+        raise SystemExit(f"Expected 40 Mutable factory names, got {len(factory_names)}")
+
+    presets = [decode_preset(p) for p in sorted(preset_dir.glob("*.swaraxtpreset"))]
+
+    # New user-designed presets: everything else except exclusions and corrections.
+    user_presets = []
+    excluded = []
+    for p in presets:
+        _, kind = strip_correction_suffix(p["name"])
+        if kind is not None:
+            continue
+        if is_excluded(p["name"]) or p["name"] not in SHIPPING_NAMES:
+            excluded.append(p["name"])
+            continue
+        env, lfo = FILTER_DEPTHS[p["name"]]
+        p["params"] = [(pid, value) for pid, value in p["params"]
+                       if pid not in {"filter_env_amount", "filter_mod_amount",
+                                      "filter.shruthi_env", "filter.shruthi_lfo"}]
+        p["params"].extend([("filter.shruthi_env", float(env)), ("filter.shruthi_lfo", float(lfo))])
+        user_presets.append(p)
+
+    # Preserve the explicit shipping program order.
+    user_presets.sort(key=lambda p: SHIPPING_NAMES.index(p["name"]))
+    missing = set(SHIPPING_NAMES) - {p["name"] for p in user_presets}
+    if missing:
+        raise SystemExit(f"Missing shipping presets: {sorted(missing)}")
+
+    # Deduplicate shipping names.
+    seen = set()
+    for p in user_presets:
+        if p["name"] in seen:
+            raise SystemExit(f"Duplicate user factory name: {p['name']}")
+        seen.add(p["name"])
+
+    lines = [
+        "// Copyright 2026 MontroneDSP.",
+        # REUSE-IgnoreStart
+        "// SPDX-License-Identifier: GPL-3.0-or-later",
+        # REUSE-IgnoreEnd
+        "// Generated by Tools/generate_apvts_factory_presets.py - do not edit by hand.",
+        "",
+        "#pragma once",
+        "",
+        "#include <cstddef>",
+        "#include <cstdint>",
+        "",
+        "namespace swaraxt {",
+        "",
+        "struct ApvtsFactoryParam {",
+        "    const char* id;",
+        "    double value;",
+        "};",
+        "",
+        "struct ApvtsFactoryPreset {",
+        "    const char* displayName;",
+        "    const char* author;",
+        "    const ApvtsFactoryParam* params;",
+        "    std::size_t paramCount;",
+        "};",
+        "",
+        f"inline constexpr std::size_t kUserFactoryPresetCount = {len(user_presets)};",
+        # Keep old alias so transitional includes compile if needed.
+        "inline constexpr std::size_t kCaFactoryPresetCount = kUserFactoryPresetCount;",
+        "",
+    ]
+
+    for idx, p in enumerate(user_presets):
+        lines.append(f"inline constexpr ApvtsFactoryParam kUserFactoryParams{idx}[] = {{")
+        lines.append(emit_params(p["params"]))
+        lines.append("};")
+        lines.append("")
+
+    if user_presets:
+        lines.append(
+            "inline constexpr ApvtsFactoryPreset kUserFactoryPresets[] = {"
+        )
+        for idx, p in enumerate(user_presets):
+            lines.append("    {")
+            lines.append(f'        "{c_escape(p["name"])}",')
+            lines.append('        "",')
+            lines.append(f"        kUserFactoryParams{idx},")
+            lines.append(f"        sizeof(kUserFactoryParams{idx}) / sizeof(kUserFactoryParams{idx}[0]),")
+            lines.append("    },")
+        lines.append("};")
+    else:
+        lines.append(
+            "inline constexpr ApvtsFactoryPreset kUserFactoryPresets[1] = {\n"
+            '    { "", "", nullptr, 0 },\n'
+            "};"
+        )
+    lines.append("")
+    # Alias for previous naming used by PluginProcessor.
+    lines.append("inline constexpr ApvtsFactoryPreset* kCaFactoryPresets =")
+    lines.append("    const_cast<ApvtsFactoryPreset*>(kUserFactoryPresets);")
+    lines.append("")
+    # Actually const_cast in constexpr header is bad. Use reference alias instead.
+    # Better: just #define style - use kUserFactoryPresets everywhere in C++.
+
+    lines.append("}  // namespace swaraxt")
+    lines.append("")
+
+    # Remove the bad alias lines and write cleanly
+    clean = "\n".join(lines)
+    clean = clean.replace(
+        "inline constexpr ApvtsFactoryPreset* kCaFactoryPresets =\n"
+        "    const_cast<ApvtsFactoryPreset*>(kUserFactoryPresets);\n\n",
+        "",
+    )
+    # Add proper alias as array reference via macro-like using:
+    clean = clean.replace(
+        "inline constexpr std::size_t kCaFactoryPresetCount = kUserFactoryPresetCount;\n",
+        "inline constexpr std::size_t kCaFactoryPresetCount = kUserFactoryPresetCount;\n",
+    )
+    # Append after kUserFactoryPresets definition:
+    if "kUserFactoryPresets[" in clean:
+        clean = clean.replace(
+            "}  // namespace swaraxt",
+            "inline constexpr const ApvtsFactoryPreset* kCaFactoryPresets = kUserFactoryPresets;\n"
+            "\n"
+            "}  // namespace swaraxt",
+        )
+
+    OUT.write_text(clean, encoding="utf-8", newline="\n")
+
+    print("=== NEW USER FACTORY ===")
+    for p in user_presets:
+        print(f"{p['file']} -> {p['name']} params={len(p['params'])}")
+    print(f"count={len(user_presets)}")
+    print("=== EXCLUDED ===")
+    for n in excluded:
+        print(n)
+    print(f"Wrote {OUT}")
+
+
+if __name__ == "__main__":
+    main()
