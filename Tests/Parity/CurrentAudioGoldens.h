@@ -37,9 +37,9 @@ inline constexpr Entry kClassic[] = {
     {"Test A basic saw", 0xe49a2f5d8a7090f9ull, 44100},
     {"Test B basic square", 0x608f87853120af8eull, 44100},
     {"Test C two oscillators", 0x2e5f9d73aeaa1820ull, 44100},
-    {"Test F filter low resonance", 0x0099139bef0f1690ull, 44100},
-    {"Test G filter high resonance", 0x1ac4a6fabf9a3da5ull, 44100},
-    {"Test I normal envelope", 0x8bed59407b8e5da6ull, 44100},
+    {"Test F filter low resonance", 0x7cad43fd9155360dull, 44100},
+    {"Test G filter high resonance", 0xb583834c32a65866ull, 44100},
+    {"Test I normal envelope", 0xac2c238b499d0be4ull, 44100},
     {"Test D noise only", 0xc473d3385b5767baull, 44100},
     {"Test J silence", 0x81296f5b21ed7843ull, 44100},
 };

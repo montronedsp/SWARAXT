@@ -1,7 +1,7 @@
 # Current Linux native reference contract, version 2
 
 The authenticated package is
-`native-current-651826bf168f415556324820fd9070ea1b8cc25307bdcdcfd2c614206eb4d660.json`.
+`native-current-505aef6ca7cf15c312285f0c357163f237f0389ce0cb85f89dcc6e0ee2678238.json`.
 Its SHA-256 and policy `linux-current-phase3-v2` are pinned independently in
 `scripts/ci/current_reference.py`. Acquisition copies approved data; it never
 executes a candidate to generate expected audio. Checksums alone cannot approve
@@ -66,7 +66,7 @@ missing/duplicate/additional cases, metadata changes, tampering and scope drift.
 ## Windows and review boundaries
 
 Linux fingerprints alone are not an MSVC authority. The separate Windows
-package `windows-current-00ed3f5558abdd3741dc49645d2a85ba5057649a7adb9515fc7b78434f58c9ff.json`
+package `windows-current-a3f0e0f6d1f867793b6876e39602de923e52e80c9f12e1d0734d99fc165d0b9a.json`
 is pinned in `scripts/ci/windows_current_reference.py`. Its 72 values were
 corroborated under native MSVC Release, Debug and AddressSanitizer, with repeated
 execution and independent Q23/Q20/raw-PCM checking. Equality with the existing

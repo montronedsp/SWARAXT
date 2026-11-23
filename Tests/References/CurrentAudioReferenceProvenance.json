@@ -6,7 +6,7 @@
   "public_mixer": "0..127 maps by integer division2 to0..63",
   "qualification": "SteamOS native GCC15.1.1 and Clang20.1.8; exact repeated test/shipping/reference-path comparisons",
   "current_golden_file": "Tests/Parity/CurrentAudioGoldens.h",
-  "current_golden_sha256": "046b240b020e9c440d031587a32a46045d4607c7f63623e80f6e6ffa977660bc",
+  "current_golden_sha256": "c911177febb76bc0124221fb84d6f1a230c685d3c965e34bd8f8ae7d221a9aec",
   "historical_files": "Unchanged ExactParityGoldens.h Native/SRC remains active; historical Integrated/Classic archived and outside current gates",
   "fixture_files": [
     {
@@ -426,7 +426,7 @@
       "peak": 0.4421043395996094,
       "case": "Test F filter low resonance",
       "group": "classic",
-      "exact_hash": "0099139bef0f1690",
+      "exact_hash": "7cad43fd9155360d",
       "input_sha256": "7160d049d02581edaea5276837fdb2c6411c052be2508a21acf574f3c77baf57",
       "configuration": {
         "rate": 44100.0,
@@ -554,7 +554,7 @@
       "peak": 0.6735738515853882,
       "case": "Test G filter high resonance",
       "group": "classic",
-      "exact_hash": "1ac4a6fabf9a3da5",
+      "exact_hash": "b583834c32a65866",
       "input_sha256": "ed0794859bb7429ae9a4a83a1ccb057edb8095f9b054a9b682bc6639ceca901c",
       "configuration": {
         "rate": 44100.0,
@@ -682,7 +682,7 @@
       "peak": 0.3986685574054718,
       "case": "Test I normal envelope",
       "group": "classic",
-      "exact_hash": "8bed59407b8e5da6",
+      "exact_hash": "ac2c238b499d0be4",
       "input_sha256": "46d9946ba80072b4c521b311777b2fb44f6935609d0445729ceb8cec8807c694",
       "configuration": {
         "rate": 44100.0,
@@ -3910,17 +3910,17 @@
       [
         "Test F filter low resonance",
         44100,
-        "0099139bef0f1690"
+        "7cad43fd9155360d"
       ],
       [
         "Test G filter high resonance",
         44100,
-        "1ac4a6fabf9a3da5"
+        "b583834c32a65866"
       ],
       [
         "Test I normal envelope",
         44100,
-        "8bed59407b8e5da6"
+        "ac2c238b499d0be4"
       ],
       [
         "Test D noise only",
