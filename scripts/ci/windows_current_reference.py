@@ -11,7 +11,7 @@ import subprocess
 import windows_reference_policy as paths
 
 POLICY = 'windows-current-msvc-v1'
-PACKAGE_SHA256 = '00ed3f5558abdd3741dc49645d2a85ba5057649a7adb9515fc7b78434f58c9ff'
+PACKAGE_SHA256 = 'a3f0e0f6d1f867793b6876e39602de923e52e80c9f12e1d0734d99fc165d0b9a'
 PACKAGE_FILE = 'Tests/References/windows-current-' + PACKAGE_SHA256 + '.json'
 # Admitted for fresh qualification, not a claim of native audio acceptance.
 # Verified by hosted run 43994991391 (ImageVersion 20261112.366.7).
