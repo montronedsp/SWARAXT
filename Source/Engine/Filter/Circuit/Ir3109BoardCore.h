@@ -84,7 +84,17 @@ public:
         // settings: R40=3k (30k+3k input), R41=0 (68k bias). Both are within the
         // schematic ranges; these are explicit calibration assumptions.
         const double chipCv = -5600 * (cv / 33000 - 5.0 / 68000) * 2000 / 8800;
-        return 1760 * std::exp2(-(chipCv + .0352) / .0908 * 5);
+        const double octaves = -(chipCv + .0352) / .0908 * 5;
+        // The Windows release UCRT exp2 differs by 1 ulp from the libm that
+        // qualified these references (debug UCRT and glibc). High resonance
+        // turns that into a different 23-bit render hash. Release and ASan
+        // evaluate 2^x with the series below, which matches that libm on the
+        // 0..5 V cutoff domain. Debug keeps its C runtime exp2.
+#if defined(_MSC_VER) && !defined(_DEBUG)
+        return 1760 * referenceExp2(octaves);
+#else
+        return 1760 * std::exp2(octaves);
+#endif
     }
     float process(float input, int iterations) noexcept {
 #if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
@@ -144,6 +154,49 @@ public:
         return static_cast<float>(lastOutput_);
     }
 private:
+#if defined(_MSC_VER) && !defined(_DEBUG)
+    struct DoubleDouble { double hi, lo; };
+    static DoubleDouble splitSum(double a, double b) noexcept
+    {
+        const double s = a + b;
+        const double bb = s - a;
+        return { s, (a - (s - bb)) + (b - bb) };
+    }
+    static DoubleDouble splitProduct(double a, double b) noexcept
+    {
+        const double p = a * b;
+        return { p, std::fma(a, b, -p) };
+    }
+    static DoubleDouble addExact(DoubleDouble a, DoubleDouble b) noexcept
+    {
+        DoubleDouble s = splitSum(a.hi, b.hi);
+        s.lo += a.lo + b.lo;
+        return splitSum(s.hi, s.lo);
+    }
+    static DoubleDouble multiplyExact(DoubleDouble a, DoubleDouble b) noexcept
+    {
+        DoubleDouble p = splitProduct(a.hi, b.hi);
+        p.lo += a.hi * b.lo + a.lo * b.hi;
+        return splitSum(p.hi, p.lo);
+    }
+    static double referenceExp2(double x) noexcept
+    {
+        const double n = std::nearbyint(x);
+        const DoubleDouble y = multiplyExact(
+            DoubleDouble { x - n, 0.0 },
+            DoubleDouble { 6.93147180369123816490e-01, 1.90821492927058770002e-10 });
+        DoubleDouble term { 1.0, 0.0 };
+        DoubleDouble sum { 1.0, 0.0 };
+        for (int k = 1; k <= 20; ++k)
+        {
+            term = multiplyExact(term, y);
+            term = multiplyExact(term, DoubleDouble { 1.0 / static_cast<double>(k), 0.0 });
+            sum = addExact(sum, term);
+        }
+        const int scale = static_cast<int>(n);
+        return std::ldexp(sum.hi, scale) + std::ldexp(sum.lo, scale);
+    }
+#endif
 #if defined(SWARAXT_ENABLE_IR3109_SOLVER_TESTS) && SWARAXT_IR3109_SOLVER_TRACE
     SolverTrace solverTrace_;
 #endif

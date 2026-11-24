@@ -1,7 +1,9 @@
 // Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
 #include "Engine/Filter/SwaraXtFilter.h"
 #include <complex>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <vector>
 
@@ -115,6 +117,19 @@ void resetAfterDifferentPatch() {
     const auto repeated = render(700, .55f);
     check(first == repeated, "reset before committing patch clears prior audio and CV prehistory exactly");
 }
+void qualifiedCutoffLibm()
+{
+#if defined(_MSC_VER)
+    // CV 0 is an exp2 argument where the release UCRT and the qualified libm
+    // differ by one ulp. The rendered cutoff must follow the qualified value.
+    const double hz = swaraxt::Ir3109BoardCore::cutoffHzFromCv(0.0);
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &hz, sizeof(bits));
+    check(bits == 0x4029cf0d56f236fcULL, "zero-CV Classic cutoff follows the qualified libm");
+#else
+    (void) 0;
+#endif
+}
 void explicitByteCv() {
     swaraxt::SwaraXtFilter filter; filter.prepare(native);
     for (int byte = 0; byte <= 255; ++byte) {
@@ -133,6 +148,6 @@ int main(int argc, char** argv) {
     const std::string prefix = argc > 1 ? argv[1] : "ir3109-board";
     std::ofstream cv(prefix + "-cv.csv"), audio(prefix + "-audio.csv");
     check(cv.good() && audio.good(), "measurement outputs open");
-    cvSteps(cv); lowLevelAndTail(); resetAfterDifferentPatch(); explicitByteCv(); audioMatrix(audio);
+    cvSteps(cv); lowLevelAndTail(); resetAfterDifferentPatch(); explicitByteCv(); qualifiedCutoffLibm(); audioMatrix(audio);
     std::printf("IR3109 board: %d failures\n", failures); return failures ? 1 : 0;
 }
