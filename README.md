@@ -3,8 +3,8 @@
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=montronedsp_SWARAXT&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=montronedsp_SWARAXT) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15241/badge)](https://www.bestpractices.dev/projects/15241)
 
 <p align="center">
-  <a href="https://www.montronedsp.com/products.html#swara">
-    <img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/hero-jungle-1600.webp" alt="SWARA XT synthesizer interface — Jungle / PCB Trace finish" width="960">
+  <a href="https://github.com/montronedsp/SWARAXT/releases">
+    <img src="docs/images/swara/hero-jungle-1600.webp" alt="SWARA XT synthesizer interface — Jungle / PCB Trace finish" width="960">
   </a>
 </p>
 
@@ -32,15 +32,15 @@ instance starts with Classic. Bank changes use a brief fade through silence.
 <table>
   <tr>
   <td align="center" valign="middle">
-    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/oscillators-524.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/oscillators-524.webp" alt="SWARA XT oscillator model menu showing analog, CZ, FM and wavetable synthesis options" width="190"></a>
+    <a href="docs/images/swara/oscillators-524.webp"><img src="docs/images/swara/oscillators-524.webp" alt="SWARA XT oscillator model menu showing analog, CZ, FM and wavetable synthesis options" width="190"></a>
     <br><sub>Oscillator models</sub>
   </td>
   <td align="center" valign="middle">
-    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/filter-833.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/filter-833.webp" alt="SWARA XT Classic filter: cutoff, resonance, envelope, key tracking and LFO controls" width="400"></a>
+    <a href="docs/images/swara/filter-833.webp"><img src="docs/images/swara/filter-833.webp" alt="SWARA XT Classic filter: cutoff, resonance, envelope, key tracking and LFO controls" width="400"></a>
     <br><sub>Classic IR3109 filter</sub>
   </td>
   <td align="center" valign="middle">
-    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-dual-svf-832.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-dual-svf-832.webp" alt="SWARA XT Dual SVF panel with routing, independent second filter controls and calibration" width="235"></a>
+    <a href="docs/images/swara/update-130-dual-svf-832.webp"><img src="docs/images/swara/update-130-dual-svf-832.webp" alt="SWARA XT Dual SVF panel with routing, independent second filter controls and calibration" width="235"></a>
     <br><sub>Experimental Dual SVF</sub>
   </td>
   </tr>
@@ -62,11 +62,11 @@ controller values, host synchronization, sequence randomization and
 <table>
   <tr>
   <td align="center" valign="middle">
-    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/matrix-874.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/matrix-874.webp" alt="SWARA XT modulation matrix showing three of twelve routing slots" width="470"></a>
+    <a href="docs/images/swara/matrix-874.webp"><img src="docs/images/swara/matrix-874.webp" alt="SWARA XT modulation matrix showing three of twelve routing slots" width="470"></a>
     <br><sub>12-slot modulation matrix</sub>
   </td>
   <td align="center" valign="middle">
-    <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/mode-sequence-877.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/mode-sequence-877.webp" alt="SWARA XT sequence mode editing a sixteen-step pattern" width="310"></a>
+    <a href="docs/images/swara/mode-sequence-877.webp"><img src="docs/images/swara/mode-sequence-877.webp" alt="SWARA XT sequence mode editing a sixteen-step pattern" width="310"></a>
     <br><sub>16-step sequencer</sub>
   </td>
   </tr>
@@ -86,7 +86,7 @@ input in TUNED or QUANTIZED mode. Keyboard mappings and the voice's playable
 pitch range apply; imports are validated before the active tuning changes.
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-microtuning-524.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-microtuning-524.webp" alt="SWARA XT microtuning menu with factory temperament choices and 19-EDO selected" width="300"></a>
+  <a href="docs/images/swara/update-130-microtuning-524.webp"><img src="docs/images/swara/update-130-microtuning-524.webp" alt="SWARA XT microtuning menu with factory temperament choices and 19-EDO selected" width="300"></a>
   <br><sub>Factory tunings and alternative temperaments</sub>
 </p>
 
@@ -102,7 +102,7 @@ pitch range apply; imports are validated before the active tuning changes.
 - VST3 and Standalone on Windows and Linux; macOS source builds also include AU.
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-custom-detail-1048.webp"><img src="https://raw.githubusercontent.com/montronedsp/montronedsp-beta-site/main/assets/screenshots/swara/editorial/windows/update-130-custom-detail-1048.webp" alt="SWARA XT custom SVG decoration in the Jungle skin" width="390"></a>
+  <a href="docs/images/swara/update-130-custom-detail-1048.webp"><img src="docs/images/swara/update-130-custom-detail-1048.webp" alt="SWARA XT custom SVG decoration in the Jungle skin" width="390"></a>
   <br><sub>Custom skins, artwork and decorations</sub>
 </p>
 
@@ -133,22 +133,21 @@ Manual archives remain available from [GitHub Releases](https://github.com/montr
 
 ## Downloads
 
-The latest published release is [1.3.0](https://github.com/montronedsp/SWARAXT/releases/tag/v1.3.0).
-The current source targets **1.3.3**. The feature descriptions above
-follow current source; download links still refer to published releases.
+The latest published release is [1.3.3](https://github.com/montronedsp/SWARAXT/releases/tag/v1.3.3).
 
 ### Linux
 
-The official Linux build is available free from the [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases) page.
+The official Linux x86_64 VST3 and Standalone package is available from
+[GitHub Releases](https://github.com/montronedsp/SWARAXT/releases).
 
 ### Windows
 
-The current public Windows x64 package is available from
+The official Windows x64 VST3 and Standalone package is available from
 [GitHub Releases](https://github.com/montronedsp/SWARAXT/releases).
 
 ### macOS
 
-No macOS archive is published with the current 1.3.0 GitHub release; see
+No macOS archive is published with the current 1.3.3 GitHub release; see
 [BUILDING.md](BUILDING.md) to build the current source locally.
 
 ## Performance

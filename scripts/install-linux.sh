@@ -53,7 +53,6 @@ fi
 
 version="${tag#v}"
 archive="SwaraXT-Linux-${arch}-v${version}.tar.gz"
-checksums="checksums-v${version}.txt"
 asset_base="${github}/releases/download/${tag}"
 
 echo "Latest version: ${version}"
@@ -71,13 +70,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Downloading ${archive}..."
-curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
-    -o "${tmp}/${archive}" "${asset_base}/${archive}"
-
-expected=""
-if curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
-    -o "${tmp}/${checksums}" "${asset_base}/${checksums}" 2>/dev/null; then
+parse_checksum_manifest() {
+    local file="$1"
+    local line hash rest
     while IFS= read -r line || [[ -n "${line}" ]]; do
         line="${line%$'\r'}"
         [[ -z "${line}" ]] && continue
@@ -85,34 +80,87 @@ if curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
         hash="${line%% *}"
         rest="${line#"${hash}"}"
         rest="${rest#"${rest%%[![:space:]]*}"}"
-        rest="${rest%$'\r'}"
+        rest="${rest#$'\r'}"
+        # Accept both "HASH  name" and "HASH *name" (binary mode) forms.
+        rest="${rest#\*}"
         if [[ "${hash}" =~ ^[0-9a-fA-F]{64}$ && "${rest}" == "${archive}" ]]; then
-            expected="${hash}"
-            break
+            printf '%s\n' "${hash}"
+            return 0
         fi
-    done < "${tmp}/${checksums}"
-fi
+    done < "${file}"
+    return 1
+}
 
-if [[ -z "${expected}" ]]; then
-    echo "Checksum file unavailable; verifying via GitHub release metadata..."
-    release_json="$(curl -fsSL --proto '=https' --tlsv1.2 \
-        "https://api.github.com/repos/${repo}/releases/tags/${tag}")"
-    assets_json="$(printf '%s\n' "${release_json}" | sed -n '/"assets": \[/,/\]/p')"
-    asset_name=""
-    while IFS= read -r line; do
-        if [[ "${line}" =~ \"name\":[[:space:]]*\"([^\"]+)\" ]]; then
-            asset_name="${BASH_REMATCH[1]}"
-        elif [[ -n "${asset_name}" && "${line}" =~ \"digest\":[[:space:]]*\"sha256:([0-9a-fA-F]{64})\" ]]; then
-            if [[ "${asset_name}" == "${archive}" ]]; then
-                expected="${BASH_REMATCH[1]}"
-                break
+resolve_expected_checksum() {
+    local name expected_local=""
+    # Official published manifests use SHA256SUMS-v*.txt; older releases used checksums-v*.txt.
+    for name in "SHA256SUMS-v${version}.txt" "checksums-v${version}.txt"; do
+        if curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
+            -o "${tmp}/${name}" "${asset_base}/${name}" 2>/dev/null; then
+            if expected_local="$(parse_checksum_manifest "${tmp}/${name}")"; then
+                printf '%s\n' "${expected_local}"
+                return 0
             fi
-            asset_name=""
+            echo "Checksum manifest ${name} did not list ${archive}." >&2
         fi
-    done <<< "${assets_json}"
-fi
+    done
 
-if [[ -z "${expected}" ]]; then
+    echo "Checksum file unavailable; verifying via GitHub release metadata..." >&2
+    local release_json
+    release_json="$(curl -fsSL --proto '=https' --tlsv1.2 \
+        "https://api.github.com/repos/${repo}/releases/tags/${tag}")" || return 1
+
+    if command -v python3 >/dev/null 2>&1; then
+        expected_local="$(printf '%s' "${release_json}" | python3 -c '
+import json, re, sys
+name = sys.argv[1]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for asset in data.get("assets") or []:
+    if asset.get("name") != name:
+        continue
+    digest = asset.get("digest") or ""
+    match = re.fullmatch(r"sha256:([0-9a-fA-F]{64})", digest)
+    if match:
+        print(match.group(1))
+        sys.exit(0)
+sys.exit(1)
+' "${archive}")" && {
+            printf '%s\n' "${expected_local}"
+            return 0
+        }
+    else
+        # Dependency-free fallback: scan name/digest pairs from the assets array only.
+        local assets_json asset_name
+        assets_json="$(printf '%s\n' "${release_json}" | sed -n '/"assets": \[/,/\]/p')"
+        asset_name=""
+        while IFS= read -r line; do
+            if [[ "${line}" =~ \"name\":[[:space:]]*\"([^\"]+)\" ]]; then
+                asset_name="${BASH_REMATCH[1]}"
+            elif [[ -n "${asset_name}" && "${line}" =~ \"digest\":[[:space:]]*\"sha256:([0-9a-fA-F]{64})\" ]]; then
+                if [[ "${asset_name}" == "${archive}" ]]; then
+                    printf '%s\n' "${BASH_REMATCH[1]}"
+                    return 0
+                fi
+                asset_name=""
+            fi
+        done <<< "${assets_json}"
+    fi
+    return 1
+}
+
+echo "Downloading ${archive}..."
+curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 \
+    -o "${tmp}/${archive}" "${asset_base}/${archive}"
+
+expected=""
+if ! expected="$(resolve_expected_checksum)"; then
+    echo "Unable to resolve SHA-256 checksum for ${archive}." >&2
+    exit 1
+fi
+if [[ -z "${expected}" || ! "${expected}" =~ ^[0-9a-fA-F]{64}$ ]]; then
     echo "Unable to resolve SHA-256 checksum for ${archive}." >&2
     exit 1
 fi
@@ -131,6 +179,16 @@ fi
 
 echo "Checksum verified."
 echo
+
+# Reject path traversal / absolute members before extraction.
+while IFS= read -r member; do
+    case "${member}" in
+        /*|*../*|*/..|*/../*)
+            echo "Archive member escapes staging directory: ${member}" >&2
+            exit 1
+            ;;
+    esac
+done < <(tar -tzf "${tmp}/${archive}")
 
 tar -xzf "${tmp}/${archive}" -C "${tmp}"
 
