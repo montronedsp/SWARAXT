@@ -8,11 +8,21 @@ shim='''#!/usr/bin/python3
 import os,sys,pathlib,subprocess,signal
 name=pathlib.Path(sys.argv[0]).name;a=sys.argv[1:];fault=os.environ.get('FAULT','')
 if name=='curl':
-    if a[-1].endswith('/latest'):print('https://github.com/montronedsp/SWARAXT/releases/tag/v1.2.3',end='');sys.exit(0)
+    url=a[-1]
+    if url.endswith('/latest'):print('https://github.com/montronedsp/SWARAXT/releases/tag/v1.2.3',end='');sys.exit(0)
+    if '-o' not in a:
+        # GitHub release metadata fallback used when manifests are absent.
+        if fault=='missing-checksum':
+            print('{"assets":[]}');sys.exit(0)
+        print('{"assets":[{"name":"SwaraXT-Linux-x86_64-v1.2.3.tar.gz","digest":"sha256:'+os.environ['SHA']+'"}]}');sys.exit(0)
     target=a[a.index('-o')+1];p=pathlib.Path(target)
-    if a[-1].endswith('.tar.gz'):p.write_bytes(pathlib.Path(os.environ['ASSET']).read_bytes())
-    else:p.write_text(('0'*64 if fault=='checksum' else os.environ['SHA'])+'  SwaraXT-Linux-x86_64-v1.2.3.tar.gz\\n')
-    sys.exit(0)
+    if url.endswith('.tar.gz'):
+        p.write_bytes(pathlib.Path(os.environ['ASSET']).read_bytes());sys.exit(0)
+    # Checksum manifests: prefer SHA256SUMS-v*.txt, then legacy checksums-v*.txt.
+    if fault in ['missing-checksum','api-fallback']:sys.exit(22)
+    if fault=='legacy-only' and 'SHA256SUMS-' in url:sys.exit(22)
+    digest=('0'*64 if fault=='checksum' else os.environ['SHA'])
+    p.write_text(digest+'  SwaraXT-Linux-x86_64-v1.2.3.tar.gz\\n');sys.exit(0)
 src,dest=a[-2:]
 if name=='chmod' and fault=='chmod-stage':sys.exit(1)
 if name=='rm' and fault=='cleanup-backup' and any(v.endswith('.backup') for v in a):sys.exit(1)
@@ -27,12 +37,15 @@ if name=='mv':
         r=subprocess.call(['/bin/mv',*a]);os.kill(os.getppid(),signal.SIGKILL);sys.exit(r)
 sys.exit(subprocess.call(['/bin/'+name,*a]))
 '''
-for case in ['fresh','upgrade','checksum','missing-vst','missing-standalone','stage-copy','standalone-copy','backup','publish','rollback','standalone-publish','interrupt','repeat','chmod-stage','standalone-backup','cleanup-backup','stale-backup']:
+for case in ['fresh','upgrade','checksum','missing-checksum','api-fallback','legacy-only','corrupt','missing-vst','missing-standalone','stage-copy','standalone-copy','backup','publish','rollback','standalone-publish','interrupt','repeat','chmod-stage','standalone-backup','cleanup-backup','stale-backup']:
     test=pathlib.Path(tempfile.mkdtemp(prefix=case+'-',dir=root));home=test/'home';home.mkdir();release=test/'payload/Swara XT';vst=release/'VST3/Swara XT.vst3';st=release/'Standalone/Swara XT'
     if case!='missing-vst':vst.mkdir(parents=True);(vst/'plugin.so').write_text('new-vst')
     if case!='missing-standalone':st.parent.mkdir(parents=True);st.write_text('new-standalone')
     asset=test/'asset.tar.gz'
-    with tarfile.open(asset,'w:gz') as t:t.add(release,arcname='Swara XT')
+    if case=='corrupt':
+        asset.write_bytes(b'not-a-valid-tar-gz')
+    else:
+        with tarfile.open(asset,'w:gz') as t:t.add(release,arcname='Swara XT')
     oldv=home/'.vst3/Swara XT.vst3';olds=home/'.local/bin/swara-xt'
     if case!='fresh':oldv.mkdir(parents=True);(oldv/'plugin.so').write_text('old-vst');olds.parent.mkdir(parents=True);olds.write_text('old-standalone')
     if case=='stale-backup':
@@ -50,11 +63,11 @@ for case in ['fresh','upgrade','checksum','missing-vst','missing-standalone','st
         env['FAULT']='';r=subprocess.run(['bash',str(script)],env=env,capture_output=True,text=True);again=r.returncode;log+='\nSECOND INVOCATION\n'+r.stdout+r.stderr
     preserved=oldcopies()
     ok=True
-    if case in ['fresh','upgrade','repeat']:ok=result.returncode==0 and (oldv/'plugin.so').read_text()=='new-vst'
+    if case in ['fresh','upgrade','repeat','legacy-only','api-fallback']:ok=result.returncode==0 and (oldv/'plugin.so').read_text()=='new-vst'
     elif case in ['interrupt','rollback']:ok=bool(before) and bool(preserved)
-    elif case in ['checksum','missing-vst','missing-standalone','stage-copy','standalone-copy','backup','publish','standalone-publish','chmod-stage','standalone-backup','cleanup-backup','stale-backup']:ok=result.returncode!=0 and bool(preserved)
+    elif case in ['checksum','missing-checksum','corrupt','missing-vst','missing-standalone','stage-copy','standalone-copy','backup','publish','standalone-publish','chmod-stage','standalone-backup','cleanup-backup','stale-backup']:ok=result.returncode!=0 and bool(preserved)
     # Every failure must retain both components, not only the VST bundle.
-    if case not in ['fresh','upgrade','repeat']:
+    if case not in ['fresh','upgrade','repeat','legacy-only','api-fallback']:
         ok=ok and any(p.is_file() and p.read_text()=='old-standalone' for p in home.rglob('swara-xt*'))
     if case!='interrupt':
         ok=ok and not any(downloads.iterdir()) and not (home/'.swara-xt-install.lock').exists()
