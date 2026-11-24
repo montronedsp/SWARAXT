@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 120
     env:
       REVIEWED_SHA: ${{ inputs.source_sha }}
-      APPROVED_SOURCE_SHA: fd90d5bf94a2d8c1a0a8ab08bbb17399d1889b04
+      APPROVED_SOURCE_SHA: 6ea598e47fb0347d23ffa538a64b02318187a7ed
     steps:
       - name: Authorize the release source and preserve LF checkout identity
         shell: bash
