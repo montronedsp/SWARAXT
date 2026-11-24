@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 120
     env:
       REVIEWED_SHA: ${{ inputs.source_sha }}
-      APPROVED_SOURCE_SHA: c4098234a81fa3ee9623b4836e3fd313dbc68efc
+      APPROVED_SOURCE_SHA: fd90d5bf94a2d8c1a0a8ab08bbb17399d1889b04
     steps:
       - name: Authorize the release source and preserve LF checkout identity
         shell: bash
@@ -71,7 +71,7 @@ jobs:
           $compilerConfig = @(Get-ChildItem build/win-release/CMakeFiles -Recurse -Filter CMakeCXXCompiler.cmake)
           if ($compilerConfig.Count -ne 1) { throw "Unable to identify the selected C++ compiler" }
           $compiler = [regex]::Match((Get-Content -Raw $compilerConfig[0].FullName), 'set\(CMAKE_CXX_COMPILER "([^"]+)"\)').Groups[1].Value
-          if ((Get-FileHash -LiteralPath $compiler).Hash -ne 'fe251ef50a1545b1b0835ee17b1e785459712b38d79e45b5c1d3d28970a36619') {
+          if ((Get-FileHash -LiteralPath $compiler).Hash -ne 'E87E78B3EF6580B75AEBDA843F8A22E874612D9F766344046551399F898EB226') {
             throw "The selected compiler differs from the qualified MSVC compiler"
           }
           cmake --build --preset win-release --parallel 2
@@ -81,13 +81,13 @@ jobs:
           ./scripts/package-windows.ps1 `
             -Config Release `
             -BuildDirectory "build/win-release" `
-            -OutputDirectory "artifacts/final-1.3.1"
+            -OutputDirectory "artifacts/final-1.3.3"
       - name: Upload Windows package
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: windows-package-${{ inputs.source_sha }}
           path: |
-            artifacts/final-1.3.1/SwaraXT-Windows-x64-v1.3.1.zip
-            artifacts/final-1.3.1/checksums-v1.3.1.txt
+            artifacts/final-1.3.3/SwaraXT-Windows-x64-v1.3.3.zip
+            artifacts/final-1.3.3/checksums-v1.3.3.txt
           if-no-files-found: error
           retention-days: 30
