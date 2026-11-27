@@ -1,0 +1,4 @@
+known_dc_pre_dbfs=-12.04119983065786
+known_dc_post_dbfs=-145.82134834552156
+lf_sine_dc_dbfs=-inf
+ir3109_constant_input_dc_dbfs=-194.32283324237869

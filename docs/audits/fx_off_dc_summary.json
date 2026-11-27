@@ -1,0 +1,11 @@
+{
+  "worst_classic_fxoff_decision_dbfs": -61.743560936768382,
+  "worst_classic_case": "classic_fxoff_sub",
+  "worst_dual_fxoff_decision_dbfs": -33.350104836071658,
+  "worst_dual_case": "dual_fxoff_maxres",
+  "worst_fxon_decision_dbfs": -26.094934641064661,
+  "worst_fxon_case": "classic_fxon_dist",
+  "classic_fxoff_qualifies": false,
+  "dual_fxoff_qualifies": false,
+  "failures": 0
+}
