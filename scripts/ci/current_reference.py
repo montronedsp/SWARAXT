@@ -15,7 +15,7 @@ import stat
 import subprocess
 
 POLICY = 'linux-current-phase3-v2'
-PACKAGE_SHA256 = '5f96980660fffedd672bb69b51fe60ef4745a619cbec34d8f5a8e5765c40ed78'
+PACKAGE_SHA256 = '831dc460748a9ac35e2b6d709c476c79ae1d748b594da2c2c7b64071a560a731'
 PACKAGE_FILE = 'Tests/References/native-current-' + PACKAGE_SHA256 + '.json'
 AUDIO_TESTS = ('SwaraXTAudioParityTests', 'SwaraXTDspFxIntegratedExactParityTests')
 ALL_TESTS = (*AUDIO_TESTS, 'SwaraXTHostSrcExactParityTests', 'SwaraXTDualSvfHeadlessTests')
