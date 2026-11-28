@@ -129,6 +129,12 @@ void SwaraXtEngine::prepare(double hostSampleRate, int maxBlockSize)
     dcBlocker_.prepare(hostSampleRate_);
     const double boundedRate = std::isfinite(hostSampleRate_) ? hostSampleRate_ : 44100.0;
     maxDcDrainSamples_ = static_cast<uint64_t>(std::ceil(boundedRate * kMaxDcDrainSeconds));
+    // Guard covers native SRC latency plus a short Classic AC-coupling settle.
+    hostDcProtectionGuardSamples_ = static_cast<int>(std::ceil(
+        (static_cast<double>(kOutputLatencyNativeSamples + kAudioBlockSize + 256)
+         * boundedRate / kInternalSampleRate))) + static_cast<int>(std::ceil(boundedRate * 0.25));
+    hostDcProtectionRemaining_ = hostDcProtectionGuardSamples_;
+    hostDcBlockerEngaged_ = true;
     pendingMidiCount_ = 0;
     resetHostState();
 
@@ -177,6 +183,8 @@ void SwaraXtEngine::reset()
     snapFilterQuality();
     applyExperimentalSvfSelection();
     dcBlocker_.reset();
+    hostDcProtectionRemaining_ = hostDcProtectionGuardSamples_;
+    hostDcBlockerEngaged_ = true;
     snapMasterOnApply_ = true;
     resetVcaReconstruction();
     snapPostMixerGain(1.0f);
@@ -208,6 +216,8 @@ void SwaraXtEngine::resetResampler() noexcept
     internalQueue_.reset();
     internalQueue_.setStep(kInternalSampleRate, hostSampleRate_);
     dcBlocker_.reset();
+    hostDcProtectionRemaining_ = hostDcProtectionGuardSamples_;
+    hostDcBlockerEngaged_ = true;
     resetVcaReconstruction();
     snapPostMixerGain(postMixerGainTarget_);
     dormant_ = part_.voice().amplitude_envelope_dead() && part_.voice().vca() == 0;
@@ -918,6 +928,8 @@ void SwaraXtEngine::applyEmergencySilence() noexcept
     // The 0.7 Hz output DC blocker would otherwise take hundreds of
     // milliseconds to forget the last sounding sample.
     dcBlocker_.reset();
+    hostDcBlockerEngaged_ = true;
+    hostDcProtectionRemaining_ = hostDcProtectionGuardSamples_;
     // The samples still inside the SRC window are the pre-panic note. Let them
     // drain without charging the 0.7 Hz blocker, or that blocker rings for
     // hundreds of milliseconds after the window is gone.
@@ -1511,6 +1523,19 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
                 ++cpuProfile_.dormantHostSamplesSkipped;
 #endif
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+                if (hostDcAuditSink_ != nullptr)
+                {
+                    HostDcAuditSample audit;
+                    audit.hostIndex = hostDcAuditIndex_++;
+                    audit.preBlocker = 0.0f;
+                    audit.postBlocker = 0.0f;
+                    audit.effect = static_cast<uint8_t>(activeBoard_.effect);
+                    audit.dual = experimentalSvfEnabled_;
+                    audit.dormant = true;
+                    hostDcAuditSink_(hostDcAuditContext_, audit);
+                }
+#endif
                 left[i] = 0.0f;
                 if (right != nullptr)
                     right[i] = 0.0f;
@@ -1521,11 +1546,23 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         fillInternalQueue(false);
 
         float sample = 0.0f;
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+        bool srcSample = false;
+        bool dcDrain = false;
+#endif
         if (internalQueue_.size() >= internalQueue_.minimumReadableSize())
+        {
             sample = internalQueue_.readInterpolated();
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+            srcSample = true;
+#endif
+        }
         else if (drainingToDormant_ && emergencyDcResetRemaining_ == 0)
         {
             dcDrainingToDormant_ = true;
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+            dcDrain = true;
+#endif
             sample = dcBlocker_.process(0.0f);
             ++dcDrainSamples_;
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
@@ -1539,20 +1576,88 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
                 enterDormant();
         }
 
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+        const float preBlocker = sample;
+        bool blockerApplied = false;
+        bool emergency = false;
+#endif
+
+        // Dual and any FX-active/residual path keep host DC protection armed.
+        // Classic FX-Off may bypass only after SRC history from contaminated
+        // intervals has flushed (hostDcProtectionRemaining_ reaches zero).
+        const bool contaminatedPath =
+            experimentalSvfEnabled_
+            || activeBoard_.effect != board::Effect::off
+            || boardRequiresAudio();
+        if (contaminatedPath)
+            hostDcProtectionRemaining_ = hostDcProtectionGuardSamples_;
+        else if (hostDcProtectionRemaining_ > 0)
+            --hostDcProtectionRemaining_;
+
+        const bool requireHostDcProtection =
+            contaminatedPath
+            || hostDcProtectionRemaining_ > 0
+            || emergencyDcResetRemaining_ > 0
+            || dcDrainingToDormant_;
+
         // Panic drain: emit the SRC residue raw and keep the blocker empty.
         // Feeding that residue through the 0.7 Hz filter would re-charge it.
         if (emergencyDcResetRemaining_ > 0)
         {
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+            emergency = true;
+#endif
             dcBlocker_.reset();
+            hostDcBlockerEngaged_ = true;
             --emergencyDcResetRemaining_;
         }
-        else if (! drainingToDormant_ || ! dcDrainingToDormant_)
+        else if (dcDrainingToDormant_)
         {
+            // Drainage already processed the blocker with a synthetic zero.
+            hostDcBlockerEngaged_ = true;
+        }
+        else if (requireHostDcProtection)
+        {
+            if (! hostDcBlockerEngaged_)
+            {
+                dcBlocker_.reset();
+                hostDcBlockerEngaged_ = true;
+            }
             sample = dcBlocker_.process(sample);
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+            blockerApplied = true;
+#endif
+        }
+        else
+        {
+            // Qualified Classic FX-Off: pass the SRC sample through unchanged.
+            if (hostDcBlockerEngaged_)
+            {
+                dcBlocker_.reset();
+                hostDcBlockerEngaged_ = false;
+            }
         }
 
         if (! std::isfinite(sample))
             sample = 0.0f;
+
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+        if (hostDcAuditSink_ != nullptr)
+        {
+            HostDcAuditSample audit;
+            audit.hostIndex = hostDcAuditIndex_++;
+            // During DC drainage the blocker already consumed a synthetic zero.
+            audit.preBlocker = dcDrain ? 0.0f : preBlocker;
+            audit.postBlocker = sample;
+            audit.effect = static_cast<uint8_t>(activeBoard_.effect);
+            audit.dual = experimentalSvfEnabled_;
+            audit.srcSample = srcSample;
+            audit.dcDrain = dcDrain;
+            audit.emergency = emergency;
+            audit.blockerApplied = blockerApplied;
+            hostDcAuditSink_(hostDcAuditContext_, audit);
+        }
+#endif
 
         left[i] = sample;
         if (right != nullptr)
