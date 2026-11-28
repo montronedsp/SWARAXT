@@ -1,9 +1,8 @@
 // Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Experimental prototype: ONE section of the Mutable Instruments Shruthi Dual
-// SVF (SSM2164 state-variable filter). Numerical realisation is TPT; cutoff,
-// Q and BP limiting follow shruthi-1 svf_analysis.tex and
-// ssm_2164_svf_transfer.py. This is not Classic IR3109, not MEERA, not Anushri.
+// One Shruthi Analog-SVF-v03 section. Numerical realisation is TPT. Cutoff,
+// Q and BP limiting follow the v03 parts, keeping the paper's derivations
+// where the schematic still matches them. This is not Classic IR3109.
 #pragma once
 
 #include "Circuit/DualSvfAnalogBoard.h"
@@ -441,12 +440,12 @@ class ShruthiSvfDual
         const double pwm = vcaTarget_ * ShruthiSvf2pControl::kPwmFullScaleVolts;
         const double outUnit = board_.processOutput(branch1, branch2, pwm)
             / ShruthiSvf2pControl::kSourceVoltsPerUnit;
-        lastOutput_ = std::isfinite(outUnit) ? outUnit : 0.0;
-        if (! std::isfinite(lastOutput_))
+        if (! std::isfinite(outUnit))
         {
             reset();
             return 0.0f;
         }
+        lastOutput_ = outUnit;
         return static_cast<float>(lastOutput_);
     }
 

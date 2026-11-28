@@ -33,20 +33,17 @@ class DualSvfAnalogBoard
     static constexpr double kC21 = 1.0e-6;
     static constexpr double kC14 = 100.0e-12;
 
-    // Equilibrium audio gain for a PWM voltage, with the schematic bleed.
-    // Negative results are the cell driven past closure; the audio gain is 0.
-    static double steadyGain(double pwmVolts) noexcept
+    // Equilibrium audio gain for a PWM voltage, with the schematic R53 bleed.
+    // The servo has already divided by two when this sees control volts.
+    static double gainFromControlVolts(double controlVolts) noexcept
     {
-        const double vf = kControlGain * clampPwm(pwmVolts);
-        const double ratio = vf / kRail - kBleed;
+        const double ratio = controlVolts / kRail - kBleed;
         return ratio > 0.0 ? ratio : 0.0;
     }
 
-    // Same equilibrium with R53 omitted. Used by the reference check only.
-    static double steadyGainUnpopulated(double pwmVolts) noexcept
+    static double steadyGain(double pwmVolts) noexcept
     {
-        const double ratio = kControlGain * clampPwm(pwmVolts) / kRail;
-        return ratio > 0.0 ? ratio : 0.0;
+        return gainFromControlVolts(kControlGain * clampPwm(pwmVolts));
     }
 
     void prepare(double sampleRate) noexcept
@@ -80,17 +77,11 @@ class DualSvfAnalogBoard
     void snapControl(double pwmVolts) noexcept
     {
         controlVolts_ = kControlGain * clampPwm(pwmVolts);
-        gain_ = gainFromControl(controlVolts_);
+        gain_ = gainFromControlVolts(controlVolts_);
     }
 
     double gain() const noexcept { return gain_; }
     double lastVolts() const noexcept { return lastVolts_; }
-
-    bool audioMemory() const noexcept
-    {
-        return inputHp_.active() || inputLp_.active() || branch1_.active()
-            || branch2_.active() || outputLp_.active() || std::abs(lastVolts_) > 1.0e-8;
-    }
 
     // Volts into the SVF, after C34/R20 and the inverting R13 feedback.
     double conditionInput(double sourceVolts) noexcept
@@ -114,7 +105,7 @@ class DualSvfAnalogBoard
         controlVolts_ += (1.0 - control_) * (target - controlVolts_);
         if (pwmVolts == 0.0 && controlVolts_ < 1.0e-12)
             controlVolts_ = 0.0;
-        gain_ = gainFromControl(controlVolts_);
+        gain_ = gainFromControlVolts(controlVolts_);
 
         const double i1 = branch1_.highpass(branch1Volts);
         const double i2 = branch2_.highpass(branch2Volts);
@@ -145,11 +136,6 @@ class DualSvfAnalogBoard
             previous = 0.0;
         }
 
-        bool active() const noexcept
-        {
-            return std::abs(state) > 1.0e-8 || std::abs(previous) > 1.0e-8;
-        }
-
         double highpass(double x) noexcept
         {
             state = coeff * (state + x - previous);
@@ -173,12 +159,6 @@ class DualSvfAnalogBoard
         if (! std::isfinite(pwmVolts) || pwmVolts <= 0.0)
             return 0.0;
         return pwmVolts > kRail ? kRail : pwmVolts;
-    }
-
-    static double gainFromControl(double controlVolts) noexcept
-    {
-        const double ratio = controlVolts / kRail - kBleed;
-        return ratio > 0.0 ? ratio : 0.0;
     }
 
     // R14 and R9 are equal, so the loaded reconstruction gain is 1/2.
