@@ -17,16 +17,20 @@ v02 Eagle files exist in the same tree. This note does not mix v02 values into t
 
 Classic IR3109 circuitry is not a donor. Its LM13700 VCA law is a different circuit.
 
-## What the current software does
+## Provenance
 
-`ShruthiSvf2p` and `ShruthiSvfDual` still own a prototype VCA:
+The v03 schematic and PCB are Eagle 5 binary (`10 80`). They were converted with eagle-exhumer commit `a3ae95b111edb990558828e0bb9f7ec775309913`, `plugins/eagle_bin.py`, on an isolated copy. The originals were not modified. `crosscheck` reported 402 pins, 97 nets, and zero schematic-only, board-only, renamed, split or merged nets. The XML copies and the extract script stay on `Z:\SWARAXT-DC-AUDIT-builds\dual-v2164-ref`. The published PDF has no text layer; pin connectivity below is the XML, not a rendering of the PDF.
 
-- PWM smoothing time constant `10000 * 33 nF`.
-- Linear multiply of the selected filter sample by that smoothed gain.
-- Separate VCA state on the single-filter path and again on the serial/parallel path.
-- No input coupling network and no C20/C21 output coupling.
+MODE pins IC7E and IC9E are single-pin nets `N$68` and `N$71`. Nothing else is attached, so the cells run in the datasheet’s open-MODE class AB. That does not change the ideal current ratio.
 
-That time constant is not the v03 VCA network. v03 uses **C9 = 6.8 nF** on the VCA control path.
+## What the software implements
+
+`DualSvfAnalogBoard` is the one VCA used by `ShruthiSvfDual` for section 1, serial and parallel. The SVF integrators are unchanged. The obsolete `10000 * 33 nF` VCA smoother is gone.
+
+- C34/R20 into the inverting mixer, feedback R13 with C13.
+- C20/R31 and C21/R32 as independent coupling branches. A mux branch that is not selected is driven from 0 V so its capacitor discharges.
+- One shared control voltage from the loaded C9 network and the IC3A/IC7C servo, with schematic R53 fitted.
+- IC9D current into the inverting I/V (R12, C14). R1 and R2 stay the assembly jumpers: the signal passes, and the plugin load is high-Z, so R3 does not change the voltage.
 
 ## Audio path established from v03
 
@@ -72,7 +76,7 @@ IC7C is the reference cell in the feedback of IC3A. IC9D is the audio cell and s
 
 The audio VCA is therefore a **linear current ratio** set by the control servo, not an open-loop exponential applied to the PWM voltage. C10 (100 pF) is the local compensation around IC3A. It sets servo dynamics; it is not an extra audio high-pass.
 
-R53 is **2.2 MΩ** from the negative rail into the control summing node on the v03 sheet. The assembly notes describe a 2 MΩ bleed resistor on pads marked “opt” as a builder modification that closes the VCA harder and slightly hardens the envelope. Those two descriptions are the same function with a small value difference. The nominal model decision (fitted 2.2 MΩ versus omitted bleed) stays open until the static closed-VCA gain is computed both ways. It is not a user control.
+R53 is a placed 2.2 MΩ from VEE to the servo summing node (`R53.1` on VEE, `R53.2` on `N$11`). The assembly notes describe a similar ~2 MΩ on pads marked “opt” as a builder tweak that closes the VCA when the PWM sits a few millivolts above ground. Both are the same offset term. The nominal model fits the schematic part. Leaving it off removes the offset and is not a separate DSP path.
 
 ## Component table (audio and VCA path)
 
@@ -83,13 +87,17 @@ Confidence: **schematic** means the v03 Eagle value field. **datasheet** means t
 | C34 | 4.7 µF | Digital-mix input coupling | schematic + assembly |
 | C1 | 4.7 µF | External input coupling. Software source is zero | schematic + assembly |
 | R1, R2 | jumper | Nominal input/output gain | assembly |
-| IC2A | TL072 | Input summer | schematic, gain resistors partial |
-| C20 | 1 µF | Filter-1 output coupling into the VCA | schematic + assembly |
-| C21 | 1 µF | Filter-2 output coupling into the VCA | schematic + assembly |
-| R31 | 33 kΩ | Series resistor on one VCA input leg | schematic, which leg is partial |
-| R24 | 100 kΩ | Series resistor on the other VCA input leg | schematic, which leg is partial |
-| C9 | 6.8 nF | VCA PWM smoothing | schematic + assembly |
-| R9, R14 | 100 kΩ | Control-servo resistors | schematic, exact nodes partial |
+| IC2A | TL072 | Inverting input summer. `+IN` is GND | schematic + netlist |
+| R20 | 100 kΩ | Digital-mix series resistor into the summer | netlist `N$39` to `N$6` |
+| R13 | 33 kΩ | Summer feedback, with C13 100 pF | netlist `N$6` to MIX |
+| R17 | 10 kΩ | External input into the same summer. Software source is 0 V | netlist |
+| C20 | 1 µF | Filter-1 coupling. `+` is FILTER1_MIX (IC13.Z), `−` is R31 | netlist |
+| C21 | 1 µF | Filter-2 coupling. `+` is FILTER2_OUT (IC12.Y), `−` is R32 | netlist |
+| R31, R32 | 33 kΩ | Both audio-cell input branches, summed at IC9D.IN | netlist `N$67` |
+| R24 | 100 kΩ | Reference-cell input from VEE to IC7C.IN. Not an audio branch | netlist `N$10` |
+| R14 | 100 kΩ | PWM source into C9 and R9 | netlist `N$45`, `N$22` |
+| C9 | 6.8 nF | PWM capacitor to GND | netlist |
+| R9 | 100 kΩ | From the C9 node into the servo summer | netlist `N$22` to `N$11` |
 | R53 | 2.2 MΩ | VCA bleed into the control summer | schematic; kit treats a 2 MΩ part as optional |
 | C10 | 100 pF | Control-op-amp compensation | schematic + assembly |
 | IC3A | TL072 | Control servo | schematic |
@@ -105,26 +113,46 @@ Confidence: **schematic** means the v03 Eagle value field. **datasheet** means t
 
 Filter capacitors C33, C35, C39, C46 are 220 pF. They belong to the existing SVF cores. This work does not retune those cores.
 
-D2–D5 are the integrator soft clippers. They are not part of the output VCA.
+D2–D5 are the integrator clippers, not part of the output VCA. The sheet text says “3.6V Zener”. D4’s anode is on BP1 and D5’s anode is on the other side of C39; their cathodes meet on `N$55`. D2/D3 do the same across C33 (`N$33`). Each pair is anti-series, so the clamp is the zener rating plus one silicon forward drop, 4.3 V. The knee is linear through 3.6 V and then approaches 4.3 V.
+
+## Filter calibration
+
+There is one production model. The Paper / Eagle selector is gone. Bit 7 of the session word used to store that choice. Unpack ignores it, and pack leaves it clear, so older session words still decode routing, modes and Filter 2 controls.
+
+| Quantity | v03 part | Production value |
+| --- | --- | --- |
+| Integrator R, C | 33 kΩ, 220 pF | paper law, parts match |
+| Rq | R44, R28, 15 kΩ | paper law |
+| Ro | R45, R29, 330 kΩ | schematic. The paper’s 220 kΩ is not fitted |
+| Resonance smoother | R21/R8 22 kΩ, C22/C8 68 nF, CV pin 5 kΩ | τ = C·(22 kΩ \|\| 5 kΩ). DC attenuation ρ = 5/27 |
+| Cutoff smoother | R10 10 kΩ \|\| C11 33 nF | τ = 330 µs. Trimmers R4–R7 set the 2.141 V / 128-note span |
+| Self-oscillation | Q singularity | 4.83 V PWM, byte 246, panel 62 |
+| Limiter | anti-series 3.6 V Zeners | asymptote 4.3 V |
+
+The paper’s Q and cutoff equations are unchanged in form. Ro and the limiter are the schematic’s. The historical Paper sound is not a compatibility mode.
 
 ## Routing
 
-IC12 and IC13 (4053) select LP/BP/HP and the serial versus parallel connection of the two cores. C20 and C21 sit **after** the mode switches and **before** the audio VCA, so each routed filter output has its own coupling state. A disconnected branch does not share the other branch’s capacitor. Reconnection must not be modeled as one high-pass after a mix unless the resistor loading is shown to be identical, and it is not: the series resistors on the two legs are 33 kΩ and 100 kΩ.
+IC12 and IC13 (4053) select LP/BP/HP. C20 follows IC13.Z and C21 follows IC12.Y, so each coupling capacitor is after its mux common. The two series resistors are both 33 kΩ. R24 is the reference resistor and is not in the audio sum. Firmware routing is unchanged: serial sends only the filter-2 common into the VCA, parallel sends both, and section 1 is the single-section listening path on the filter-1 branch. The unused branch is held at 0 V.
 
-Section 1 remains the existing software listening path. It uses the same output coupling and VCA once that path is the single selected branch.
+IC13.Z1 is GND, so the filter-1 mux can also ground C20. The software’s serial path is that disconnected case: filter 1 is not mixed into the VCA.
 
-## Still unresolved before production equations
+## Closed-loop equations
 
-These items are blocked, not guessed:
+R14 = R9 = 100 kΩ and C9 = 6.8 nF. The loaded PWM node is a one-pole toward `Vpwm / 2` with time constant `C9 * (R14 || R9)` = 340 µs.
 
-1. Exact PWM source resistor into C9, and therefore the control time constant.
-2. Which of R24 (100 kΩ) and R31 (33 kΩ) belongs to filter 1 versus filter 2, and the reference-cell input resistor that sets \(I_{\text{ref,in}}\).
-3. Whether R53 is the shipped nominal or only the optional bleed build.
-4. Loaded cutoff of C34/C1 and of C20/C21 once those resistors are assigned.
-5. Sign of IC2A and IC2B.
+The reference input current magnitude is `5 V / R24` = 50 µA. R53 contributes `5 V / 2.2 MΩ` out of the summing node toward VEE. With the audio cell matched to the reference cell and IC2B inverting:
 
-Until those nodes are traced, production Dual DSP stays on the current prototype VCA. The host 0.7 Hz blocker is unchanged by this note.
+\[
+g = \max\left(0,\ \frac{V_f}{5\ \mathrm{V}} - \frac{R_{24}}{R_{53}}\right)
+\]
 
-## Next measurement
+\[
+V_{\mathrm{out}} = -g \left(v_{C20} + v_{C21}\right)
+\]
 
-Trace the v03 nets for the VCA control summer and the two coupling legs, then write the independent reference (static gain versus PWM, and the two coupling transfer functions) before replacing `kVcaCvTauSeconds`.
+`R24/R53` = 1/22. At zero PWM the formula is negative, so the gain is the closed cell, which is what the bleed is for. Without R53 the offset term is zero and `g = Vf / 5`. Full-scale PWM (5 V) gives `g = 0.5 - 1/22` with R53 fitted, and `g = 0.5` without it. Bytes 0 through 23 stay closed; byte 24 is the first positive gain.
+
+The digital input, into a virtual ground, is an inverting high-pass at `1/(2π R20 C34)` ≈ 0.339 Hz with passband gain `-R13/R20` = −0.33, then the C13/R13 pole near 48 kHz. Each coupling branch is a high-pass at `1/(2π · 33 kΩ · 1 µF)` ≈ 4.82 Hz. C14/R12 is the matching pole on the I/V. No capacitor follows IC2B.
+
+The host 0.7 Hz blocker stays on Dual. Coupling before a time-varying gain does not by itself remove a mean.

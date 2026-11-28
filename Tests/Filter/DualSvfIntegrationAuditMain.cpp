@@ -80,7 +80,7 @@ void neutral(SwaraXtAudioProcessor& p, bool noise = false, float res = .2f, int 
 void select(SwaraXtAudioProcessor& p, const Sel& s) {
     p.setExperimentalSvfEnabled(s.enabled); p.setExperimentalSvfRouting(s.routing);
     p.setExperimentalSvfMode1(s.mode1); p.setExperimentalSvfMode2(s.mode2);
-    p.setExperimentalSvfCalibration(s.calibration); p.setExperimentalSvfControl2(s.control2);
+    p.setExperimentalSvfControl2(s.control2);
     p.setExperimentalSvfCutoff2(s.cutoff2); p.setExperimentalSvfResonance2(s.resonance2);
 }
 struct Transport : juce::AudioPlayHead {
@@ -351,12 +351,18 @@ void section2TimingContracts() {
         const auto t=renderSection2Reference(s,fx);
         // Independently qualified native anchors prevent candidate synthesis
         // from supplying its own unverified reference to the downstream replay.
-        check(q20Hash(t.undelayed)==nativeGolden,"pre-delay synthesis matches the published baseline fingerprint");
+        const auto nativeHash=q20Hash(t.undelayed);
         fixedPipeline(t,48000,true,fx,4,true);
-        if(hostGolden!=0) check(q20Hash(t.host)==hostGolden,"migrated Section 2 host reference matches exact timing contract");
+        const auto hostHash=hostGolden!=0 ? q20Hash(t.host) : 0;
+        if(nativeHash!=nativeGolden || (hostGolden!=0 && hostHash!=hostGolden))
+            std::printf("GOLDEN native=%016llx expectedNative=%016llx host=%016llx expectedHost=%016llx\n",
+                static_cast<unsigned long long>(nativeHash), static_cast<unsigned long long>(nativeGolden),
+                static_cast<unsigned long long>(hostHash), static_cast<unsigned long long>(hostGolden));
+        check(nativeHash==nativeGolden,"pre-delay synthesis matches the published baseline fingerprint");
+        if(hostGolden!=0) check(hostHash==hostGolden,"migrated Section 2 host reference matches exact timing contract");
     };
     for(int cal=0;cal<2;++cal) {
-        Sel s; s.enabled=true; s.calibration=static_cast<ShruthiSvfCalibration>(cal); s.routing=Route::serial;
+        Sel s; s.enabled=true; s.routing=Route::serial;
         for(int i=0;i<3;++i) {
             s.control2=Control::relative; s.cutoff2=static_cast<uint8_t>(52+12*i); s.resonance2=0; s.mode2=Mode::lowPass;
             verify(s,0,dualRelativeNativeGoldens[cal][i],dualRelativeGoldens[cal][i]);
@@ -415,7 +421,7 @@ std::vector<Change> changes() {
     Sel parallel = a; parallel.routing = Route::parallel;
     Sel bp = a; bp.mode1 = Mode::bandPass;
     Sel hp = a; hp.mode1 = Mode::highPass;
-    Sel hw = a; hw.calibration = ShruthiSvfCalibration::eagleHardware;
+    Sel hw = a;
     Sel independent = serial; independent.control2 = Control::independent; independent.cutoff2 = 40; independent.resonance2 = 48;
     Sel relative = independent; relative.control2 = Control::relative; relative.cutoff2 = 76;
     return {{"classic_dual",c,a},{"dual_classic",a,c},{"section1_serial",a,serial},
@@ -527,7 +533,7 @@ void contracts(const std::filesystem::path& out) {
     }
     auto p=std::make_unique<SwaraXtAudioProcessor>(); neutral(*p); p->prepareToPlay(48000,64);
     juce::MemoryBlock before,after; p->getStateInformation(before);
-    Sel s; s.enabled=true; s.routing=Route::serial; s.calibration=ShruthiSvfCalibration::eagleHardware; s.control2=Control::relative; s.cutoff2=76;
+    Sel s; s.enabled=true; s.routing=Route::serial; s.control2=Control::relative; s.cutoff2=76;
     select(*p,s); p->getStateInformation(after); check(before==after,"Dual choices absent from serialized state");
     p->setStateInformation(before.getData(),static_cast<int>(before.getSize())); check(Sel::pack(p->experimentalSvfSelection())==Sel::pack(s),"same-instance restore retains current prototype selection");
     auto fresh=std::make_unique<SwaraXtAudioProcessor>(); fresh->setStateInformation(after.getData(),static_cast<int>(after.getSize()));
@@ -536,7 +542,7 @@ void contracts(const std::filesystem::path& out) {
     p->releaseResources(); p->prepareToPlay(192000,16); check(Sel::pack(p->experimentalSvfSelection())==Sel::pack(s),"prepare/reprepare retains prototype request");
     p->setUserPresetDirectoryForTests(juce::File(juce::String((out/"user-presets").string())));
     juce::String error; check(p->saveUserPreset("F2 contract",true,error),"external user preset saved");
-    s.routing=Route::parallel; s.calibration=ShruthiSvfCalibration::paperApproved; select(*p,s);
+    s.routing=Route::parallel; select(*p,s);
     bool loaded=false; for (const auto& entry:p->getPresetEntries()) if (entry.name=="F2 contract") loaded=p->loadPresetEntry(entry,error);
     check(loaded && Sel::pack(p->experimentalSvfSelection())==Sel::pack(s),"user preset retains current rather than saved prototype selection");
     { auto editor=std::make_unique<SwaraXtAudioProcessorEditor>(*p); editor.reset(); }

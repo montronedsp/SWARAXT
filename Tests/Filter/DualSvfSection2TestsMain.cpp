@@ -159,7 +159,7 @@ void packedControls()
     Selection a, b;
     a.enabled = true; a.control2 = Control::relative; a.cutoff2 = 127; a.resonance2 = 63;
     a.routing = ShruthiSvfDualRouting::serial; a.mode1 = ShruthiSvf2pMode::bandPass;
-    a.mode2 = ShruthiSvf2pMode::highPass; a.calibration = ShruthiSvfCalibration::eagleHardware;
+    a.mode2 = ShruthiSvf2pMode::highPass;
     b.control2 = Control::independent; b.cutoff2 = 52; b.resonance2 = 21;
     publication.request(a);
     std::atomic<int> bad { 0 };
@@ -177,11 +177,11 @@ void packedControls()
     reader.join();
     expect(bad.load() == 0, "all fields applied from one coherent snapshot");
     std::thread first([&] { for (int i = 0; i < 10000; ++i) publication.patch([](Selection& s) { s.cutoff2 = 76; s.resonance2 = 63; }); });
-    std::thread second([&] { for (int i = 0; i < 10000; ++i) publication.patch([](Selection& s) { s.control2 = Control::relative; s.calibration = ShruthiSvfCalibration::eagleHardware; }); });
+    std::thread second([&] { for (int i = 0; i < 10000; ++i) publication.patch([](Selection& s) { s.control2 = Control::relative; }); });
     first.join(); second.join();
     const auto s = publication.selection();
-    expect(s.cutoff2 == 76 && s.resonance2 == 63 && s.control2 == Control::relative
-        && s.calibration == ShruthiSvfCalibration::eagleHardware, "concurrent CAS writers lose no unrelated fields");
+    expect(s.cutoff2 == 76 && s.resonance2 == 63 && s.control2 == Control::relative,
+        "concurrent CAS writers lose no unrelated fields");
     std::printf("Publication: 24576 domains, 40000 coherent audio applications, two CAS writers\n");
 }
 
@@ -204,9 +204,9 @@ Render render(Control control, int cut, int res, int route, int calibration, int
     p.setExperimentalSvfCutoff2(cut);
     p.setExperimentalSvfResonance2(res);
     p.setExperimentalSvfRouting(static_cast<ShruthiSvfDualRouting>(route));
-    p.setExperimentalSvfCalibration(static_cast<ShruthiSvfCalibration>(calibration));
     p.setExperimentalSvfMode1(static_cast<ShruthiSvf2pMode>(m1));
     p.setExperimentalSvfMode2(static_cast<ShruthiSvf2pMode>(m2));
+    (void) calibration;
     if (fx)
     {
         parameter(p, IDs::dspFxProgram, 1);
@@ -290,12 +290,12 @@ void audioControls()
         expect(cutA.hash != cutB.hash && cutB.hash != resB.hash && identical(cutA.f1, cutB.f1)
             && identical(cutB.f1, resB.f1), "cutoff and resonance independently audible with fixed F1");
 #if !defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_PRINT_GUARD
-        std::printf("DualIndependent_%s_Cut40_Res32 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(cutA.hash));
-        std::printf("DualIndependent_%s_Cut90_Res32 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(cutB.hash));
-        std::printf("DualIndependent_%s_Cut90_Res63 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(resB.hash));
-        std::printf("DualRelative_%s_Minus12 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(low.hash));
-        std::printf("DualRelative_%s_Center64 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(mid.hash));
-        std::printf("DualRelative_%s_Plus12 hash=%016llx\n", cal == 0 ? "Paper" : "Eagle", static_cast<unsigned long long>(high.hash));
+        std::printf("DualIndependent_v03_Cut40_Res32 hash=%016llx\n", static_cast<unsigned long long>(cutA.hash));
+        std::printf("DualIndependent_v03_Cut90_Res32 hash=%016llx\n", static_cast<unsigned long long>(cutB.hash));
+        std::printf("DualIndependent_v03_Cut90_Res63 hash=%016llx\n", static_cast<unsigned long long>(resB.hash));
+        std::printf("DualRelative_v03_Minus12 hash=%016llx\n", static_cast<unsigned long long>(low.hash));
+        std::printf("DualRelative_v03_Center64 hash=%016llx\n", static_cast<unsigned long long>(mid.hash));
+        std::printf("DualRelative_v03_Plus12 hash=%016llx\n", static_cast<unsigned long long>(high.hash));
 #endif // SWARAXT_DUAL_PRINT_GUARD
     }
     std::printf("Production independence: 108 paired renders across routes, modes and calibrations\n");
@@ -325,7 +325,6 @@ void guiAndStress()
         for (int i = 0; i < 12000; ++i)
         {
             p.setExperimentalSvfCutoff2(i % 128); p.setExperimentalSvfResonance2(i % 64);
-            p.setExperimentalSvfCalibration(static_cast<ShruthiSvfCalibration>(i & 1));
             p.setExperimentalSvfRouting(static_cast<ShruthiSvfDualRouting>(i % 3));
         }
     });
@@ -416,7 +415,6 @@ void rateMatrix()
                 p.setExperimentalSvfCutoff2((i * 23) % 128);
                 p.setExperimentalSvfResonance2(i % 2 == 0 ? 63 : 0);
                 p.setExperimentalSvfRouting(static_cast<ShruthiSvfDualRouting>(i % 3));
-                p.setExperimentalSvfCalibration(static_cast<ShruthiSvfCalibration>(i & 1));
                 midi.clear();
                 if (i == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(127)), 0);
                 if (i == 90) midi.addEvent(juce::MidiMessage::allNotesOff(1), 0);

@@ -6,6 +6,8 @@
 // ssm_2164_svf_transfer.py. This is not Classic IR3109, not MEERA, not Anushri.
 #pragma once
 
+#include "Circuit/DualSvfAnalogBoard.h"
+
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -20,16 +22,9 @@ enum class ShruthiSvf2pMode : std::uint8_t
     highPass = 2
 };
 
-// Session-only A/B. Default paperApproved is the Prototype 1/2 listening reference.
-enum class ShruthiSvfCalibration : std::uint8_t
-{
-    paperApproved = 0,
-    eagleHardware = 1
-};
-
-// Control conversion from firmware PWM bytes to analog-law f0 / Q.
-// Sources: pichenettes/shruthi-1 svf_analysis.tex and
-// hardware_design/simulations/ssm_2164_svf_transfer.py (R, C, Rg, Ri, Rq).
+// Control conversion from firmware PWM bytes to the v03 analog law.
+// The paper's derivations are kept where the v03 parts still match them.
+// R_O and the limiter follow the schematic, not the paper's 220 kΩ / 4.7 V note.
 struct ShruthiSvf2pControl
 {
     static constexpr double kPi = 3.1415926535897932384626433832795;
@@ -38,21 +33,30 @@ struct ShruthiSvf2pControl
     static constexpr double kRgOhms = 33000.0;
     static constexpr double kRiOhms = 33000.0;
     static constexpr double kRqOhms = 15000.0;
-    static constexpr double kRoOhms = 220000.0;
-    // SSM2164 CV pin divider (0.5k / 4.5k) plus 22k PWM source impedance.
+    // v03 R45 and R29. The paper's 220 kΩ was an earlier choice.
+    static constexpr double kRoOhms = 330000.0;
+    // SSM2164 CV pin is 4.5 kΩ + 500 Ω. Resonance source R21/R8 is 22 kΩ.
     static constexpr double kRho = 5.0 / 27.0;
-    // 5 V PWM spans 128 MIDI notes => 2164 v_cv swing 2.141 V; gain 2.141/5.
+    // R5/R6 and R4/R7 are builder trimmers. Nominal tracking is the paper's
+    // calibrated span: 5 V of PWM moves v_cv by 2.141 V (128 MIDI notes).
     static constexpr double kCutoffCvGain = 2.141 / 5.0;
     static constexpr double kPwmFullScaleVolts = 5.0;
-    static constexpr double kZenerVolts = 4.7;
-    // Linear until 4.0 V, then C1-smooth approach to 4.7 V (head-to-head Zeners).
-    static constexpr double kZenerKneeVolts = 0.7;
-    static constexpr double kResonanceCvTauSeconds = 22000.0 * 68.0e-9;
-    // Prototype PWM reconstruction for cutoff (active analog filter not extracted
-    // from Eagle this pass). Same order as other Shruthi PWM CVs, not IR3109 map.
-    static constexpr double kCutoffCvTauSeconds = 5600.0 * 33.0e-9;
-    // Digital-board VCA PWM reconstruction. Prototype infrastructure, not SVF.
-    static constexpr double kVcaCvTauSeconds = 10000.0 * 33.0e-9;
+    // Sheet annotation "3.6V Zener". D2/D3 and D4/D5 are anti-series
+    // (cathodes tied) across each BP integrator capacitor, so the clamp is
+    // the zener rating plus the forward drop of the other diode.
+    static constexpr double kZenerVolts = 3.6;
+    static constexpr double kDiodeForwardVolts = 0.7;
+    static constexpr double kClampVolts = kZenerVolts + kDiodeForwardVolts;
+    static constexpr double kZenerKneeVolts = kDiodeForwardVolts;
+    static constexpr double kResonanceSeriesOhms = 22000.0;
+    static constexpr double kControlPinOhms = 5000.0;
+    static constexpr double kResonanceCapFarads = 68.0e-9;
+    // Loaded by the CV pin: C * (22 kΩ || 5 kΩ).
+    static constexpr double kResonanceCvTauSeconds =
+        kResonanceCapFarads * (kResonanceSeriesOhms * kControlPinOhms)
+        / (kResonanceSeriesOhms + kControlPinOhms);
+    // IC4 feedback is R10 10 kΩ || C11 33 nF. The trimmers change gain, not this pole.
+    static constexpr double kCutoffCvTauSeconds = 10000.0 * 33.0e-9;
     // Mixer byte to volts: same source scaling Classic uses at the analog jack.
     static constexpr double kSourceVoltsPerUnit = 5.0 * 128.0 / 255.0;
     static constexpr double kNyquistRatio = 0.45;
@@ -150,85 +154,10 @@ struct ShruthiSvf2pControl
         return isSelfOscillatingPwmVolts(pwmVoltsFromByte(resonance));
     }
 
-    // C1-smooth head-to-head Zener: identity below (Vz - knee), then
-    // y = a + knee * t/(t+knee), a = 4.0 V, asymptote 4.7 V. Odd function.
+    // Anti-series 3.6 V Zeners. Linear through Vz, then a C1 approach to Vz+Vf.
     static double zenerLimit(double volts) noexcept
     {
-        const double a = kZenerVolts - kZenerKneeVolts;
-        const double ax = volts < 0.0 ? -volts : volts;
-        if (ax <= a)
-            return volts;
-        const double t = ax - a;
-        const double y = a + kZenerKneeVolts * t / (t + kZenerKneeVolts);
-        return volts < 0.0 ? -y : y;
-    }
-};
-
-// Eagle v03 / kit Dual-SVF: R_O = 330 kΩ, 3.6 V back-to-back Zeners.
-// Same equations as the paper, only Ro and Vz change. Not the approved sound.
-struct ShruthiSvfHardwareControl
-{
-    static constexpr double kRoOhms = 330000.0;
-    static constexpr double kZenerVolts = 3.6;
-    static constexpr double kZenerKneeVolts = 0.7;
-
-    static double rqOverRo() noexcept
-    {
-        return ShruthiSvf2pControl::kRqOhms / kRoOhms;
-    }
-
-    static double selfOscillationThresholdPwmVolts() noexcept
-    {
-        return -std::log10(rqOverRo()) / (1.5 * ShruthiSvf2pControl::kRho);
-    }
-
-    static std::uint8_t selfOscillationThresholdByte() noexcept
-    {
-        const double code = selfOscillationThresholdPwmVolts()
-            / ShruthiSvf2pControl::kPwmFullScaleVolts * 255.0;
-        if (code <= 0.0)
-            return 0;
-        if (code >= 255.0)
-            return 255;
-        return static_cast<std::uint8_t>(code + 0.5);
-    }
-
-    static double qFromPwmVolts(double pwmVolts) noexcept
-    {
-        const double vq = pwmVolts < 0.0 ? 0.0
-            : (pwmVolts > ShruthiSvf2pControl::kPwmFullScaleVolts
-                ? ShruthiSvf2pControl::kPwmFullScaleVolts : pwmVolts);
-        const double loaded = std::pow(10.0, -1.5 * ShruthiSvf2pControl::kRho * vq) - rqOverRo();
-        if (! std::isfinite(loaded) || loaded <= 1.0e-12)
-            return 0.0;
-        const double q = 0.5 / loaded;
-        if (! std::isfinite(q) || q < 0.5)
-            return 0.5;
-        return q;
-    }
-
-    static double qFromFirmwareByte(std::uint8_t resonance) noexcept
-    {
-        return qFromPwmVolts(ShruthiSvf2pControl::pwmVoltsFromByte(resonance));
-    }
-
-    static bool isSelfOscillatingPwmVolts(double pwmVolts) noexcept
-    {
-        return pwmVolts >= selfOscillationThresholdPwmVolts();
-    }
-
-    static bool isSelfOscillatingByte(std::uint8_t resonance) noexcept
-    {
-        return isSelfOscillatingPwmVolts(ShruthiSvf2pControl::pwmVoltsFromByte(resonance));
-    }
-
-    // Same C1-smooth odd clip as the paper, with kit Vz = 3.6 V.
-    // Linear below 2.9 V, asymptote 3.6 V. Analog anti-series pair would
-    // add ~0.7 V forward drop; that is documented, not added here, so the
-    // A/B isolates the kit Vz rating against the paper 4.7 V model.
-    static double zenerLimit(double volts) noexcept
-    {
-        const double a = kZenerVolts - kZenerKneeVolts;
+        const double a = kClampVolts - kZenerKneeVolts;
         const double ax = volts < 0.0 ? -volts : volts;
         if (ax <= a)
             return volts;
@@ -249,7 +178,7 @@ class ShruthiSvf2p
             : ShruthiSvf2pControl::kNativeRate;
         cutoffAlpha_ = 1.0 - std::exp(-1.0 / (sampleRate_ * ShruthiSvf2pControl::kCutoffCvTauSeconds));
         resonanceAlpha_ = 1.0 - std::exp(-1.0 / (sampleRate_ * ShruthiSvf2pControl::kResonanceCvTauSeconds));
-        vcaAlpha_ = 1.0 - std::exp(-1.0 / (sampleRate_ * ShruthiSvf2pControl::kVcaCvTauSeconds));
+        board_.prepare(sampleRate_);
         reset();
         updateCoefficients();
     }
@@ -264,7 +193,7 @@ class ShruthiSvf2p
         lastOutput_ = 0.0;
         cutoffCv_ = cutoffTarget_;
         resonanceCv_ = resonanceTarget_;
-        vcaCv_ = 0.0;
+        board_.reset();
         updateCoefficients();
     }
 
@@ -281,16 +210,6 @@ class ShruthiSvf2p
     void setMode(ShruthiSvf2pMode mode) noexcept { mode_ = mode; }
     ShruthiSvf2pMode mode() const noexcept { return mode_; }
 
-    void setCalibration(ShruthiSvfCalibration calibration) noexcept
-    {
-        if (calibration_ == calibration)
-            return;
-        calibration_ = calibration;
-        updateCoefficients();
-    }
-
-    ShruthiSvfCalibration calibration() const noexcept { return calibration_; }
-
     void setVcaTarget(float vca01) noexcept
     {
         const double v = static_cast<double>(vca01);
@@ -302,9 +221,6 @@ class ShruthiSvf2p
         setVcaTarget(vcaTarget);
         cutoffCv_ += cutoffAlpha_ * (cutoffTarget_ - cutoffCv_);
         resonanceCv_ += resonanceAlpha_ * (resonanceTarget_ - resonanceCv_);
-        vcaCv_ += vcaAlpha_ * (vcaTarget_ - vcaCv_);
-        if (vcaTarget_ == 0.0 && vcaCv_ < 1.0e-12)
-            vcaCv_ = 0.0;
         updateCoefficients();
     }
 
@@ -321,18 +237,19 @@ class ShruthiSvf2p
     {
         cutoffCv_ = cutoffTarget_;
         resonanceCv_ = resonanceTarget_;
-        vcaCv_ = vcaTarget_;
+        board_.snapControl(vcaTarget_ * ShruthiSvf2pControl::kPwmFullScaleVolts);
         updateCoefficients();
     }
 
-    float vcaControl() const noexcept { return static_cast<float>(vcaCv_); }
+    float vcaControl() const noexcept { return static_cast<float>(board_.gain()); }
 
     bool tailActive() const noexcept
     {
         return std::abs(lastOutput_) > 1.0e-8
             || std::abs(ic1_) > 1.0e-8
             || std::abs(ic2_) > 1.0e-8
-            || vcaCv_ > 1.0e-8;
+            || board_.gain() > 0.0
+            || (board_.gain() > 0.0 && board_.audioMemory());
     }
 
     double cutoffHz() const noexcept { return cutoffHz_; }
@@ -342,13 +259,15 @@ class ShruthiSvf2p
     double lastHpVolts() const noexcept { return lastHp_; }
 
     // mixerUnit is the native mixer float (same domain as Classic filter in).
-    // Returns plugin-domain audio after prototype VCA.
+    // Returns plugin-domain audio after the v03 input mixer and V2164 I/V.
     float process(float mixerUnit, float vcaTarget) noexcept
     {
         advanceControls(vcaTarget);
-        const double inVolts = static_cast<double>(mixerUnit) * ShruthiSvf2pControl::kSourceVoltsPerUnit;
-        const double selected = processSelectedVolts(inVolts);
-        const double outUnit = selected / ShruthiSvf2pControl::kSourceVoltsPerUnit * vcaCv_;
+        const double source = static_cast<double>(mixerUnit) * ShruthiSvf2pControl::kSourceVoltsPerUnit;
+        const double selected = processSelectedVolts(board_.conditionInput(source));
+        const double pwm = vcaTarget_ * ShruthiSvf2pControl::kPwmFullScaleVolts;
+        const double outUnit = board_.processOutput(selected, 0.0, pwm)
+            / ShruthiSvf2pControl::kSourceVoltsPerUnit;
         lastOutput_ = std::isfinite(outUnit) ? outUnit : 0.0;
         if (! std::isfinite(lastOutput_))
         {
@@ -362,13 +281,8 @@ class ShruthiSvf2p
     void updateCoefficients() noexcept
     {
         cutoffHz_ = ShruthiSvf2pControl::cutoffHzFromPwmVolts(cutoffCv_);
-        const bool hardware = calibration_ == ShruthiSvfCalibration::eagleHardware;
-        const double q = hardware
-            ? ShruthiSvfHardwareControl::qFromPwmVolts(resonanceCv_)
-            : ShruthiSvf2pControl::qFromPwmVolts(resonanceCv_);
-        const bool lossless = (hardware
-            ? ShruthiSvfHardwareControl::isSelfOscillatingPwmVolts(resonanceCv_)
-            : ShruthiSvf2pControl::isSelfOscillatingPwmVolts(resonanceCv_)) || q <= 0.0;
+        const double q = ShruthiSvf2pControl::qFromPwmVolts(resonanceCv_);
+        const bool lossless = ShruthiSvf2pControl::isSelfOscillatingPwmVolts(resonanceCv_) || q <= 0.0;
         q_ = lossless ? 0.0 : q;
 
         const double nyquistSafe = sampleRate_ * ShruthiSvf2pControl::kNyquistRatio;
@@ -392,16 +306,8 @@ class ShruthiSvf2p
         const double v0 = inVolts * ShruthiSvf2pControl::passbandGain() - ic2_;
         const double den = 1.0 + g_ * (g_ + k_);
         double v1 = (ic1_ + g_ * v0) / den;
-        if (calibration_ == ShruthiSvfCalibration::eagleHardware)
-        {
-            v1 = ShruthiSvfHardwareControl::zenerLimit(v1);
-            ic1_ = ShruthiSvfHardwareControl::zenerLimit(2.0 * v1 - ic1_);
-        }
-        else
-        {
-            v1 = ShruthiSvf2pControl::zenerLimit(v1);
-            ic1_ = ShruthiSvf2pControl::zenerLimit(2.0 * v1 - ic1_);
-        }
+        v1 = ShruthiSvf2pControl::zenerLimit(v1);
+        ic1_ = ShruthiSvf2pControl::zenerLimit(2.0 * v1 - ic1_);
         const double v2 = ic2_ + g_ * v1;
         ic2_ = 2.0 * v2 - ic2_;
         lastLp_ = v2;
@@ -418,13 +324,12 @@ class ShruthiSvf2p
     double sampleRate_ = ShruthiSvf2pControl::kNativeRate;
     double cutoffAlpha_ = 1.0;
     double resonanceAlpha_ = 1.0;
-    double vcaAlpha_ = 1.0;
     double cutoffTarget_ = 0.0;
     double resonanceTarget_ = 0.0;
     double vcaTarget_ = 0.0;
     double cutoffCv_ = 0.0;
     double resonanceCv_ = 0.0;
-    double vcaCv_ = 0.0;
+    DualSvfAnalogBoard board_;
     double cutoffHz_ = 1.0;
     double q_ = 0.5;
     double g_ = 1.0e-6;
@@ -436,7 +341,6 @@ class ShruthiSvf2p
     double lastHp_ = 0.0;
     double lastOutput_ = 0.0;
     ShruthiSvf2pMode mode_ = ShruthiSvf2pMode::lowPass;
-    ShruthiSvfCalibration calibration_ = ShruthiSvfCalibration::paperApproved;
 };
 
 // Dual-SVF routing from FILTER_BOARD_SVF firmware + Analog-SVF-v03.
@@ -463,7 +367,7 @@ class ShruthiSvfDual
         const double rate = nativeRate > 1.0 && std::isfinite(nativeRate)
             ? nativeRate
             : ShruthiSvf2pControl::kNativeRate;
-        vcaAlpha_ = 1.0 - std::exp(-1.0 / (rate * ShruthiSvf2pControl::kVcaCvTauSeconds));
+        board_.prepare(rate);
         reset();
     }
 
@@ -471,7 +375,7 @@ class ShruthiSvfDual
     {
         s1_.reset();
         s2_.reset();
-        vcaCv_ = 0.0;
+        board_.reset();
         lastOutput_ = 0.0;
     }
 
@@ -522,14 +426,6 @@ class ShruthiSvfDual
 
     void setSection2FollowsSection1(bool follow) noexcept { s2FollowsS1_ = follow; }
 
-    void setCalibration(ShruthiSvfCalibration calibration) noexcept
-    {
-        s1_.setCalibration(calibration);
-        s2_.setCalibration(calibration);
-    }
-
-    ShruthiSvfCalibration calibration() const noexcept { return s1_.calibration(); }
-
     void setVcaTarget(float vca01) noexcept
     {
         s1_.setVcaTarget(vca01);
@@ -547,20 +443,15 @@ class ShruthiSvfDual
     {
         s1_.snapControlsForTests();
         s2_.snapControlsForTests();
-        vcaCv_ = vcaTarget_;
+        board_.snapControl(vcaTarget_ * ShruthiSvf2pControl::kPwmFullScaleVolts);
     }
 
-    float vcaControl() const noexcept
-    {
-        if (routing_ == ShruthiSvfDualRouting::section1)
-            return s1_.vcaControl();
-        return static_cast<float>(vcaCv_);
-    }
+    float vcaControl() const noexcept { return static_cast<float>(board_.gain()); }
 
     bool tailActive() const noexcept
     {
         return s1_.tailActive() || s2_.tailActive()
-            || std::abs(lastOutput_) > 1.0e-8 || vcaCv_ > 1.0e-8;
+            || std::abs(lastOutput_) > 1.0e-8 || board_.gain() > 0.0;
     }
 
     float process(float mixerUnit, float vcaTarget) noexcept
@@ -568,26 +459,29 @@ class ShruthiSvfDual
 #if defined(SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS)
         if (identityForLatencyTests) return mixerUnit;
 #endif
-        if (routing_ == ShruthiSvfDualRouting::section1)
-            return s1_.process(mixerUnit, vcaTarget);
-
         const double v = static_cast<double>(vcaTarget);
         vcaTarget_ = v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
         s1_.advanceControls(vcaTarget);
-        s2_.advanceControls(vcaTarget);
-        vcaCv_ += vcaAlpha_ * (vcaTarget_ - vcaCv_);
-        if (vcaTarget_ == 0.0 && vcaCv_ < 1.0e-12)
-            vcaCv_ = 0.0;
+        if (routing_ != ShruthiSvfDualRouting::section1)
+            s2_.advanceControls(vcaTarget);
 
-        const double inVolts = static_cast<double>(mixerUnit) * ShruthiSvf2pControl::kSourceVoltsPerUnit;
+        const double source = static_cast<double>(mixerUnit) * ShruthiSvf2pControl::kSourceVoltsPerUnit;
+        const double inVolts = board_.conditionInput(source);
         const double y1 = s1_.processSelectedVolts(inVolts);
-        const double y2In = routing_ == ShruthiSvfDualRouting::serial ? y1 : inVolts;
-        const double y2 = s2_.processSelectedVolts(y2In);
-        // Parallel: equal 1>VCA and 2>VCA paths (R1/R2 are unity jumpers).
-        // Mix Rf/Rin is not readable from the binary Eagle file; identical
-        // sections imply analog sum, not an extra 1/2 average.
-        const double mixed = routing_ == ShruthiSvfDualRouting::serial ? y2 : (y1 + y2);
-        const double outUnit = mixed / ShruthiSvf2pControl::kSourceVoltsPerUnit * vcaCv_;
+        double branch1 = 0.0;
+        double branch2 = 0.0;
+        if (routing_ == ShruthiSvfDualRouting::section1)
+            branch1 = y1;
+        else if (routing_ == ShruthiSvfDualRouting::serial)
+            branch2 = s2_.processSelectedVolts(y1);
+        else
+        {
+            branch1 = y1;
+            branch2 = s2_.processSelectedVolts(inVolts);
+        }
+        const double pwm = vcaTarget_ * ShruthiSvf2pControl::kPwmFullScaleVolts;
+        const double outUnit = board_.processOutput(branch1, branch2, pwm)
+            / ShruthiSvf2pControl::kSourceVoltsPerUnit;
         lastOutput_ = std::isfinite(outUnit) ? outUnit : 0.0;
         if (! std::isfinite(lastOutput_))
         {
@@ -602,15 +496,16 @@ class ShruthiSvfDual
     ShruthiSvf2p s2_;
     ShruthiSvfDualRouting routing_ = ShruthiSvfDualRouting::section1;
     bool s2FollowsS1_ = true;
-    double vcaAlpha_ = 1.0;
     double vcaTarget_ = 0.0;
-    double vcaCv_ = 0.0;
     double lastOutput_ = 0.0;
+    DualSvfAnalogBoard board_;
 };
 
 // Session-only Dual-SVF selector published from the message thread.
 // One packed word is a complete consistent choice so readers never observe
-// mixed routing/mode/calibration/enable from independent stores.
+// mixed routing/mode/enable from independent stores.
+// Bit 7 used to select Paper versus Eagle. It is ignored. Historical words
+// still decode, and every selection is the v03 hardware model.
 enum class ShruthiSvfSection2Control : std::uint8_t { legacyFollow, independent, relative };
 
 struct ExperimentalSvfSelection
@@ -619,7 +514,6 @@ struct ExperimentalSvfSelection
     ShruthiSvfDualRouting routing = ShruthiSvfDualRouting::section1;
     ShruthiSvf2pMode mode1 = ShruthiSvf2pMode::lowPass;
     ShruthiSvf2pMode mode2 = ShruthiSvf2pMode::lowPass;
-    ShruthiSvfCalibration calibration = ShruthiSvfCalibration::paperApproved;
     ShruthiSvfSection2Control control2 = ShruthiSvfSection2Control::legacyFollow;
     std::uint8_t cutoff2 = 64;
     std::uint8_t resonance2 = 0;
@@ -628,7 +522,8 @@ struct ExperimentalSvfSelection
     static constexpr int kRoutingShift = 1;
     static constexpr int kMode1Shift = 3;
     static constexpr int kMode2Shift = 5;
-    static constexpr int kCalibrationShift = 7;
+    // Bit 7 is reserved. Do not reuse it for a new field.
+    static constexpr int kRetiredCalibrationBit = 7;
     static constexpr std::uint32_t kFieldMask = 3u;
     // Bits 0..7 retain the original format. Cutoff's centre is encoded as zero
     // so a legacy zero word still selects Follow with a neutral stored offset.
@@ -642,6 +537,8 @@ struct ExperimentalSvfSelection
         && (kResonance2Mask & (kCutoff2Mask | kControl2Mask | 255u)) == 0);
     static_assert((kResonance2Mask | kCutoff2Mask | kControl2Mask | 255u) == (1u << 23) - 1u,
                   "23 used bits, nine reserved; cutoff 0..127, resonance 0..63");
+    static_assert(((kFieldMask << kMode2Shift) & (1u << kRetiredCalibrationBit)) == 0,
+                  "retired calibration bit stays clear of mode2");
 
     static std::uint32_t pack(const ExperimentalSvfSelection& s) noexcept
     {
@@ -649,8 +546,6 @@ struct ExperimentalSvfSelection
         v |= (static_cast<std::uint32_t>(s.routing) & kFieldMask) << kRoutingShift;
         v |= (static_cast<std::uint32_t>(s.mode1) & kFieldMask) << kMode1Shift;
         v |= (static_cast<std::uint32_t>(s.mode2) & kFieldMask) << kMode2Shift;
-        if (s.calibration == ShruthiSvfCalibration::eagleHardware)
-            v |= 1u << kCalibrationShift;
         v |= (static_cast<std::uint32_t>(s.control2) & kFieldMask) << kControl2Shift;
         v |= (static_cast<std::uint32_t>(std::min<std::uint8_t>(s.cutoff2, 127)) ^ 64u) << kCutoff2Shift;
         v |= static_cast<std::uint32_t>(std::min<std::uint8_t>(s.resonance2, 63)) << kResonance2Shift;
@@ -671,9 +566,6 @@ struct ExperimentalSvfSelection
         const std::uint32_t m2 = (v >> kMode2Shift) & kFieldMask;
         s.mode2 = m2 == 2 ? ShruthiSvf2pMode::highPass
             : (m2 == 1 ? ShruthiSvf2pMode::bandPass : ShruthiSvf2pMode::lowPass);
-        s.calibration = ((v >> kCalibrationShift) & 1u) != 0
-            ? ShruthiSvfCalibration::eagleHardware
-            : ShruthiSvfCalibration::paperApproved;
         const auto control = (v >> kControl2Shift) & kFieldMask;
         s.control2 = control == 2 ? ShruthiSvfSection2Control::relative
             : (control == 1 ? ShruthiSvfSection2Control::independent : ShruthiSvfSection2Control::legacyFollow);
@@ -713,7 +605,7 @@ class ExperimentalSvfControl
                                                     std::memory_order_relaxed));
     }
 
-    // Audio / prepare / reset thread only. Calibration stays state-continuous.
+    // Audio / prepare / reset thread only.
     // Enable-on and routing changes keep the previous Dual reset semantics.
     ExperimentalSvfSelection applyOnAudioThread(ShruthiSvfDual& dual, bool& enabledOut) noexcept
     {
@@ -730,7 +622,6 @@ class ExperimentalSvfControl
             dual.setRouting(next.routing);
         dual.setMode1(next.mode1);
         dual.setMode2(next.mode2);
-        dual.setCalibration(next.calibration);
         dual.setSection2FollowsSection1(next.control2 == ShruthiSvfSection2Control::legacyFollow);
         applied_ = next;
         enabledOut = next.enabled;

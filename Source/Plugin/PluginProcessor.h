@@ -142,10 +142,6 @@ class SwaraXtAudioProcessor : public juce::AudioProcessor,
     {
         engine_.setExperimentalSvfRoutingForTests(routing);
     }
-    void setExperimentalSvfCalibration(swaraxt::ShruthiSvfCalibration calibration) noexcept
-    {
-        engine_.setExperimentalSvfCalibrationForTests(calibration);
-    }
     swaraxt::FilterQuality filterQuality() const noexcept { return engine_.filterQuality(); }
 
     static constexpr int kStateVersion = 3;

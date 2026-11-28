@@ -2,32 +2,30 @@
 #pragma once
 #include <cstdint>
 
-// Current MSVC native pre-delay anchors for DualSvfIntegrationAuditMain.cpp.
+// Current MSVC native pre-delay anchors for the single Analog-SVF-v03 board.
 // Factory0 public Sub64 -> firmware32, Noise0 ->0; 48 kHz/256, 100 blocks,
 // note48/110 at block0, note60/96 at block40, no transport, 20960 native samples.
-// Same signed Q20/word-FNV1a rule as the preserved DualSvfSection2Goldens.h.
-// Restoring ONLY historical mixer assignments reproduces all 48 old native
-// and 12 old host anchors exactly. Current/historical PCM independently rehashed;
-// repeats and MSVC Release/Debug agree; indexed delay/FX/SRC/DC replay is exact.
+// Same signed Q20/word-FNV1a rule as the host references.
+// Both rows are required to match: the retired Paper/Eagle selector is ignored.
 // FX Off and Dub share pre-FX anchors; Section1 ignores Section2 controls.
-// See Tests/References/DualSvfCurrentWindowsTimingProvenance.json.
+// These replace the pre-v03 native anchors. They are not a Paper acceptance target.
 inline constexpr std::uint64_t dualRelativeNativeGoldens[2][3] = {
-    { 0x31231bf7e0a69ff0ull, 0xf919e99d55f5b7a7ull, 0x26429e00e764559dull },
-    { 0x3ab94afdcac2b2f1ull, 0xb86fe6aef9983edfull, 0x1f64af609bf2a329ull },
+    { 0xfde332b682381658ull, 0xa49c0d199b545d33ull, 0xdd9df110f6e23ff3ull },
+    { 0xfde332b682381658ull, 0xa49c0d199b545d33ull, 0xdd9df110f6e23ff3ull },
 };
 inline constexpr std::uint64_t dualIndependentNativeGoldens[2][3] = {
-    { 0xd76fe2932d46c058ull, 0xa0bbfdce3f8d1554ull, 0xa23cc73126baf381ull },
-    { 0x84920f63f7fff5e0ull, 0xfa0850b69949a553ull, 0xb818508f4dfab2fcull },
+    { 0x15733d79c5102414ull, 0xaf27fbaf431e921cull, 0x60bc86ea57c03a38ull },
+    { 0x15733d79c5102414ull, 0xaf27fbaf431e921cull, 0x60bc86ea57c03a38ull },
 };
 inline constexpr std::uint64_t dualTimingNativeGoldens[2][3][3] = {
     {
-        { 0xc2642b9bbe15cab3ull, 0xc2642b9bbe15cab3ull, 0xc2642b9bbe15cab3ull },
-        { 0x90e325878624db83ull, 0xd76fe2932d46c058ull, 0x90d9c605cfd0f3fbull },
-        { 0x003d95711ed2b3feull, 0x4d6dddb76e9a9cbdull, 0x575a10cc22e6749full },
+        { 0xeed41075c74b14a4ull, 0xeed41075c74b14a4ull, 0xeed41075c74b14a4ull },
+        { 0x2b2212b85ee407a5ull, 0x15733d79c5102414ull, 0x48b750def6d63c6dull },
+        { 0xb39d72850a40f0b9ull, 0x041147905828f3b9ull, 0xd17d106e8fe313d9ull },
     },
     {
-        { 0x24b380a5039b5120ull, 0x24b380a5039b5120ull, 0x24b380a5039b5120ull },
-        { 0xd088c7ec4c2d9093ull, 0x84920f63f7fff5e0ull, 0x7147ebb8f253e4c0ull },
-        { 0xa7ab1df7ad656b4eull, 0xcddc64e9d7f14851ull, 0x88cdc0bab3459880ull },
+        { 0xeed41075c74b14a4ull, 0xeed41075c74b14a4ull, 0xeed41075c74b14a4ull },
+        { 0x2b2212b85ee407a5ull, 0x15733d79c5102414ull, 0x48b750def6d63c6dull },
+        { 0xb39d72850a40f0b9ull, 0x041147905828f3b9ull, 0xd17d106e8fe313d9ull },
     },
 };

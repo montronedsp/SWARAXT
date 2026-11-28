@@ -277,7 +277,6 @@ CaseResult renderCase(const std::string& name,
         processor->setExperimentalSvfRouting(routing);
         processor->setExperimentalSvfMode1(ShruthiSvf2pMode::lowPass);
         processor->setExperimentalSvfMode2(ShruthiSvf2pMode::lowPass);
-        processor->setExperimentalSvfCalibration(ShruthiSvfCalibration::paperApproved);
         processor->setExperimentalSvfControl2(ShruthiSvfSection2Control::legacyFollow);
     }
     else

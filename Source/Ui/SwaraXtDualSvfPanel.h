@@ -42,7 +42,6 @@ class DualSvfPanel final : public juce::Component {
     SvfSegments& routingForTests() noexcept { return routing_; }
     SvfSegments& mode1ForTests() noexcept { return mode1_; }
     SvfSegments& mode2ForTests() noexcept { return mode2_; }
-    SvfSegments& calibrationForTests() noexcept { return calibration_; }
     SvfSegments& control2ForTests() noexcept { return control2_; }
     juce::Slider& cutoff2ForTests() noexcept;
     juce::Slider& resonance2ForTests() noexcept;
@@ -54,12 +53,11 @@ class DualSvfPanel final : public juce::Component {
     void published();
     SwaraXtAudioProcessor& processor_;
     juce::Label title_, requested_, path_, filter1Title_, filter2Title_;
-    juce::Label section2Note_, calibrationTitle_, paper_, eagle_, session_;
+    juce::Label section2Note_, session_;
     juce::TextButton close_ { "CLOSE" };
     SvfSegments routing_ { "Filter path", { "SECTION 1", "SERIAL", "PARALLEL" } };
     SvfSegments mode1_ { "Filter 1 mode", { "LP", "BP", "HP" } };
     SvfSegments mode2_ { "Filter 2 mode", { "LP", "BP", "HP" } };
-    SvfSegments calibration_ { "Calibration", { "PAPER", "EAGLE HW" } };
     SvfSegments control2_ { "Filter 2 control", { "FOLLOW", "INDEP", "RELATIVE" } };
     std::unique_ptr<SwaraXtKnob> cutoff2_, resonance2_;
 };

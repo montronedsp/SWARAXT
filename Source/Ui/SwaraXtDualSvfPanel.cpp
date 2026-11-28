@@ -31,9 +31,6 @@ constexpr std::array<ShruthiSvf2pMode, 3> modes {
 constexpr std::array<ShruthiSvfDualRouting, 3> routes {
     ShruthiSvfDualRouting::section1, ShruthiSvfDualRouting::serial, ShruthiSvfDualRouting::parallel
 };
-constexpr std::array<ShruthiSvfCalibration, 2> calibrations {
-    ShruthiSvfCalibration::paperApproved, ShruthiSvfCalibration::eagleHardware
-};
 }
 
 SvfSegments::SvfSegments(const juce::String& name, const juce::StringArray& choices)
@@ -96,24 +93,21 @@ DualSvfPanel::DualSvfPanel(SwaraXtAudioProcessor& processor) : processor_(proces
     setName("Experimental Dual SVF controls");
     setFocusContainerType(juce::Component::FocusContainerType::keyboardFocusContainer);
     for (auto* label : { &title_, &requested_, &path_, &filter1Title_, &filter2Title_,
-                         &section2Note_, &calibrationTitle_, &paper_, &eagle_, &session_ })
+                         &section2Note_, &session_ })
     {
         addAndMakeVisible(*label);
         setTextRole(*label, TextRole::parameterLabel);
         label->setJustificationType(juce::Justification::centred);
     }
-    for (auto* label : { &title_, &filter1Title_, &filter2Title_, &calibrationTitle_ })
+    for (auto* label : { &title_, &filter1Title_, &filter2Title_ })
         setTextRole(*label, TextRole::sectionHeader);
     title_.setText("DUAL SVF", juce::dontSendNotification);
     title_.setJustificationType(juce::Justification::centredLeft);
     filter1Title_.setText("FILTER 1", juce::dontSendNotification);
     filter2Title_.setText("FILTER 2", juce::dontSendNotification);
-    calibrationTitle_.setText("CALIBRATION", juce::dontSendNotification);
-    paper_.setText(juce::String::fromUTF8(u8"220 k\u03a9 / 4.7 V"), juce::dontSendNotification);
-    eagle_.setText(juce::String::fromUTF8(u8"330 k\u03a9 / 3.6 V"), juce::dontSendNotification);
     session_.setText("SESSION ONLY", juce::dontSendNotification);
     setTextRole(session_, TextRole::smallIndex);
-    for (auto* segments : { &routing_, &mode1_, &mode2_, &calibration_, &control2_ })
+    for (auto* segments : { &routing_, &mode1_, &mode2_, &control2_ })
         addAndMakeVisible(*segments);
     cutoff2_ = std::make_unique<SwaraXtKnob>("CUTOFF 2");
     resonance2_ = std::make_unique<SwaraXtKnob>("RESONANCE 2");
@@ -155,10 +149,6 @@ DualSvfPanel::DualSvfPanel(SwaraXtAudioProcessor& processor) : processor_(proces
         processor_.setExperimentalSvfMode2(modes[static_cast<size_t>(index)]);
         published();
     };
-    calibration_.onSelect = [this](int index) {
-        processor_.setExperimentalSvfCalibration(calibrations[static_cast<size_t>(index)]);
-        published();
-    };
     lookAndFeelChanged();
     sync(processor_.experimentalSvfSelection());
 }
@@ -178,7 +168,6 @@ void DualSvfPanel::sync(const ExperimentalSvfSelection& requested)
     routing_.setSelectedIndex(static_cast<int>(requested.routing));
     mode1_.setSelectedIndex(static_cast<int>(requested.mode1));
     mode2_.setSelectedIndex(static_cast<int>(requested.mode2));
-    calibration_.setSelectedIndex(static_cast<int>(requested.calibration));
     control2_.setSelectedIndex(static_cast<int>(requested.control2));
     const bool relative = requested.control2 == ShruthiSvfSection2Control::relative;
     cutoff2_->setLabel(relative ? "OFFSET (64 = 0)" : "CUTOFF 2");
@@ -207,7 +196,7 @@ void DualSvfPanel::sync(const ExperimentalSvfSelection& requested)
     const char* paths[] = { u8"MIX \u2192 F1 \u2192 VCA", u8"MIX \u2192 F1 \u2192 F2 \u2192 VCA",
                             u8"MIX \u2192 (F1 + F2) \u2192 VCA" };
     path_.setText(juce::String::fromUTF8(paths[static_cast<size_t>(requested.routing)]), juce::dontSendNotification);
-    for (auto* segments : { &routing_, &mode1_, &mode2_, &calibration_, &control2_ })
+    for (auto* segments : { &routing_, &mode1_, &mode2_, &control2_ })
     {
         segments->setEnabled(requested.enabled);
         segments->setAlpha(requested.enabled ? 1.0f : 0.45f);
@@ -233,10 +222,6 @@ void DualSvfPanel::resized()
     cutoff2_->setBounds(16, 198, half, 70);
     resonance2_->setBounds(28 + half, 198, half, 70);
     section2Note_.setBounds(16, 271, getWidth() - 32, 16);
-    calibrationTitle_.setBounds(16, 291, getWidth() - 32, 16);
-    calibration_.setBounds(16, 310, getWidth() - 32, 23);
-    paper_.setBounds(16, 334, (getWidth() - 32) / 2, 14);
-    eagle_.setBounds(getWidth() / 2, 334, (getWidth() - 32) / 2, 14);
 }
 
 void DualSvfPanel::paint(juce::Graphics& g)
@@ -245,15 +230,15 @@ void DualSvfPanel::paint(juce::Graphics& g)
     g.fillRoundedRectangle(getLocalBounds().toFloat(), 6.0f);
     g.setColour(Palette::line());
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.75f), 6.0f, 1.5f);
-    for (float y : { 54.0f, 160.0f, 288.0f })
+    for (float y : { 54.0f, 160.0f })
         g.drawHorizontalLine(juce::roundToInt(y), 16.0f, static_cast<float>(getWidth() - 16));
 }
 
 void DualSvfPanel::lookAndFeelChanged()
 {
-    for (auto* label : { &title_, &filter1Title_, &filter2Title_, &calibrationTitle_ })
+    for (auto* label : { &title_, &filter1Title_, &filter2Title_ })
         label->setColour(juce::Label::textColourId, Palette::skin().primaryText);
-    for (auto* label : { &requested_, &path_, &section2Note_, &paper_, &eagle_, &session_ })
+    for (auto* label : { &requested_, &path_, &section2Note_, &session_ })
         label->setColour(juce::Label::textColourId, Palette::skin().secondaryText);
     close_.setColour(juce::TextButton::textColourOffId, Palette::skin().primaryText);
     repaint();

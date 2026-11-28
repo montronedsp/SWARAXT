@@ -90,8 +90,6 @@ void runMatrix(bool experimental)
                         swaraxt::ShruthiSvf2pMode::highPass);
                     proc.engineForTests().setExperimentalSvfMode2ForTests(
                         swaraxt::ShruthiSvf2pMode::lowPass);
-                    proc.engineForTests().setExperimentalSvfCalibrationForTests(
-                        swaraxt::ShruthiSvfCalibration::eagleHardware);
                     midi.addEvent(juce::MidiMessage::controllerEvent(1, 71, 110), 0);
                 }
                 if (b == iterations - 2)
@@ -139,7 +137,6 @@ void testConcurrentPublication()
             proc.setExperimentalSvfMode1(static_cast<swaraxt::ShruthiSvf2pMode>(i % 3));
             proc.setExperimentalSvfMode2(static_cast<swaraxt::ShruthiSvf2pMode>((i / 2) % 3));
             proc.setExperimentalSvfRouting(static_cast<swaraxt::ShruthiSvfDualRouting>(i % 3));
-            proc.setExperimentalSvfCalibration(static_cast<swaraxt::ShruthiSvfCalibration>(i & 1));
         }
     });
     gui.join();
@@ -266,14 +263,12 @@ std::vector<float> renderHostPatch(swaraxt::ShruthiSvfDualRouting routing,
                                    swaraxt::ShruthiSvf2pMode mode1,
                                    swaraxt::ShruthiSvf2pMode mode2,
                                    float resonance,
-                                   double rate, int bs,
-                                   swaraxt::ShruthiSvfCalibration calibration = swaraxt::ShruthiSvfCalibration::paperApproved)
+                                   double rate, int bs)
 {
     SwaraXtAudioProcessor proc;
     proc.prepareToPlay(rate, bs);
     proc.prepareToPlay(rate, bs);
     proc.engineForTests().setExperimentalSvfEnabledForTests(true);
-    proc.engineForTests().setExperimentalSvfCalibrationForTests(calibration);
     proc.engineForTests().setExperimentalSvfRoutingForTests(routing);
     proc.engineForTests().setExperimentalSvfModeForTests(mode1);
     proc.engineForTests().setExperimentalSvfMode2ForTests(mode2);
@@ -412,15 +407,10 @@ void renderPrototype3AbEvidence()
     };
     for (const auto& job : jobs)
     {
-        for (int which = 0; which < 2; ++which)
         {
-            const auto cal = which == 0
-                ? swaraxt::ShruthiSvfCalibration::paperApproved
-                : swaraxt::ShruthiSvfCalibration::eagleHardware;
             SwaraXtAudioProcessor proc;
             proc.prepareToPlay(rate, bs);
             proc.engineForTests().setExperimentalSvfEnabledForTests(true);
-            proc.engineForTests().setExperimentalSvfCalibrationForTests(cal);
             proc.engineForTests().setExperimentalSvfRoutingForTests(job.routing);
             proc.engineForTests().setExperimentalSvfModeForTests(job.mode1);
             proc.engineForTests().setExperimentalSvfMode2ForTests(job.mode2);
@@ -446,7 +436,7 @@ void renderPrototype3AbEvidence()
                 for (int i = 0; i < bs; ++i)
                     audio.push_back(buffer.getSample(0, i));
             }
-            const char* prefix = which == 0 ? "approved_" : "hardware_";
+            const char* prefix = "v03_";
             const auto path = dir / (std::string(prefix) + job.stem + ".wav");
             writeWavFloat32(path, audio, rate);
             double peak = 0.0, energy = 0.0;
@@ -473,9 +463,6 @@ int main()
     expect(SwaraXtAudioProcessor().experimentalSvfSelection().routing
                == swaraxt::ShruthiSvfDualRouting::section1,
            "experimental Dual defaults to Section 1 reference routing");
-    expect(SwaraXtAudioProcessor().experimentalSvfSelection().calibration
-               == swaraxt::ShruthiSvfCalibration::paperApproved,
-           "experimental Dual defaults to Approved/Paper calibration");
     runMatrix(false);
     runMatrix(true);
     testConcurrentPublication();

@@ -88,7 +88,7 @@ MainPanel::MainPanel()
     filterModel_.setTooltip("Classic IR3109 / experimental Dual SVF (session only)");
     filterModel_.setScrollWheelEnabled(false);
     filterModule_.addAndMakeVisible(dualSvfViewButton_);
-    dualSvfViewButton_.setTooltip("Open routing, section modes and Paper / Eagle calibration");
+    dualSvfViewButton_.setTooltip("Open routing, section modes and Filter 2 control");
     dualSvfViewButton_.onClick = [this] {
         if (dualSvfView_) setDualSvfView(! dualSvfView_->isVisible());
     };
