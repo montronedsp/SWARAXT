@@ -5,9 +5,6 @@ development; phases indicate direction rather than delivery dates.
 
 ## Short term — post 1.3.1
 
-- **Filter calibration consolidation.** Evaluate Paper and Eagle for sound,
-  musical usefulness, correctness and user value, with a view to one clearly
-  defined calibration if the comparison supports it.
 - **Sequencer random generators.** Explore additional pitch, rhythm, probability
   and pattern-generation modes, with reproducible variations where useful.
 - **Skin Editor improvements.** Refine editing, controls, validation, visual

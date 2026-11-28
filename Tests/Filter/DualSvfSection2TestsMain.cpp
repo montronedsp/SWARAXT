@@ -352,7 +352,7 @@ void guiAndStress()
     expect(before == after, "all new session controls absent from serialization");
     SwaraXtAudioProcessor fresh;
     fresh.setStateInformation(after.getData(), static_cast<int>(after.getSize()));
-    expect(Selection::pack(fresh.experimentalSvfSelection()) == 0, "fresh restored session remains Classic/Follow/Paper");
+    expect(Selection::pack(fresh.experimentalSvfSelection()) == 0, "fresh restored session remains Classic/Follow");
     SwaraXtAudioProcessorEditor editor(p);
     editor.mainPanelForTests().setDualSvfView(true);
     const auto directory = juce::File::getCurrentWorkingDirectory().getChildFile("section2-screenshots");

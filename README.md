@@ -24,7 +24,8 @@ IR3109-inspired nonlinear four-pole low-pass filter and VCA, with **High**,
 **Normal** and **Eco** quality settings.
 
 The experimental **Dual SVF** offers Section 1, Serial and Parallel routing,
-LP/BP/HP responses, Paper/Eagle calibration and separate Section 2 controls.
+LP/BP/HP responses and separate Section 2 controls. The analog path is the
+single v03 board.
 Follow, Independent and Relative modes set how the second section relates to
 the first. Its front-panel controls are manual and session-local; a fresh
 instance starts with Classic. Bank changes use a brief fade through silence.

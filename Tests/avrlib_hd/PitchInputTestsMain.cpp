@@ -204,7 +204,7 @@ void restoredAdmission() {
     std::printf("Automation, malformed host state, 40 legacy presets, all256 range bytes and factory programs: PASS\n");
 }
 void admittedAudio() {
-    for (int mode = 0; mode < 3; ++mode) {
+    for (int mode = 0; mode < 2; ++mode) {
         SwaraXtAudioProcessor malformed, bounded;
         for (auto* p : {&malformed, &bounded}) {
             p->prepareToPlay(48000, 256);
@@ -227,7 +227,7 @@ void admittedAudio() {
         }
         ++cases;
     }
-    std::printf("Invalid range admission vs published endpoints: 1536 paired plugin blocks bit-exact, Classic/Paper/Eagle\n");
+    std::printf("Invalid range admission vs published endpoints: 1024 paired plugin blocks bit-exact, Classic and Dual\n");
 }
 void midiAdmission() {
     SwaraXtAudioProcessor p; p.prepareToPlay(48000, 256);

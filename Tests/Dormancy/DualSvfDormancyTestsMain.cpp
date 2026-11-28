@@ -62,8 +62,7 @@ void set(SwaraXtAudioProcessor& p, const char* id, float value) {
     auto* a = p.getApvts().getParameter(id); check(a != nullptr, id);
     if (a) a->setValueNotifyingHost(a->convertTo0to1(value));
 }
-void setup(SwaraXtAudioProcessor& p, int route, int calibration, int fx = 0) {
-    (void) calibration;
+void setup(SwaraXtAudioProcessor& p, int route, int fx = 0) {
     set(p, IDs::osc1Shape, 1); set(p, IDs::osc1Param, 0); set(p, IDs::osc1Range, 0); set(p, IDs::osc2Shape, 0);
     set(p, IDs::mixBalance, 0); set(p, IDs::mixSub, 0); set(p, IDs::mixNoise, 0);
     set(p, IDs::filterCutoff, 8000); set(p, IDs::filterResonance, 1); set(p, IDs::filterKeyTracking, .5f);
@@ -140,10 +139,10 @@ void process(SwaraXtAudioProcessor& p, juce::AudioBuffer<float>& b, juce::MidiBu
     inAudio = true; p.processBlock(b, m); inAudio = false; m.clear();
 }
 struct ReleaseResult { bool slept = false; int sleepHost = -1; Trace trace; uint64_t blocks = 0, dcSamples = 0; double peak = 0; };
-ReleaseResult release(int route, int cal, int fx, double rate, int size, int offCode, bool requireSleep, bool compare) {
-    auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, route, cal, fx); p->prepareToPlay(rate, size);
+ReleaseResult release(int route, int fx, double rate, int size, int offCode, bool requireSleep, bool compare) {
+    auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, route, fx); p->prepareToPlay(rate, size);
     std::unique_ptr<SwaraXtAudioProcessor> control;
-    if (compare) { control = std::make_unique<SwaraXtAudioProcessor>(); setup(*control, route, cal, fx); control->prepareToPlay(rate, size); control->engineForTests().setDormancyEnabledForTests(false); }
+    if (compare) { control = std::make_unique<SwaraXtAudioProcessor>(); setup(*control, route, fx); control->prepareToPlay(rate, size); control->engineForTests().setDormancyEnabledForTests(false); }
     ReleaseResult result; result.trace.engine = &p->engineForTests(); p->engineForTests().setDebugTapSink(&result.trace, Trace::tap);
     juce::AudioBuffer<float> b(2, size), c(2, size); juce::MidiBuffer m, cm; m.ensureSize(4096); cm.ensureSize(4096);
     const int off = (4096 / size + 1) * size;
@@ -192,8 +191,8 @@ ReleaseResult release(int route, int cal, int fx, double rate, int size, int off
         check(blocks == e.cpuProfileForTests().nativeBlocksRendered, "dormant Dual executes no extra native DSP transactions");
     } else if (fx && !requireSleep) check(Access::board(e) || result.trace.lastPostFx != 0,
         "remaining FX work or nonzero terminal FX level prevents an artificial drain transient");
-    std::printf("Release route=%d cal=%d fx=%d rate=%.0f block=%d off=%d zero=%lld finalFIFO=%lld nativeDrain=%lld nativeBlocks=%llu extraAfterEmpty=%llu dcHost=%llu sleepHost=%d peak=%.9g\n",
-                route, cal, fx, rate, size, offCode, static_cast<long long>(result.trace.exactZero), static_cast<long long>(result.trace.lastOutput),
+    std::printf("Release route=%d fx=%d rate=%.0f block=%d off=%d zero=%lld finalFIFO=%lld nativeDrain=%lld nativeBlocks=%llu extraAfterEmpty=%llu dcHost=%llu sleepHost=%d peak=%.9g\n",
+                route, fx, rate, size, offCode, static_cast<long long>(result.trace.exactZero), static_cast<long long>(result.trace.lastOutput),
                 static_cast<long long>(result.trace.firstDrain), static_cast<unsigned long long>(result.blocks), static_cast<unsigned long long>(result.trace.blocksAfterEmpty),
                 static_cast<unsigned long long>(result.dcSamples), result.sleepHost, result.peak);
     e.setDebugTapSink(nullptr, nullptr); result.trace.engine = nullptr; p.reset(); control.reset(); messages(); return result;
@@ -218,7 +217,7 @@ void fifoAndFirmwareGuard() {
     check(Access::source(e) && !e.drainingForTests(), "audio-source firmware contract cannot be replaced with inserted drain zeros");
 }
 void longReleaseAndSwitches() {
-    auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, 2, 1); set(*p, IDs::env2Release, 127); p->prepareToPlay(48000, 64);
+    auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, 2); set(*p, IDs::env2Release, 127); p->prepareToPlay(48000, 64);
     juce::AudioBuffer<float> b(2, 64); juce::MidiBuffer m; m.ensureSize(4096); m.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(110)), 0);
     double peak = 0;
     for (int n = 0; n < 1600; ++n) { if (n == 64) m.addEvent(juce::MidiMessage::noteOff(1, 48), 0); process(*p, b, m); for (int i = 0; i < 64; ++i) peak = std::max(peak, std::abs(static_cast<double>(b.getSample(0, i)))); check(!p->engineForTests().dormantForTests(), "maximum-length release cannot sleep while voice/VCA is active"); }
@@ -282,7 +281,7 @@ struct WakeReplay {
 void wakeContracts() {
     int cases = 0;
     for (double rate : {44100., 48000., 96000., 192000.}) for (int size : {64, 128, 256}) for (int offset : {0, 17, size - 1}) {
-        auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, cases % 3, cases % 2); p->prepareToPlay(rate, size);
+        auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, cases % 3); p->prepareToPlay(rate, size);
         juce::AudioBuffer<float> b(2, size); juce::MidiBuffer m; m.ensureSize(4096); m.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(110)), 0);
         for (int i = 0; i < 32; ++i) process(*p, b, m);
         if (cases % 3 == 0) m.addEvent(juce::MidiMessage::noteOff(1, 48), 0);
@@ -328,7 +327,7 @@ std::vector<float> partition(double rate, int size) {
 }
 void partitionContracts() {
     for (double rate : {44100., 48000., 96000., 192000.}) { const auto a = partition(rate, 1); messages(); for (int size : {16, 64, 256}) { const auto b = partition(rate, size); check(a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(float)) == 0, "release, exact drain, dormant interval and wake are host-block-partition independent"); messages(); } }
-    for (int size : {1, 16, 32, 64}) { auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, 1, 1); p->prepareToPlay(384000, size); juce::AudioBuffer<float> b(2, size); juce::MidiBuffer m; m.ensureSize(4096); for (int pos = 0; pos < 8192; pos += size) { if (pos == 0) m.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(110)), 0); if (pos == 1024) m.addEvent(juce::MidiMessage::noteOff(1, 48), 0); process(*p, b, m); for (int i = 0; i < size; ++i) check(std::isfinite(b.getSample(0, i)), "384 kHz tiny-call wake/release remains finite and bounded"); } p.reset(); messages(); }
+    for (int size : {1, 16, 32, 64}) { auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, 1); p->prepareToPlay(384000, size); juce::AudioBuffer<float> b(2, size); juce::MidiBuffer m; m.ensureSize(4096); for (int pos = 0; pos < 8192; pos += size) { if (pos == 0) m.addEvent(juce::MidiMessage::noteOn(1, 48, static_cast<juce::uint8>(110)), 0); if (pos == 1024) m.addEvent(juce::MidiMessage::noteOff(1, 48), 0); process(*p, b, m); for (int i = 0; i < size; ++i) check(std::isfinite(b.getSample(0, i)), "384 kHz tiny-call wake/release remains finite and bounded"); } p.reset(); messages(); }
 }
 void cancellationAndFxPrograms() {
     for (int route = 0; route < 3; ++route) {
@@ -346,7 +345,7 @@ void cancellationAndFxPrograms() {
         check(identical, "cancelled Dual drain request preserves queued output, DC history and the next attack bit-for-bit"); p.reset(); control.reset(); messages();
     }
     auto p = std::make_unique<SwaraXtAudioProcessor>(); auto control = std::make_unique<SwaraXtAudioProcessor>();
-    for (auto* a : {p.get(), control.get()}) { setup(*a, 2, 0, 7); a->prepareToPlay(48000, 64); }
+    for (auto* a : {p.get(), control.get()}) { setup(*a, 2, 7); a->prepareToPlay(48000, 64); }
     control->engineForTests().setDormancyEnabledForTests(false);
     juce::AudioBuffer<float> x(2, 64), y(2, 64); juce::MidiBuffer mx, my; mx.ensureSize(4096); my.ensureSize(4096); bool identical = true;
     for (int pos = 0; pos < 240000; pos += 64) {
@@ -429,14 +428,14 @@ int main(int argc, char** argv) {
 #endif
     const std::string mode = argc > 1 ? argv[1] : "contracts";
     if (argc > 2) { artifacts = argv[2]; std::filesystem::create_directories(artifacts); }
-    if (mode != "guard" && mode != "fx" && mode != "fx-export" && mode != "clock" && mode != "modulation" && mode != "edit") for (int route = 0; route < 3; ++route) for (int cal = 0; cal < 2; ++cal) release(route, cal, 0, 48000, 64, 0, true, true);
+    if (mode != "guard" && mode != "fx" && mode != "fx-export" && mode != "clock" && mode != "modulation" && mode != "edit") for (int route = 0; route < 3; ++route) release(route, 0, 48000, 64, 0, true, true);
     if (mode == "contracts") {
         fifoAndFirmwareGuard(); exactVcaGate(); longReleaseAndSwitches(); wakeContracts(); partitionContracts(); cancellationAndFxPrograms(); internalClockContracts(); autonomousVcaContract(); envelopeGateContracts(); drainingControlEditContract();
-        for (int fx : {3, 6, 7, 8}) release(2, 0, fx, 48000, 64, 0, false, true);
-        for (int code : {120, 123}) release(1, 1, 0, 48000, 64, code, true, true);
+        for (int fx : {3, 6, 7, 8}) release(2, fx, 48000, 64, 0, false, true);
+        for (int code : {120, 123}) release(1, 0, 48000, 64, code, true, true);
     } else if (mode == "guard") fifoAndFirmwareGuard();
-    else if (mode == "fx") release(2, 0, 6, 48000, 64, 0, false, true);
-    else if (mode == "fx-export") release(2, 0, 6, 48000, 64, 0, false, false);
+    else if (mode == "fx") release(2, 6, 48000, 64, 0, false, true);
+    else if (mode == "fx-export") release(2, 6, 48000, 64, 0, false, false);
     else if (mode == "clock") internalClockContracts();
     else if (mode == "modulation") autonomousVcaContract();
     else if (mode == "edit") drainingControlEditContract();
