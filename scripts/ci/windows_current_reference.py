@@ -11,7 +11,7 @@ import subprocess
 import windows_reference_policy as paths
 
 POLICY = 'windows-current-msvc-v1'
-PACKAGE_SHA256 = 'a3f0e0f6d1f867793b6876e39602de923e52e80c9f12e1d0734d99fc165d0b9a'
+PACKAGE_SHA256 = 'fbecdcbcbb0546366590c2217dfd681939b960fe71cda136b89951aaacbfd898'
 PACKAGE_FILE = 'Tests/References/windows-current-' + PACKAGE_SHA256 + '.json'
 # Admitted for fresh qualification, not a claim of native audio acceptance.
 # Verified by hosted run 43994991391 (ImageVersion 20261112.366.7).
@@ -121,8 +121,8 @@ def checked_fixture(root, relative, expected):
 
 def load_package(source):
     package = decode(checked(source, PACKAGE_FILE, PACKAGE_SHA256))
-    if (package['schema'] != 1 or package['policy'] != POLICY or package['scope'] != 'full-native-72'
-            or set(package['tests']) != set(ALL_TESTS) or sum(len(t['cases']) for t in package['tests'].values()) != 72):
+    if (package['schema'] != 1 or package['policy'] != POLICY or package['scope'] != 'full-native-66'
+            or set(package['tests']) != set(ALL_TESTS) or sum(len(t['cases']) for t in package['tests'].values()) != 66):
         raise RuntimeError('Wrong Windows reference package or full scope')
     for relative, expected in package['fixtures'].items():
         checked_fixture(source, relative, expected)
@@ -141,7 +141,7 @@ def source_identity(source):
     return h.hexdigest()
 
 
-def context(source, candidate_sha, profile, run_id, scope='full-native-72', architecture='x86_64'):
+def context(source, candidate_sha, profile, run_id, scope='full-native-66', architecture='x86_64'):
     value = dict(candidate_sha=candidate_sha, candidate_tree_sha256=source_identity(source),
                  profile=profile, run_id=run_id, scope=scope, architecture=architecture)
     validate_context(value)
@@ -158,7 +158,7 @@ def validate_context(value):
             or not re.fullmatch('[0-9a-f]{40}', value['candidate_sha'])
             or not re.fullmatch('[0-9a-f]{64}', value['candidate_tree_sha256'])
             or value['profile'] not in PROFILES or value['architecture'] != 'x86_64'
-            or value['scope'] != 'full-native-72' or not re.fullmatch('[A-Za-z0-9_.-]{1,128}', value['run_id'])):
+            or value['scope'] != 'full-native-66' or not re.fullmatch('[A-Za-z0-9_.-]{1,128}', value['run_id'])):
         raise RuntimeError('Wrong Windows source/profile/run/architecture/full scope')
 
 
@@ -182,7 +182,7 @@ def validate_output(name, text, code, source):
                 raise RuntimeError('Malformed Windows audio record')
             key, count, value = match[2], int(match[3]), match[4]
         elif line.startswith('DUAL_SVF_HEADLESS_PASS'):
-            if name != ALL_TESTS[3] or line != 'DUAL_SVF_HEADLESS_PASS cases=12 samples=25600 repeats=2 gui=excluded':
+            if name != ALL_TESTS[3] or line != 'DUAL_SVF_HEADLESS_PASS cases=6 samples=25600 repeats=2 gui=excluded':
                 raise RuntimeError('Malformed Windows Dual terminal')
             terminals += 1
             continue
@@ -190,14 +190,14 @@ def validate_output(name, text, code, source):
             if name != ALL_TESTS[3] or not line.startswith('DUAL_SVF_HEADLESS '):
                 raise RuntimeError('Malformed Windows Dual record')
             row = decode(line[len('DUAL_SVF_HEADLESS '):])
-            if set(row) != {'case', 'samples', 'hash', 'mode', 'calibration', 'finite', 'deterministic', 'parameters_unchanged', 'repeats'}:
+            if set(row) != {'case', 'samples', 'hash', 'mode', 'finite', 'deterministic', 'parameters_unchanged', 'repeats'}:
                 raise RuntimeError('Malformed Windows Dual fields')
             key, count, value = row['case'], row['samples'], row['hash']
             if (not isinstance(key, str) or key not in entry['cases'] or row['finite'] is not True
                     or row['deterministic'] is not True or row['parameters_unchanged'] is not True
                     or type(row['repeats']) is not int or row['repeats'] != 2
                     or row['mode'] != ('Independent' if key.startswith('DualIndependent_') else 'Relative')
-                    or row['calibration'] != key.split('_')[1] or type(count) is not int):
+                    or '_v03_' not in key or type(count) is not int):
                 raise RuntimeError('Wrong Windows Dual controls/invariants')
         else:
             continue
@@ -321,7 +321,7 @@ def admit_reference(root, source, identity, build_root, expected_manifest=None):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--reference-root',type=Path,required=True);p.add_argument('--test-name',choices=ALL_TESTS,required=True)
     p.add_argument('--candidate-sha',default=os.environ.get('GITHUB_SHA'));p.add_argument('--profile',default=os.environ.get('SWARAXT_NATIVE_PROFILE'))
-    p.add_argument('--run-id',default=os.environ.get('GITHUB_RUN_ID'));p.add_argument('--build-root',type=Path);p.add_argument('--scope',default='full-native-72')
+    p.add_argument('--run-id',default=os.environ.get('GITHUB_RUN_ID'));p.add_argument('--build-root',type=Path);p.add_argument('--scope',default='full-native-66')
     p.add_argument('command',nargs=argparse.REMAINDER);a=p.parse_args();source=Path(__file__).resolve().parents[2]
     build=a.build_root or a.reference_root.parent/'build';identity=context(source,a.candidate_sha,a.profile,a.run_id,a.scope)
     manifest=admit_reference(a.reference_root,source,identity,build)

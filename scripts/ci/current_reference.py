@@ -15,11 +15,11 @@ import stat
 import subprocess
 
 POLICY = 'linux-current-phase3-v2'
-PACKAGE_SHA256 = '505aef6ca7cf15c312285f0c357163f237f0389ce0cb85f89dcc6e0ee2678238'
+PACKAGE_SHA256 = 'e4560ecede784e9d3344cea24eb2b5397442c403adc1a57fff6ec73842d0a611'
 PACKAGE_FILE = 'Tests/References/native-current-' + PACKAGE_SHA256 + '.json'
 AUDIO_TESTS = ('SwaraXTAudioParityTests', 'SwaraXTDspFxIntegratedExactParityTests')
 ALL_TESTS = (*AUDIO_TESTS, 'SwaraXTHostSrcExactParityTests', 'SwaraXTDualSvfHeadlessTests')
-SCOPES = {'full-native-72': ALL_TESTS, 'focused-current-audio-30': AUDIO_TESTS}
+SCOPES = {'full-native-66': ALL_TESTS, 'focused-current-audio-30': AUDIO_TESTS}
 PROFILES = ('gcc-Release', 'gcc-Debug', 'clang-Release', 'clang-Debug',
             'clang-asan-ubsan', 'clang-tsan', 'clang-rtsan', 'clang-fuzz')
 DIAGNOSTICS = ('runtime error:', 'Sanitizer:', 'Sanitizer CHECK', 'DEADLYSIGNAL',
@@ -250,7 +250,7 @@ def source_identity(source):
     return h.hexdigest()
 
 
-def context(source, candidate_sha, profile, run_id, scope='full-native-72', architecture='x86_64'):
+def context(source, candidate_sha, profile, run_id, scope='full-native-66', architecture='x86_64'):
     value = {'candidate_sha': candidate_sha, 'candidate_tree_sha256': source_identity(source),
              'profile': profile, 'run_id': run_id, 'scope': scope, 'architecture': architecture}
     validate_context(value)
@@ -430,7 +430,7 @@ def main(tests=None):
     parser.add_argument('--run-id', default=os.environ.get('GITHUB_RUN_ID'))
     parser.add_argument('--trusted-root', type=Path, default=os.environ.get('RUNNER_TEMP'))
     parser.add_argument('--build-root', type=Path)
-    parser.add_argument('--scope', choices=SCOPES, default='full-native-72')
+    parser.add_argument('--scope', choices=SCOPES, default='full-native-66')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[2]

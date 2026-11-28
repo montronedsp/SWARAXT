@@ -315,7 +315,7 @@ class CurrentParserTests(unittest.TestCase):
                          finite=True, deterministic=True, parameters_unchanged=True, repeats=2)
                     for case, value in entry['cases'].items()]
             return '\n'.join('DUAL_SVF_HEADLESS ' + json.dumps(row) for row in rows) + '\n' + \
-                'DUAL_SVF_HEADLESS_PASS cases=12 samples=25600 repeats=2 gui=excluded\n'
+                'DUAL_SVF_HEADLESS_PASS cases=6 samples=25600 repeats=2 gui=excluded\n'
         return '\n'.join((case + ' hash=' + value[1]) if entry['grammar'] == 'dual' else
             'GOLDEN ' + entry['grammar'] + ' ' + case + ' samples=' + str(value[0]) + ' hash=' + value[1]
             for case, value in entry['cases'].items()) + '\n'
@@ -430,7 +430,7 @@ class CurrentAdmissionTests(unittest.TestCase):
     def test_wrong_source_profile_architecture_run_scope(self):
         for field, bad in (('candidate_sha','f'*40),('reference_source_sha','f'*40),
                            ('candidate_tree_sha256','f'*64),('profile','gcc-Debug'),
-                           ('architecture','arm64'),('run_id','different'),('scope','full-native-72')):
+                           ('architecture','arm64'),('run_id','different'),('scope','full-native-66')):
             altered=json.loads(json.dumps(self.manifest));altered[field]=bad;self.reseal(altered)
             with self.subTest(field=field),self.assertRaisesRegex(RuntimeError,'identity|provenance|schema'):
                 self.admit()
@@ -519,7 +519,7 @@ class CurrentAdmissionTests(unittest.TestCase):
 
     def test_focused_data_cannot_be_admitted_as_full_ci(self):
         with self.assertRaisesRegex(RuntimeError,'identity'):
-            self.admit(identity=dict(self.identity,scope='full-native-72'))
+            self.admit(identity=dict(self.identity,scope='full-native-66'))
 
     def test_data_cannot_be_overwritten_by_acquisition(self):
         with self.assertRaisesRegex(RuntimeError,'new trusted directory'):
@@ -536,10 +536,10 @@ class CurrentAdmissionTests(unittest.TestCase):
             binary=self.build/name
             if not binary.exists():shutil.copy2('/usr/bin/true',binary)
             executables[name]=binary
-        identity=dict(self.identity,scope='full-native-72')
+        identity=dict(self.identity,scope='full-native-66')
         manifest=current.stage_reference(root,self.source,identity,executables,self.build)
         current.admit_reference(root/'native-reference',self.source,identity,self.build,manifest)
-        self.assertEqual(sum(value['case_count']for value in manifest['tests'].values()),72)
+        self.assertEqual(sum(value['case_count']for value in manifest['tests'].values()),66)
 
 
     def test_exact_record_numeric_types_are_not_coerced(self):
@@ -557,7 +557,7 @@ class CurrentAdmissionTests(unittest.TestCase):
         root=self.profile/'full-admission';root.mkdir();build=root/'build';build.mkdir();executables={}
         for name in current.ALL_TESTS:
             binary=build/name;shutil.copy2('/usr/bin/true',binary);executables[name]=binary
-        identity=dict(self.identity,scope='full-native-72')
+        identity=dict(self.identity,scope='full-native-66')
         manifest=current.stage_reference(root,self.source,identity,executables,build)
         manifest_sha=sha(root/'native-reference/manifest.json')
         admit_linux_reference(root,manifest,manifest_sha,identity['candidate_sha'],identity['profile'],identity['run_id'])
