@@ -83,6 +83,16 @@ Bypass is not `if (fxOff) skip`. It requires:
 4. Expired SRC/FX history guard
 5. No emergency / dormancy DC-drain path
 
+## Classic reference differential
+
+The seven Classic audio-parity mismatches are the host 0.7 Hz stage.
+
+- An unconditional-blocker build reproduces the historical hashes in `kClassicHostDcBlocked`.
+- Replaying `y[n] = x[n] - x[n-1] + pole * y[n-1]` on the bypass render's pre-blocker samples reproduces those same hashes.
+- The bypass prediction matches the rendered samples with no float mismatches. After the 11790-sample protection guard, the render is identical to the pre-blocker stream. Silence is unchanged.
+
+`kClassic` now stores the bypass renders. The historical hashes remain.
+
 ## Remaining limitations
 
 - Dual DC root cause beyond “no AC coupling / stable mean” not fully schematic-mapped.
