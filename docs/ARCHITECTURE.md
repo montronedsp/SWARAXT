@@ -43,11 +43,18 @@ and `Ir3109BoardCore`, including CV reconstruction, nonlinear poles, coupling,
 VCA and converter history. High, Normal and Eco select its processing quality.
 Firmware cutoff/resonance and the Classic key-tracking trim feed this path.
 
-`ShruthiSvfDual` provides Section 1, Serial and Parallel routing with LP/BP/HP
-taps and Paper/Eagle calibration. Section 2 supports shared Follow controls,
-Independent cutoff/resonance, or Relative cutoff with independent resonance.
-Its CV reconstruction uses the firmware patch/modulation semantics. Parallel
-retains its summing law; no per-routing loudness normalization is applied.
+`ShruthiSvfDual` owns two pure SVF cores and one shared Analog-SVF-v03 board.
+Each core reconstructs cutoff and resonance CV, updates the TPT coefficients
+and holds the integrator state and the LP/BP/HP taps. The board is the only
+analog-conditioning object: C34 input coupling, the input amplifier, C20 and
+C21 branch coupling, one V2164 with the fitted R53 bleed, and the C14/R12
+output amplifier. The audio cell is ahead of that amplifier. Section 1, Serial
+and Parallel choose the taps. There is no second production calibration.
+Packed selection bit 7 is ignored on unpack and stays clear on a canonical
+pack. Section 2 supports shared Follow controls, Independent cutoff/resonance,
+or Relative cutoff with independent resonance. CV reconstruction uses the
+firmware patch/modulation semantics. Parallel keeps its summing law; no
+per-routing loudness normalization is applied.
 
 A packed atomic `ExperimentalSvfSelection` publishes manual requests. These
 controls are outside APVTS automation and musical state serialization. Exactly
@@ -61,8 +68,8 @@ uses the audio-owned control path without the active fade/preparation interval.
 
 The bank envelope acts before shared FX. Incoming Classic resets converter,
 board and VCA history; incoming Dual resets its core and compensation FIFO.
-Routing, tap and calibration edits retain their existing single-object update
-semantics; they are distinct from the Classic/Dual bank envelope.
+Routing and tap edits retain their existing single-object update semantics;
+they are distinct from the Classic/Dual bank envelope.
 
 Classic quality transitions retain the 78-native-sample out/in phases. Quality
 ownership is resolved before admitting a bank change, and incoming Classic
@@ -75,7 +82,10 @@ The selected post-VCA signal feeds one `BoardProcessor`. `BoardEffects`
 implements sixteen programs plus Off: distortion, crush, comb, ring modulation,
 delay variants, looper and pitch processing. Post-DAC coloration and existing
 quality/board/master gains precede `PolyphaseFirResampler` and host DC blocking.
-Bank switching preserves the shared effects and output-conversion histories.
+Classic FX-Off may bypass that blocker. Dual and every FX program keep the
+0.7 Hz host blocker. Bank switching preserves the shared effects and
+output-conversion histories. The panic path can still emit a raw sample-rate
+converter residue; that remains open for the later output-safety work.
 
 Classic converter latency is 256 native samples. Dual's `DualOutputDelay`
 supplies the same 256-sample compensation; common host SRC contributes 128.
@@ -84,11 +94,14 @@ its host-sample equivalent. Filter response phase and manual switch response
 time are separate from this pipeline latency.
 
 Dormancy combines voice/modulation/clock conditions, selected-filter output,
-effect tails and SRC/DC drainage. Dual requires exact VCA closure, an exhausted
-FIFO and a valid envelope/modulation silence proof. FX terminal output is
-checked as well as its tail flag. Active switching prevents sleep; control
-edits that invalidate silence can wake processing. Queued SRC output drains
-before native rendering resumes when more input is needed.
+effect tails and SRC/DC drainage. Dual requires exact V2164 closure, exhaustion
+of the compensation FIFO and a valid envelope/modulation silence proof. Closure
+does not erase the output amplifier on the same sample: C14/R12 memory falls
+through the 1e-20 flush within eight native samples inside +/-10 V, and those
+samples are ordinary FIFO input. FX terminal output is checked as well as its
+tail flag. Active switching prevents sleep; control edits that invalidate
+silence can wake processing. Queued SRC output drains before native rendering
+resumes when more input is needed.
 
 ## Control admission, sequencing and MIDI
 
@@ -174,8 +187,8 @@ Classic. Opening an editor reconstructs controls from the processor state.
 `PluginEditor` and `Source/Ui` compose oscillator, LFO, Mixer/filter, envelope,
 Global/FX and Seq/Arp areas with local views. The matrix stays in Mixer with
 twelve routes, three visible rows and four pages; slot 12 retains Mod Wheel
-scaling. Dual routing/mode/calibration controls occupy the front-panel details
-view, rather than duplicate right-click entries.
+scaling. Dual routing and mode controls occupy the front-panel details view, rather
+than duplicate right-click entries.
 
 Five skins, three sizes, colours, SVG artwork, decorations and manufacturer
 marks use local UI preferences, separate from musical parameters. The right-click

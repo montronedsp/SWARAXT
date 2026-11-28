@@ -1,5 +1,7 @@
 # FX-Off DC measurement validation (Phase II)
 
+These figures belong to the pre-v03 Dual circuit. They are not a qualification of Analog-SVF-v03. Phase I is `cb6198c`. This Phase II pass is `bd88113`. The v03 rerun is recorded separately and does not replace the numbers below.
+
 **Branch:** `investigation/fx-off-dc-blocker`  
 **Baseline:** `bd88113`  
 **Phase I commit:** `cb6198c`  
