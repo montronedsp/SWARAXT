@@ -80,9 +80,16 @@ ctest --test-dir Z:/SWARAXT-DC-AUDIT-builds/win-release -C Release --output-on-f
 
 Prior local Release CTest: 161/161 at `2e6d2af` sources (DSP frozen since; reference-only change at `3458b62`).
 
+## CodeQL alerts #12 / #13
+
+Surgical long-double accumulator casts in `Tests/DcAudit/FxOffDcBlockerAuditMain.cpp` and
+`FxOffDcBlockerAuditPhase2Main.cpp` only. Not CI reference fixtures. Synthetic/harness
+validation unchanged vs prior evidence; DC conclusions unchanged. Leave alerts for CodeQL
+to re-verify (do not dismiss manually).
+
 ## Remaining limitations / blockers
 
-- Hosted Windows + Linux qualification not yet green for `3458b62`.
+- Hosted Windows + Linux native qualification still in progress for `6897a41`.
 - Linux Dual v03 hashes are Windows-bootstrapped until Linux hosted admission corroborates them.
 - macOS not qualified.
 - Debug / ASan / pluginval-10 / Steinberg validator may still be outstanding locally; hosted gates are authoritative for merge readiness.
