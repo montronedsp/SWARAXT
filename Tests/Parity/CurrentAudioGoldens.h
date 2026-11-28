@@ -33,7 +33,9 @@ inline constexpr Entry kIntegrated[] = {
     {"seq_ringmod", 0xbe7fb0911be00383ull, 4096},
 };
 inline constexpr int kIntegratedCount = 22;
-inline constexpr Entry kClassic[] = {
+// Host output with the unconditional 0.7 Hz blocker. Preserved when Classic
+// FX-Off bypasses that stage; do not replace these with bypass renders.
+inline constexpr Entry kClassicHostDcBlocked[] = {
     {"Test A basic saw", 0xe49a2f5d8a7090f9ull, 44100},
     {"Test B basic square", 0x608f87853120af8eull, 44100},
     {"Test C two oscillators", 0x2e5f9d73aeaa1820ull, 44100},
@@ -41,6 +43,19 @@ inline constexpr Entry kClassic[] = {
     {"Test G filter high resonance", 0xb583834c32a65866ull, 44100},
     {"Test I normal envelope", 0xac2c238b499d0be4ull, 44100},
     {"Test D noise only", 0xc473d3385b5767baull, 44100},
+    {"Test J silence", 0x81296f5b21ed7843ull, 44100},
+};
+inline constexpr int kClassicHostDcBlockedCount = 8;
+// Classic FX-Off after the qualified host-blocker bypass. The seven sounding
+// hashes differ from kClassicHostDcBlocked only by that 0.7 Hz stage.
+inline constexpr Entry kClassic[] = {
+    {"Test A basic saw", 0x7c80734b6efa9bbfull, 44100},
+    {"Test B basic square", 0x721f18a074506ae9ull, 44100},
+    {"Test C two oscillators", 0xd1caf242ae735ce0ull, 44100},
+    {"Test F filter low resonance", 0x40e8ba736247a7f8ull, 44100},
+    {"Test G filter high resonance", 0xc308357d75cc757aull, 44100},
+    {"Test I normal envelope", 0xd4784d4290a21617ull, 44100},
+    {"Test D noise only", 0x03d969ae6b804616ull, 44100},
     {"Test J silence", 0x81296f5b21ed7843ull, 44100},
 };
 inline constexpr int kClassicCount = 8;

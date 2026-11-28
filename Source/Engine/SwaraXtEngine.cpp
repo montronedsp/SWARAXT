@@ -1594,11 +1594,16 @@ void SwaraXtEngine::process(const juce::MidiBuffer& midi,
         else if (hostDcProtectionRemaining_ > 0)
             --hostDcProtectionRemaining_;
 
+#if SWARAXT_FORCE_HOST_DC_BLOCKER
+        // Baseline reconstruction only. Production builds leave this undefined.
+        const bool requireHostDcProtection = true;
+#else
         const bool requireHostDcProtection =
             contaminatedPath
             || hostDcProtectionRemaining_ > 0
             || emergencyDcResetRemaining_ > 0
             || dcDrainingToDormant_;
+#endif
 
         // Panic drain: emit the SRC residue raw and keep the blocker empty.
         // Feeding that residue through the 0.7 Hz filter would re-charge it.
