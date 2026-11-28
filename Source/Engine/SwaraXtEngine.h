@@ -66,6 +66,10 @@ using HostRateConverter = InternalSampleQueue;
 #define SWARAXT_SRC_CONVERTER_INIT
 #endif
 
+#ifndef SWARAXT_ENABLE_DC_AUDIT_TAPS
+#define SWARAXT_ENABLE_DC_AUDIT_TAPS 0
+#endif
+
 class SwaraXtEngine {
  public:
     static constexpr double kInternalSampleRate = 20000000.0 / 510.0;
@@ -113,6 +117,29 @@ class SwaraXtEngine {
     };
 
     using DebugTapSink = void (*)(void*, const DebugBlockCapture&);
+#endif
+
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+    // Chronological host-rate observation immediately around DcBlocker::process.
+    // Test builds only. Does not alter production arithmetic.
+    struct HostDcAuditSample {
+        uint64_t hostIndex = 0;
+        float preBlocker = 0.0f;
+        float postBlocker = 0.0f;
+        uint8_t effect = 0;
+        bool dual = false;
+        bool dormant = false;
+        bool srcSample = false;
+        bool dcDrain = false;
+        bool emergency = false;
+        bool blockerApplied = false;
+    };
+    using HostDcAuditSink = void (*)(void*, const HostDcAuditSample&);
+    void setHostDcAuditSink(void* context, HostDcAuditSink sink) noexcept
+    {
+        hostDcAuditContext_ = context;
+        hostDcAuditSink_ = sink;
+    }
 #endif
 
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
@@ -482,6 +509,12 @@ class SwaraXtEngine {
 
     HostRateConverter internalQueue_ SWARAXT_SRC_CONVERTER_INIT;
     DcBlocker dcBlocker_;
+    // Host samples of Classic FX-Off SRC flush still requiring DC protection.
+    // Dual and FX-active paths keep this armed; it counts down only while the
+    // selected path is Classic with effects genuinely inactive.
+    int hostDcProtectionRemaining_ = 0;
+    int hostDcProtectionGuardSamples_ = 0;
+    bool hostDcBlockerEngaged_ = true;
     SwaraXtFilter filter_;
     ShruthiSvfDual experimentalSvf_;
     // Audio-owned, after the complete Dual VCA and before shared effects/SRC.
@@ -600,6 +633,11 @@ class SwaraXtEngine {
     void* debugTapContext_ = nullptr;
     DebugTapSink debugTapSink_ = nullptr;
     uint32_t debugInternalBlockCount_ = 0;
+#endif
+#if SWARAXT_ENABLE_DC_AUDIT_TAPS
+    void* hostDcAuditContext_ = nullptr;
+    HostDcAuditSink hostDcAuditSink_ = nullptr;
+    uint64_t hostDcAuditIndex_ = 0;
 #endif
 #if SWARAXT_ENABLE_IDLE_CPU_TESTS
     CpuProfile cpuProfile_ {};
