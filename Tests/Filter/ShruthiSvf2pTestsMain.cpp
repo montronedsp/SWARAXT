@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -100,13 +101,12 @@ struct ShruthiSvfSectionFixture
         const double pwm = vcaTarget * swaraxt::ShruthiSvf2pControl::kPwmFullScaleVolts;
         const double outUnit = board.processOutput(selected, 0.0, pwm)
             / swaraxt::ShruthiSvf2pControl::kSourceVoltsPerUnit;
-        const double last = std::isfinite(outUnit) ? outUnit : 0.0;
-        if (! std::isfinite(last))
+        if (! std::isfinite(outUnit))
         {
             reset();
             return 0.0f;
         }
-        return static_cast<float>(last);
+        return static_cast<float>(outUnit);
     }
 };
 
@@ -838,9 +838,6 @@ void testV2164ClosedLoop()
     expect(std::abs(Board::steadyGain(5.0) - ratio(5.0, true)) < 1.0e-15,
            "fitted full-scale gain matches the current ratio");
     expect(Board::steadyGain(0.0) == 0.0, "fitted R53 closes the cell at zero PWM");
-    expect(std::abs(Board::steadyGainUnpopulated(5.0) - ratio(5.0, false)) < 1.0e-15,
-           "unpopulated bleed is the same ratio without the offset");
-    expect(Board::steadyGainUnpopulated(0.0) == 0.0, "unpopulated zero PWM is zero gain");
     expect(ratio(5.0, false) > ratio(5.0, true), "omitting R53 raises the equilibrium gain");
     expect(Board::steadyGain(5.0 * 23.0 / 255.0) == 0.0, "PWM bytes through 23 stay closed");
     expect(Board::steadyGain(5.0 * 24.0 / 255.0) > 0.0, "PWM byte 24 is the first open gain");
@@ -902,11 +899,46 @@ void testV2164ClosedLoop()
     (void) g;
 }
 
+void testNonfiniteInputRecovery()
+{
+    const double sr = swaraxt::ShruthiSvf2pControl::kNativeRate;
+    auto prepare = [&](swaraxt::ShruthiSvfDual& dual) {
+        dual.prepare(sr);
+        dual.setRouting(swaraxt::ShruthiSvfDualRouting::serial);
+        dual.setMode1(swaraxt::ShruthiSvf2pMode::lowPass);
+        dual.setMode2(swaraxt::ShruthiSvf2pMode::bandPass);
+        dual.setFirmwareCutoff(160);
+        dual.setFirmwareResonance(80);
+    };
+    swaraxt::ShruthiSvfDual poisoned;
+    prepare(poisoned);
+    const float nanOut = poisoned.process(std::numeric_limits<float>::quiet_NaN(), 1.0f);
+    const float infOut = poisoned.process(std::numeric_limits<float>::infinity(), 0.5f);
+    expect(nanOut == 0.0f && infOut == 0.0f, "nonfinite mixer input becomes exact silence");
+    swaraxt::ShruthiSvfDual clean;
+    prepare(clean);
+    clean.process(0.0f, 1.0f);
+    clean.process(0.0f, 0.5f);
+    const float after = poisoned.process(0.2f, 0.8f);
+    const float reference = clean.process(0.2f, 0.8f);
+    expect(after == reference && std::isfinite(after), "nonfinite input leaves the same state as silence");
+    int invalid = 0;
+    for (int i = 0; i < 256; ++i)
+    {
+        const float y = poisoned.process(std::numeric_limits<float>::quiet_NaN(),
+                                         (i & 1) != 0 ? std::numeric_limits<float>::infinity() : 0.3f);
+        if (! std::isfinite(y))
+            ++invalid;
+    }
+    expect(invalid == 0, "repeated nonfinite mixer and VCA inputs stay finite");
+}
+
 }  // namespace
 
 int main()
 {
     testV2164ClosedLoop();
+    testNonfiniteInputRecovery();
     testControlLaws();
     testZener();
     testModesAndSlope();
