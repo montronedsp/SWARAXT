@@ -1,0 +1,6 @@
+known_dc_mean=0.24999999970197678
+false_positive_32_5_sub_periods_dbfs=-42.481107785319274
+complete_combined_periods_dbfs=-160.026721019359
+transient_phase1_window_dbfs=-44.516849999183663
+transient_late_window_dbfs=-378.17061644788328
+ir3109_constant_dbfs=-194.32283324237869
