@@ -109,9 +109,14 @@ class DualSvfAnalogBoard
 
         const double i1 = branch1_.highpass(branch1Volts);
         const double i2 = branch2_.highpass(branch2Volts);
-        // R31 = R32 = R12, so the I/V ratio is 1 and the sum is in volts.
-        const double summed = outputLp_.lowpass(i1 + i2);
-        const double volts = std::isfinite(summed) ? -gain_ * summed : 0.0;
+        // The V2164 cell is ahead of the I/V. R31 = R32 = R12, so the
+        // current-to-voltage ratio is 1 and C14 low-passes the gained sum.
+        // After the cell reaches exact zero the pole retains at most a few
+        // native samples: coeff is exp(-1/(fs*R12*C14)) and the state is
+        // flushed at 1e-20, which is under eight samples inside +/-10 V.
+        const double gained = gain_ * (i1 + i2);
+        const double summed = outputLp_.lowpass(std::isfinite(gained) ? gained : 0.0);
+        const double volts = std::isfinite(summed) ? -summed : 0.0;
         lastVolts_ = volts;
         return volts;
     }

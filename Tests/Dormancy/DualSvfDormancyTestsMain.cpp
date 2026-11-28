@@ -83,7 +83,8 @@ struct Trace {
     size_t cursor = 0;
     uint32_t pending = 0;
     int64_t lastInput = -1, lastOutput = -1, exactZero = -1, firstDrain = -1;
-    bool resonatorBehindClosedVca = false, closedWithPending = false;
+    int ivResidue = 0;
+    bool resonatorBehindClosedVca = false, closedWithPending = false, ivSettled = false;
     uint64_t blocksAfterEmpty = 0;
     float drainInput = 0;
     float lastPostFx = 0;
@@ -101,7 +102,20 @@ struct Trace {
             if (b.vcaTarget[i] == 0 && b.vcaGain[i] == 0 && e.experimentalSvfDualForTests().tailActive()) {
                 if (t.exactZero < 0) t.exactZero = n;
                 t.resonatorBehindClosedVca = true; t.closedWithPending |= t.pending != 0;
-                check(u == 0, "exact-zero selected VCA produces exact-zero FIFO input despite active resonator");
+                // C14/R12 follows the V2164. With gain already 0 the pole is
+                // multiplied by ~4.4e-4 each native sample and flushed at 1e-20,
+                // so a +/-10 V memory is gone within eight samples. A leak that
+                // was still reaching the cell would not settle.
+                if (u != 0.0f) {
+                    ++t.ivResidue;
+                    check(!t.ivSettled && t.ivResidue <= 8,
+                          "closed VCA leaves only a brief output-amplifier settlement");
+                } else {
+                    t.ivSettled = true;
+                }
+            } else if (!(b.vcaTarget[i] == 0 && b.vcaGain[i] == 0)) {
+                t.ivResidue = 0;
+                t.ivSettled = false;
             }
         }
         const auto& actual = Access::delay(e);
