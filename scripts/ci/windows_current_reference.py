@@ -11,12 +11,13 @@ import subprocess
 import windows_reference_policy as paths
 
 POLICY = 'windows-current-msvc-v1'
-PACKAGE_SHA256 = 'fbecdcbcbb0546366590c2217dfd681939b960fe71cda136b89951aaacbfd898'
+PACKAGE_SHA256 = '2b82a6f6abb197636dec3c748ae378bf5a2f6781f2cfcb0f51e76b1fe19e71f1'
 PACKAGE_FILE = 'Tests/References/windows-current-' + PACKAGE_SHA256 + '.json'
 # Admitted for fresh qualification, not a claim of native audio acceptance.
 # Verified by hosted run 43994991391 (ImageVersion 20261112.366.7).
 # Previous admission (run 41700756992, SHA fe251ef5…, 19.44.35229.0) is no longer hosted.
-# The immutable package retains its original compiler provenance and 72 values.
+# The immutable package retains its original compiler provenance and the current
+# full-native-66 inventory (Classic FX-Off bypass + six Dual v03 cases).
 ADMITTED_COMPILER_SHA256 = 'e87e78b3ef6580b75aebda843f8a22e874612d9f766344046551399f898eb226'
 ADMITTED_COMPILER_VERSION = '19.44.35230.0'
 ADMITTED_TOOLSET_VERSION = '14.44.35207'

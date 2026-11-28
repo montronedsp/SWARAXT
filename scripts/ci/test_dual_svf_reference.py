@@ -106,7 +106,7 @@ class DualAdmissionControls(unittest.TestCase):
             binary.write_bytes(b'explicit synthetic executable identity fixture, never executed')
             identity = current.source_identity(SOURCE)
             fingerprint = current.digest(binary.read_bytes())
-            self.assertEqual(len(dual.admit(SOURCE, binary, fingerprint, identity, self.text(), 0)['records']), 12)
+            self.assertEqual(len(dual.admit(SOURCE, binary, fingerprint, identity, self.text(), 0)['records']), 6)
             with self.assertRaisesRegex(RuntimeError, 'Wrong Dual source identity'):
                 dual.admit(SOURCE, binary, fingerprint, '0' * 64, self.text(), 0)
             binary.write_bytes(b'tampered')
@@ -124,8 +124,10 @@ class DualAdmissionControls(unittest.TestCase):
 
     def test_historical_mixer_fingerprints_rejected(self):
         provenance = json.loads((SOURCE / 'Tests/References/DualSvfCurrentLinuxProvenance.json').read_text())
+        # Paper/Eagle case names differ from v03; reuse one historical hash as the negative.
+        historical_hash = next(iter(provenance['historical']['cases'].values()))[1]
         for row in self.rows:
-            row['hash'] = provenance['historical']['cases'][row['case']][1]
+            row['hash'] = historical_hash
         self.reject('Changed Dual audio hash')
 
     def test_old_full_manifest_identity_is_not_aliased(self):

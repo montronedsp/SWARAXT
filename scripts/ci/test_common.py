@@ -197,7 +197,7 @@ class WindowsAuditFixtureAuthentication(unittest.TestCase):
         import windows_current_reference as authority
         source = Path(__file__).resolve().parents[2]
         package = authority.load_package(source)
-        self.assertEqual(sum(len(t['cases']) for t in package['tests'].values()), 72)
+        self.assertEqual(sum(len(t['cases']) for t in package['tests'].values()), 66)
         relative = 'Tests/Filter/DualSvfIntegrationAuditMain.cpp'
         data = (source / relative).read_bytes()
         self.assertEqual(authority.checked_fixture(source, relative, package['fixtures'][relative]), data)
@@ -217,13 +217,13 @@ class WindowsAuditFixtureAuthentication(unittest.TestCase):
             other = 'Tests/Filter/DualSvfCurrentWindowsTimingGoldens.h'
             (root / other).write_bytes(data)
             with self.assertRaisesRegex(RuntimeError, 'checksum mismatch'):
-                authority.checked_fixture(root, other, package['fixtures'][relative])
+                authority.checked_fixture(root, other, package['fixtures'][other])
 
     def test_reviewed_patch_bridge_and_render_contract_admit_without_resealing(self):
         import windows_current_reference as authority
         source = Path(__file__).resolve().parents[2]
         package = authority.load_package(source)
-        self.assertEqual(sum(len(t['cases']) for t in package['tests'].values()), 72)
+        self.assertEqual(sum(len(t['cases']) for t in package['tests'].values()), 66)
         for relative, current_digest in (
                 ('Source/Engine/PatchBridge.cpp', authority.PATCH_BRIDGE_CURRENT_SHA256),
                 ('Tests/Support/CurrentRenderContract.h', authority.CURRENT_RENDER_CONTRACT_CURRENT_SHA256)):
@@ -334,7 +334,7 @@ class WindowsCompilerAdmission(unittest.TestCase):
         self.assertNotIn('install.exe', body)
         package = authority.load_package(Path(__file__).resolve().parents[2])
         self.assertEqual(package['compiler_sha256'], 'd66e441c8ef64b7f52553beafcbd0c53decff0b0ba4e0896a7e0671d72a198c9')
-        self.assertEqual(sum(len(entry['cases']) for entry in package['tests'].values()), 72)
+        self.assertEqual(sum(len(entry['cases']) for entry in package['tests'].values()), 66)
 
 
 if __name__ == '__main__': unittest.main()

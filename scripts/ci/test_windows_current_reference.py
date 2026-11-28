@@ -71,7 +71,7 @@ class NativeWindowsReferenceTests(unittest.TestCase):
     def test_01_valid_approved_current(self):
         policy.admit_reference(self.root, SOURCE, self.identity, self.build)
         self.assertEqual(sum(len(policy.validate_output(n, t, 0, SOURCE)['records'])
-                             for n, t in self.output.items()), 72)
+                             for n, t in self.output.items()), 66)
 
     def test_02_modified_hash(self):
         self.reject_output(re.sub(r'hash=[0-9a-f]{16}', 'hash=' + '0' * 16, self.text, count=1),
