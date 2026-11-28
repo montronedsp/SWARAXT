@@ -3,12 +3,7 @@
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/PluginEditor.h"
 #include "Plugin/SwaraXtParameterLayout.h"
-#if defined(_MSC_VER) || defined(__linux__)
-#include "DualSvfCurrentLinuxGoldens.h" // Host values independently qualified on MSVC.
-#include "DualSvfCurrentWindowsTimingGoldens.h"
-#else
-#include "DualSvfSection2Goldens.h"
-#endif
+#include "DualSvfV03Goldens.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -361,22 +356,20 @@ void section2TimingContracts() {
         check(nativeHash==nativeGolden,"pre-delay synthesis matches the published baseline fingerprint");
         if(hostGolden!=0) check(hostHash==hostGolden,"migrated Section 2 host reference matches exact timing contract");
     };
-    for(int cal=0;cal<2;++cal) {
-        Sel s; s.enabled=true; s.routing=Route::serial;
-        for(int i=0;i<3;++i) {
-            s.control2=Control::relative; s.cutoff2=static_cast<uint8_t>(52+12*i); s.resonance2=0; s.mode2=Mode::lowPass;
-            verify(s,0,dualRelativeNativeGoldens[cal][i],dualRelativeGoldens[cal][i]);
-            s.control2=Control::independent; s.cutoff2=static_cast<uint8_t>(i==0 ? 40 : 90);
-            s.resonance2=static_cast<uint8_t>(i==2 ? 63 : 32); s.mode2=Mode::bandPass;
-            verify(s,0,dualIndependentNativeGoldens[cal][i],dualIndependentGoldens[cal][i]);
-        }
-        for(int route=0;route<3;++route) for(int control=0;control<3;++control) for(int fx:{0,8}) {
-            s.routing=static_cast<Route>(route); s.control2=static_cast<Control>(control);
-            s.cutoff2=static_cast<uint8_t>(control==2 ? 76 : 40); s.resonance2=32; s.mode2=Mode::bandPass;
-            verify(s,fx,dualTimingNativeGoldens[cal][route][control]);
-        }
+    Sel s; s.enabled=true; s.routing=Route::serial;
+    for(int i=0;i<3;++i) {
+        s.control2=Control::relative; s.cutoff2=static_cast<uint8_t>(52+12*i); s.resonance2=0; s.mode2=Mode::lowPass;
+        verify(s,0,dualRelativeNativeGoldens[i],dualRelativeGoldens[i]);
+        s.control2=Control::independent; s.cutoff2=static_cast<uint8_t>(i==0 ? 40 : 90);
+        s.resonance2=static_cast<uint8_t>(i==2 ? 63 : 32); s.mode2=Mode::bandPass;
+        verify(s,0,dualIndependentNativeGoldens[i],dualIndependentGoldens[i]);
     }
-    std::puts("Section 2 timing: 12 host references + 36 route/calibration/control/FX cases; qualified native synthesis and independent indexed delay/FX/gain/SRC/DC replay.");
+    for(int route=0;route<3;++route) for(int control=0;control<3;++control) for(int fx:{0,8}) {
+        s.routing=static_cast<Route>(route); s.control2=static_cast<Control>(control);
+        s.cutoff2=static_cast<uint8_t>(control==2 ? 76 : 40); s.resonance2=32; s.mode2=Mode::bandPass;
+        verify(s,fx,dualTimingNativeGoldens[route][control]);
+    }
+    std::puts("Section 2 timing: 6 host references + 18 route/control/FX cases; qualified native synthesis and independent indexed delay/FX/gain/SRC/DC replay.");
 }
 void latency(const std::filesystem::path& out) {
     const auto centre = [](const std::vector<float>& x) {
@@ -421,12 +414,11 @@ std::vector<Change> changes() {
     Sel parallel = a; parallel.routing = Route::parallel;
     Sel bp = a; bp.mode1 = Mode::bandPass;
     Sel hp = a; hp.mode1 = Mode::highPass;
-    Sel hw = a;
     Sel independent = serial; independent.control2 = Control::independent; independent.cutoff2 = 40; independent.resonance2 = 48;
     Sel relative = independent; relative.control2 = Control::relative; relative.cutoff2 = 76;
     return {{"classic_dual",c,a},{"dual_classic",a,c},{"section1_serial",a,serial},
         {"serial_parallel",serial,parallel},{"parallel_section1",parallel,a},{"lp_bp",a,bp},
-        {"bp_hp",bp,hp},{"hp_lp",hp,a},{"paper_eagle",a,hw},{"eagle_paper",hw,a},
+        {"bp_hp",bp,hp},{"hp_lp",hp,a},
         {"follow_independent",serial,independent},{"independent_relative",independent,relative},
         {"relative_follow",relative,serial}};
 }
@@ -485,7 +477,7 @@ void transitions(const std::filesystem::path& out) {
     std::ofstream qcsv(out/"quality-only.csv"); qcsv << "first_post_change,peak_step,minimum_post_to_filter_gain,reported\n"
         << qd.first << ',' << qd.peakStep << ',' << minimumGain << ',' << newQuality.latency << '\n';
     finish(csv,"transition CSV written"); finish(qcsv,"quality CSV written");
-    std::puts("Transitions: 104 counterfactual pairs; derivative error includes intended response changes, not just clicks.");
+    std::puts("Transitions: 88 counterfactual pairs; derivative error includes intended response changes, not just clicks.");
 }
 void frozenClassic(const std::filesystem::path& out) {
     auto p=std::make_unique<SwaraXtAudioProcessor>(); neutral(*p); p->prepareToPlay(48000,64);

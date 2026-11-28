@@ -1,10 +1,3 @@
 // Copyright 2026 MontroneDSP. SPDX-License-Identifier: GPL-3.0-or-later
-// Windows uses the headless renderer with the current v03 references.
-// The historical header remains available for historical tests.
-#include "DualSvfSection2Goldens.h"
-namespace swaraxt_windows_current {
-#include "DualSvfCurrentLinuxGoldens.h"
-}
-#define dualRelativeGoldens swaraxt_windows_current::dualRelativeGoldens
-#define dualIndependentGoldens swaraxt_windows_current::dualIndependentGoldens
+// Windows headless entry. The v03 rows live in the shared section-2 test.
 #include "DualSvfHeadlessTestsMain.cpp"
