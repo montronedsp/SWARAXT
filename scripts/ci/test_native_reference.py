@@ -309,9 +309,9 @@ class CurrentParserTests(unittest.TestCase):
 
     def output(self, name):
         entry = self.package['tests'][name]
-        if entry['grammar'] == 'headless-dual-v1':
+        if entry['grammar'] in ('headless-dual-v1', 'headless-dual-v03'):
             rows = [dict(case=case, mode='Independent' if case.startswith('DualIndependent_') else 'Relative',
-                         calibration=case.split('_')[1], samples=value[0], hash=value[1],
+                         samples=value[0], hash=value[1],
                          finite=True, deterministic=True, parameters_unchanged=True, repeats=2)
                     for case, value in entry['cases'].items()]
             return '\n'.join('DUAL_SVF_HEADLESS ' + json.dumps(row) for row in rows) + '\n' + \
@@ -329,7 +329,7 @@ class CurrentParserTests(unittest.TestCase):
         self.assertTrue(all('historical_hash_mismatches' not in value for value in records))
 
     def test_all_four_parser_grammars_and_inventory(self):
-        for name, count in zip(current.ALL_TESTS, (8, 22, 30, 12)):
+        for name, count in zip(current.ALL_TESTS, (8, 22, 30, 6)):
             with self.subTest(name=name):
                 self.assertEqual(len(self.check(name=name)['records']), count)
 

@@ -1,98 +1,58 @@
-# Current Linux native reference contract, version 2
+# Current native reference contract
+
+## Linux
 
 The authenticated package is
-`native-current-505aef6ca7cf15c312285f0c357163f237f0389ce0cb85f89dcc6e0ee2678238.json`.
+`native-current-5f96980660fffedd672bb69b51fe60ef4745a619cbec34d8f5a8e5765c40ed78.json`.
 Its SHA-256 and policy `linux-current-phase3-v2` are pinned independently in
 `scripts/ci/current_reference.py`. Acquisition copies approved data; it never
 executes a candidate to generate expected audio. Checksums alone cannot approve
 changed or resealed reference records.
 
-The full scope has exactly four native executable identities and 72 cases:
+The full scope is `full-native-66` with exactly four native executable identities:
 
-- SwaraXTAudioParityTests: 8 Classic cases.
+- SwaraXTAudioParityTests: 8 Classic cases (FX-Off host-blocker bypass).
 - SwaraXTDspFxIntegratedExactParityTests: 22 integrated cases.
 - SwaraXTHostSrcExactParityTests: 30 Host SRC cases.
-- SwaraXTDualSvfHeadlessTests: 12 Dual SVF cases.
+- SwaraXTDualSvfHeadlessTests: 6 Dual SVF v03 cases.
 
 The focused-current-audio-30 scope remains the first two identities only. A
 focused success cannot pass the full gate. Version 2 explicitly replaces the
 old GUI-bearing Dual identity; executables are never renamed or aliased in
 manifests. Tests/Filter/DualSvfSection2TestsMain.cpp remains available for future
-authorized GUI qualification, with Linux current goldens selected by platform.
-Windows selects its independently qualified current data through the explicit
-DualSvfWindowsHeadlessTestsMain.cpp adapter; the historical header is preserved.
+authorized GUI qualification. Historical Paper/Eagle Dual goldens remain sealed
+under DualSvfCurrentLinuxGoldens.h / DualSvfCurrentLinuxProvenance.json.
 
-## Current Dual SVF authority
+### Classic FX-Off
 
-The approved product maps public Sub/Noise 0–127 into firmware 0–63 with
-`public >> 1`. Factory0 Saw bass explicitly selects public Sub64 and Noise0.
-The current internal values are32 and0. The previous twelve hashes represented
-the obsolete direct Sub64 firmware assignment. A private diagnostic changing
-only those historical mixer assignments restores all twelve old hashes exactly.
-This control is not included in production or this repository.
+`CurrentAudioGoldens.h` keeps `kClassicHostDcBlocked` (historical blocked-output
+hashes) and `kClassic` (bypass hashes from differential commit
+`3048e172ff35707dd6907cae737b663c42a25455`). ClassicDcDifferentialTests replay
+both tables. `CurrentAudioReferenceProvenance.json` retains the Phase-3 blocked
+authority bytes unchanged.
 
-DualSvfCurrentLinuxProvenance.json records the95 public input parameters, exact
-source/dependency identity, case inventory, old/new hashes, independent raw Q20
-rehashing, first differing samples, deterministic repeats, cross-compiler raw
-identity and production DSP invariants. Current positive runs pass both the
-twelve exact references and the original shared DSP/control/rate tests. No
-production DSP algorithm or gain law changed during reference renewal.
+### Dual SVF v03
 
-DualSvfCurrentLinuxGoldens.h records the qualified Linux current contract.
-Windows reuses its values only through its independently qualified adapter. The
-historical DualSvfSection2Goldens.h and the original content-addressed version1 package
-remain unchanged as provenance. Existing Classic/FX authority, Host SRC data,
-CurrentAudioGoldens.h and CurrentAudioReferenceProvenance.json are unchanged.
-The new package authenticates current drivers, related source fixtures, golden
-headers, provenance, sample counts and fingerprints. Changing any package/pin
-requires independently justified reference qualification; a newly rendered
-buffer alone is insufficient.
+Six unique cases (Paper/Eagle calibration dimension retired). Package fingerprints
+currently bootstrap from Windows MSVC DualSvfV03Goldens.h /
+DualSvfV03WindowsProvenance.json. Hosted Linux qualification must corroborate or
+reject cross-platform equality; Windows fingerprints are not silently treated as
+Linux-qualified audio acceptance.
 
-The new test excludes editor includes, guiAndStress(), the old main and snapshot
-code at compile time, while reusing the original render/control functions.
-Linux constructor traps reject Component construction. It checks selected
-mode/calibration, serial routing,25600 samples, finite audio, unchanged parameter
-values, repeatability and the independently specified mixer conversion. The
-original GUI-capable target remains available; GUI tests were not run.
+## Windows
 
-The source/binary-bound separate Dual validator is also used by the full Linux
-parser. Admission requires the exact four executable identities/hashes, actual
-source-tree fingerprint, approved package, profile, architecture, run and full
-case inventory. It checks trusted non-symlinked paths, JSON/checksum integrity,
-strict output records, nonzero exits and sanitizer/assertion diagnostics. Unit
-and native negative controls reject historical mixer output, changed hashes,
-missing/duplicate/additional cases, metadata changes, tampering and scope drift.
+The authenticated package is
+`windows-current-2b82a6f6abb197636dec3c748ae378bf5a2f6781f2cfcb0f51e76b1fe19e71f1.json`,
+pinned in `scripts/ci/windows_current_reference.py`, scope `full-native-66`.
+Compiler admission and JUCE identity remain separate from audio acceptance.
 
-## Windows and review boundaries
+Historical packages (`native-current-4864fa1b…`, `…505aef6c…`, `…651826bf…`,
+`…e4560ecede…`, `windows-current-00ed3f55…`, `…3023b0d7…`, `…a3f0e0f6…`,
+`…fbecdcbc…`) stay in-tree as provenance and are never rewritten.
 
-Linux fingerprints alone are not an MSVC authority. The separate Windows
-package `windows-current-a3f0e0f6d1f867793b6876e39602de923e52e80c9f12e1d0734d99fc165d0b9a.json`
-is pinned in `scripts/ci/windows_current_reference.py`. Its 72 values were
-corroborated under native MSVC Release, Debug and AddressSanitizer, with repeated
-execution and independent Q23/Q20/raw-PCM checking. Equality with the existing
-Linux values was observed rather than assumed. No candidate run generates
-expected audio during acquisition or admission.
+## Trust boundary
 
-Windows admission binds the complete case inventory, fixtures, actual source
-bytes, candidate revision, run, profile, x64 PE executables, compile commands,
-qualified compiler and pristine JUCE 9.0.1 revision. The manifest and records use
-canonical bytes; resealing altered records cannot authorize changed values.
-Native negative controls include junction escape, wrong compiler/profile,
-historical mixer output, diagnostics and focused-scope impersonation.
-
-The frozen Windows source predicate and old golden header remain historical
-evidence. Their expected current-source rejection is not a current audio PASS.
-New compiler identities or reference changes require separate qualification.
-Windows/macOS JUCE selection remains 9.0.1; macOS was not qualified here.
-
-This is an engineering-review branch, not production or release approval.
-Previously recorded cache roundtrip fuzz FAIL, analyzer/tidy INCOMPLETE/OPEN and
-SDK64 UNSUPPORTED remain open. No GUI/DAW, installation, release, merge or PR is
-implied by successful headless reference admission.
-
-The previous Windows package remains unchanged as historical authority. The current
-package retains all 72 audio values and qualifies the MSVC GUI reference selection
-and Integration Audit native anchors using the mixer-only historical control.
-See DualSvfCurrentWindowsTimingProvenance.json. The MSVC-only GUI guard reverses
-byte-exactly to the pinned Linux fixture; Linux audio data and package are unchanged.
-Linux runtime requalification of the shared driver remains a separate requirement.
+Changing any package/pin requires independently justified reference qualification.
+A newly rendered buffer alone is insufficient. Negative controls reject fixture
+mutations, golden substitutions, historical mixer output, sanitizer diagnostics
+and scope drift.

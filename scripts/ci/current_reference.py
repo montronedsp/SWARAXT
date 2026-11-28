@@ -15,7 +15,7 @@ import stat
 import subprocess
 
 POLICY = 'linux-current-phase3-v2'
-PACKAGE_SHA256 = 'e4560ecede784e9d3344cea24eb2b5397442c403adc1a57fff6ec73842d0a611'
+PACKAGE_SHA256 = '5f96980660fffedd672bb69b51fe60ef4745a619cbec34d8f5a8e5765c40ed78'
 PACKAGE_FILE = 'Tests/References/native-current-' + PACKAGE_SHA256 + '.json'
 AUDIO_TESTS = ('SwaraXTAudioParityTests', 'SwaraXTDspFxIntegratedExactParityTests')
 ALL_TESTS = (*AUDIO_TESTS, 'SwaraXTHostSrcExactParityTests', 'SwaraXTDualSvfHeadlessTests')
@@ -282,8 +282,8 @@ def validate_output(name, text, code, source):
     if code != 0:
         raise RuntimeError('Nonzero current test process exit')
     entry = package['tests'][name]
-    if entry['grammar'] == 'headless-dual-v1':
-        # Version2 explicitly binds the new headless identity; no binary alias.
+    if entry['grammar'] in ('headless-dual-v1', 'headless-dual-v03'):
+        # Explicit headless Dual identity; v03 retires the Paper/Eagle calibration field.
         import dual_svf_reference
         parsed = dual_svf_reference.validate_output(text, code, source)
         return {'schema': 1, 'test': name,
