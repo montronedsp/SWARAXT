@@ -1,0 +1,9 @@
+{
+  "worst_classic_fxoff_cmean_end_dbfs": -85.881338150833088,
+  "worst_classic_case": "classic_fxoff_96k_10s",
+  "worst_dual_fxoff_cmean_end_dbfs": -33.73021692605051,
+  "worst_dual_case": "dual_fxoff_serial_10s",
+  "classic_fxoff_qualifies": true,
+  "dual_fxoff_qualifies": false,
+  "failures": 0
+}

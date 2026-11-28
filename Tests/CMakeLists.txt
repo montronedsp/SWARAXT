@@ -773,6 +773,13 @@ target_compile_definitions(SwaraXTFxOffDcBlockerAudit PRIVATE
     SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS=1)
 swaraxt_enable_warnings_as_errors(SwaraXTFxOffDcBlockerAudit)
 
+swaraxt_add_plugin_console_test(SwaraXTFxOffDcBlockerAuditPhase2 DcAudit/FxOffDcBlockerAuditPhase2Main.cpp NO_TEST)
+target_compile_definitions(SwaraXTFxOffDcBlockerAuditPhase2 PRIVATE
+    SWARAXT_ENABLE_DC_AUDIT_TAPS=1
+    SWARAXT_ENABLE_SHRUTHI_DEBUG_TAPS=1 SWARAXT_ENABLE_IDLE_CPU_TESTS=1
+    SWARAXT_ENABLE_DUAL_SVF_INTEGRATION_TESTS=1)
+swaraxt_enable_warnings_as_errors(SwaraXTFxOffDcBlockerAuditPhase2)
+
 add_executable(SwaraXTHostSrcTests Architecture/HostSrcTests.cpp)
 target_include_directories(SwaraXTHostSrcTests PRIVATE "${CMAKE_SOURCE_DIR}/Source")
 swaraxt_enable_warnings(SwaraXTHostSrcTests)
