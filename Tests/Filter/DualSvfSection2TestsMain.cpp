@@ -11,11 +11,7 @@
 #include "Engine/Filter/ShruthiSvfSection2Control.h"
 #include "shruthi/resources.h"
 // SWARAXT_DUAL_PLATFORM_GOLDENS_BEGIN
-#if defined(__linux__) || defined(_MSC_VER)
-#include "DualSvfCurrentLinuxGoldens.h"
-#else
-#include "DualSvfSection2Goldens.h"
-#endif
+#include "DualSvfV03Goldens.h"
 // SWARAXT_DUAL_PLATFORM_GOLDENS_END
 #include <array>
 #include <atomic>
@@ -196,7 +192,7 @@ void parameter(SwaraXtAudioProcessor& p, const char* id, float value)
     auto* param = p.getApvts().getParameter(id);
     param->setValueNotifyingHost(param->convertTo0to1(value));
 }
-Render render(Control control, int cut, int res, int route, int calibration, int m1, int m2, bool fx = false)
+Render render(Control control, int cut, int res, int route, int m1, int m2, bool fx = false)
 {
     SwaraXtAudioProcessor p;
     p.setExperimentalSvfEnabled(true);
@@ -206,7 +202,6 @@ Render render(Control control, int cut, int res, int route, int calibration, int
     p.setExperimentalSvfRouting(static_cast<ShruthiSvfDualRouting>(route));
     p.setExperimentalSvfMode1(static_cast<ShruthiSvf2pMode>(m1));
     p.setExperimentalSvfMode2(static_cast<ShruthiSvf2pMode>(m2));
-    (void) calibration;
     if (fx)
     {
         parameter(p, IDs::dspFxProgram, 1);
@@ -222,7 +217,7 @@ Render render(Control control, int cut, int res, int route, int calibration, int
     juce::MidiBuffer midi;
     Render result;
 #if defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_SETUP_OBSERVER
-    headlessConfigured(p, control, cut, res, route, calibration, m1, m2);
+    headlessConfigured(p, control, cut, res, route, m1, m2);
 #endif // SWARAXT_DUAL_SETUP_OBSERVER
     for (int b = 0; b < 100; ++b)
     {
@@ -258,35 +253,33 @@ Render render(Control control, int cut, int res, int route, int calibration, int
 
 void audioControls()
 {
-    for (int cal = 0; cal < 2; ++cal)
-        for (int route = 0; route < 3; ++route)
-            for (int m1 = 0; m1 < 3; ++m1)
-                for (int m2 = 0; m2 < 3; ++m2)
-                {
-                    const auto low = render(Control::independent, 30, 0, route, cal, m1, m2);
-                    const auto high = render(Control::independent, 100, 63, route, cal, m1, m2);
+    for (int route = 0; route < 3; ++route)
+        for (int m1 = 0; m1 < 3; ++m1)
+            for (int m2 = 0; m2 < 3; ++m2)
+            {
+                const auto low = render(Control::independent, 30, 0, route, m1, m2);
+                const auto high = render(Control::independent, 100, 63, route, m1, m2);
                     expect(identical(low.f1, high.f1) && identical(low.q1, high.q1), "independent F2 cannot alter F1 coefficients");
                     expect(route == 0 ? low.hash == high.hash : low.hash != high.hash,
                         "Section 1 output invariant; serial/parallel independently audible");
                 }
-    for (int cal = 0; cal < 2; ++cal)
     {
-        const auto low = render(Control::relative, 52, 0, 1, cal, 0, 0);
-        const auto mid = render(Control::relative, 64, 0, 1, cal, 0, 0);
-        const auto high = render(Control::relative, 76, 0, 1, cal, 0, 0);
-        expect(low.hash == dualRelativeGoldens[cal][0] && mid.hash == dualRelativeGoldens[cal][1]
-            && high.hash == dualRelativeGoldens[cal][2], "separate Relative audio references unchanged");
+        const auto low = render(Control::relative, 52, 0, 1, 0, 0);
+        const auto mid = render(Control::relative, 64, 0, 1, 0, 0);
+        const auto high = render(Control::relative, 76, 0, 1, 0, 0);
+        expect(low.hash == dualRelativeGoldens[0] && mid.hash == dualRelativeGoldens[1]
+            && high.hash == dualRelativeGoldens[2], "separate Relative audio references unchanged");
         expect(std::abs(mid.f2 / low.f2 - 2.0) < 0.02 && std::abs(high.f2 / mid.f2 - 2.0) < 0.02,
-            "relative octave tracking in each frozen calibration");
-        const auto fxA = render(Control::independent, 0, 0, 1, cal, 0, 1, true);
-        const auto fxB = render(Control::relative, 127, 63, 1, cal, 0, 1, true);
+            "relative octave tracking");
+        const auto fxA = render(Control::independent, 0, 0, 1, 0, 1, true);
+        const auto fxB = render(Control::relative, 127, 63, 1, 0, 1, true);
         expect(fxA.fx1 == fxB.fx1 && fxA.fx2 == fxB.fx2 && fxA.fxHash == fxB.fxHash,
             "FX firmware CV bytes invariant for entire modulated render under Section 2 requests");
-        const auto cutA = render(Control::independent, 40, 32, 1, cal, 0, 1);
-        const auto cutB = render(Control::independent, 90, 32, 1, cal, 0, 1);
-        const auto resB = render(Control::independent, 90, 63, 1, cal, 0, 1);
-        expect(cutA.hash == dualIndependentGoldens[cal][0] && cutB.hash == dualIndependentGoldens[cal][1]
-            && resB.hash == dualIndependentGoldens[cal][2], "separate Independent audio references unchanged");
+        const auto cutA = render(Control::independent, 40, 32, 1, 0, 1);
+        const auto cutB = render(Control::independent, 90, 32, 1, 0, 1);
+        const auto resB = render(Control::independent, 90, 63, 1, 0, 1);
+        expect(cutA.hash == dualIndependentGoldens[0] && cutB.hash == dualIndependentGoldens[1]
+            && resB.hash == dualIndependentGoldens[2], "separate Independent audio references unchanged");
         expect(cutA.hash != cutB.hash && cutB.hash != resB.hash && identical(cutA.f1, cutB.f1)
             && identical(cutB.f1, resB.f1), "cutoff and resonance independently audible with fixed F1");
 #if !defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_PRINT_GUARD
@@ -298,7 +291,7 @@ void audioControls()
         std::printf("DualRelative_v03_Plus12 hash=%016llx\n", static_cast<unsigned long long>(high.hash));
 #endif // SWARAXT_DUAL_PRINT_GUARD
     }
-    std::printf("Production independence: 108 paired renders across routes, modes and calibrations\n");
+    std::printf("Production independence: 54 paired renders across routes and modes\n");
 }
 
 #if !defined(SWARAXT_DUAL_SVF_HEADLESS) // SWARAXT_DUAL_GUI_GUARD

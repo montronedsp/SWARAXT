@@ -27,14 +27,13 @@ void headlessCheck(bool okay, const char* reason)
 }
 void headlessConfigured(SwaraXtAudioProcessor& p,
     swaraxt::ShruthiSvfSection2Control control, int cut, int res,
-    int route, int calibration, int m1, int m2)
+    int route, int m1, int m2)
 {
-    (void) calibration;
     const auto selection=p.experimentalSvfSelection();
     headlessCheck(selection.enabled && selection.control2==control
         && int(selection.cutoff2)==cut && int(selection.resonance2)==res
         && int(selection.routing)==route
-        && int(selection.mode1)==m1 && int(selection.mode2)==m2,"selected mode/calibration/control mismatch");
+        && int(selection.mode1)==m1 && int(selection.mode2)==m2,"selected mode or control mismatch");
     headlessSelection=swaraxt::ExperimentalSvfSelection::pack(selection);
     headlessParameters.clear();
     for (auto* parameter:p.getParameters()) headlessParameters.push_back(parameter->getValue());
@@ -88,7 +87,7 @@ int main(int argc,char** argv)
     try {
         if (argc==3 && std::string(argv[1])=="--negative") negativeControl=argv[2];
         else headlessCheck(argc==1,"unexpected command arguments");
-        headlessCheck(negativeControl.empty() || negativeControl=="wrong-calibration"
+        headlessCheck(negativeControl.empty() || negativeControl=="wrong-routing"
             || negativeControl=="wrong-mode" || negativeControl=="nonfinite"
             || negativeControl=="changed-sample", "unknown negative control");
         // JUCE's Linux initialiser creates message infrastructure, no Component.
@@ -102,27 +101,27 @@ int main(int argc,char** argv)
             {"Cut90_Res32",Control::independent,90,32,1},{"Cut90_Res63",Control::independent,90,63,1},
             {"Minus12",Control::relative,52,0,0},{"Center64",Control::relative,64,0,0},{"Plus12",Control::relative,76,0,0}};
         int count=0;
-        for (int calibration=0;calibration<2;++calibration) for (int index=0;index<6;++index) {
+        for (int index=0;index<6;++index) {
             const auto& c=cases[index]; const bool independent=c.mode==Control::independent;
-            const auto expected=independent?dualIndependentGoldens[calibration][index]:dualRelativeGoldens[calibration][index-3];
-            const int actualCalibration=negativeControl=="wrong-calibration"?1-calibration:calibration;
+            const auto expected=independent?dualIndependentGoldens[index]:dualRelativeGoldens[index-3];
+            const int route=negativeControl=="wrong-routing"?0:1;
             const auto actualMode=negativeControl=="wrong-mode"?(independent?Control::relative:Control::independent):c.mode;
             matrixCase=true;
-            const auto first=render(actualMode,c.cut,c.res,1,actualCalibration,0,c.m2);
-            const auto second=render(actualMode,c.cut,c.res,1,actualCalibration,0,c.m2);
+            const auto first=render(actualMode,c.cut,c.res,route,0,c.m2);
+            const auto second=render(actualMode,c.cut,c.res,route,0,c.m2);
             matrixCase=false;
-            headlessCheck(actualCalibration==calibration,"wrong calibration identity");
+            headlessCheck(route==1,"wrong routing identity");
             headlessCheck(actualMode==c.mode,"wrong Section2 mode identity");
             headlessCheck(first.hash==second.hash,"non-deterministic Q20 render");
             expect(first.hash==expected,"unapproved Q20 audio fingerprint");
-            std::printf("DUAL_SVF_HEADLESS {\"case\":\"Dual%s_v03_%s\",\"mode\":\"%s\",\"calibration\":\"v03\",\"samples\":%d,\"hash\":\"%016llx\",\"finite\":true,\"deterministic\":true,\"parameters_unchanged\":true,\"repeats\":2}\n",
+            std::printf("DUAL_SVF_HEADLESS {\"case\":\"Dual%s_v03_%s\",\"mode\":\"%s\",\"samples\":%d,\"hash\":\"%016llx\",\"finite\":true,\"deterministic\":true,\"parameters_unchanged\":true,\"repeats\":2}\n",
                 independent?"Independent":"Relative",c.label,
                 independent?"Independent":"Relative",headlessSamples,
                 static_cast<unsigned long long>(first.hash));
             ++count;
         }
-        headlessCheck(count==12 && failures==0,"incorrect case count or shared assertions");
-        std::puts("DUAL_SVF_HEADLESS_PASS cases=12 samples=25600 repeats=2 gui=excluded");
+        headlessCheck(count==6 && failures==0,"incorrect case count or shared assertions");
+        std::puts("DUAL_SVF_HEADLESS_PASS cases=6 samples=25600 repeats=2 gui=excluded");
         return 0;
     } catch (const std::exception& error) { std::fprintf(stderr,"FAIL: %s\n",error.what()); return 1; }
 }

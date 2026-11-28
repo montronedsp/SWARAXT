@@ -744,8 +744,43 @@ void testExperimentalSvfPublication()
     expect(roundTrip.routing == packed.routing, "packed selection preserves routing");
     expect(roundTrip.mode1 == packed.mode1, "packed selection preserves mode1");
     expect(roundTrip.mode2 == packed.mode2, "packed selection preserves mode2");
+    expect(roundTrip.control2 == packed.control2, "packed selection preserves filter 2 control");
+    expect(roundTrip.cutoff2 == packed.cutoff2 && roundTrip.resonance2 == packed.resonance2,
+           "packed selection preserves filter 2 cutoff and resonance");
+    const auto cleared = S::unpack(S::pack(packed));
+    expect(S::pack(cleared) == S::pack(roundTrip), "both historical bit values unpack to one selection");
     expect((S::pack(roundTrip) & (1u << S::kRetiredCalibrationBit)) == 0,
            "retired calibration bit is not rewritten into new state");
+    auto renderPacked = [](const S& selection) {
+        swaraxt::ShruthiSvfDual dual;
+        dual.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
+        dual.setRouting(selection.routing);
+        dual.setMode1(selection.mode1);
+        dual.setMode2(selection.mode2);
+        dual.setSection2FollowsSection1(selection.control2 == swaraxt::ShruthiSvfSection2Control::legacyFollow);
+        dual.setFirmwareCutoff(160);
+        dual.setFirmwareResonance(64);
+        if (selection.control2 != swaraxt::ShruthiSvfSection2Control::legacyFollow)
+        {
+            dual.setFirmwareCutoff2(selection.cutoff2);
+            dual.setFirmwareResonance2(selection.resonance2);
+        }
+        std::uint64_t hash = 1469598103934665603ull;
+        for (int i = 0; i < 512; ++i)
+        {
+            const float x = static_cast<float>(0.15 * std::sin(0.07 * i));
+            const auto y = dual.process(x, 0.8f);
+            hash ^= static_cast<std::uint32_t>(std::llround(static_cast<double>(y) * 1048576.0));
+            hash *= 1099511628211ull;
+        }
+        return hash;
+    };
+    packed.control2 = swaraxt::ShruthiSvfSection2Control::relative;
+    packed.cutoff2 = 76;
+    packed.resonance2 = 40;
+    expect(renderPacked(S::unpack(S::pack(packed)))
+               == renderPacked(S::unpack(S::pack(packed) | (1u << S::kRetiredCalibrationBit))),
+           "historical bit 7 does not change Dual audio");
 
     swaraxt::ExperimentalSvfControl control;
     swaraxt::ShruthiSvfDual dual;
