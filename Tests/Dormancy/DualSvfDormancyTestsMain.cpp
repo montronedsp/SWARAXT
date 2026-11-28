@@ -63,6 +63,7 @@ void set(SwaraXtAudioProcessor& p, const char* id, float value) {
     if (a) a->setValueNotifyingHost(a->convertTo0to1(value));
 }
 void setup(SwaraXtAudioProcessor& p, int route, int calibration, int fx = 0) {
+    (void) calibration;
     set(p, IDs::osc1Shape, 1); set(p, IDs::osc1Param, 0); set(p, IDs::osc1Range, 0); set(p, IDs::osc2Shape, 0);
     set(p, IDs::mixBalance, 0); set(p, IDs::mixSub, 0); set(p, IDs::mixNoise, 0);
     set(p, IDs::filterCutoff, 8000); set(p, IDs::filterResonance, 1); set(p, IDs::filterKeyTracking, .5f);
@@ -73,7 +74,6 @@ void setup(SwaraXtAudioProcessor& p, int route, int calibration, int fx = 0) {
     set(p, IDs::env1Sustain, 127); set(p, IDs::env2Sustain, 127);
     for (int row = 1; row <= 12; ++row) { const auto id = "mod.row" + std::to_string(row) + ".amount"; set(p, id.c_str(), row == 9 ? 63.f : 0.f); }
     Selection s; s.enabled = true; s.routing = static_cast<ShruthiSvfDualRouting>(route);
-    s.calibration = static_cast<ShruthiSvfCalibration>(calibration);
     s.control2 = ShruthiSvfSection2Control::independent; s.cutoff2 = 86; s.resonance2 = 63;
     Access::request(p.engineForTests(), s);
 }
@@ -225,16 +225,17 @@ void exactVcaGate() {
     for (int route = 0; route < 3; ++route) {
         auto p = std::make_unique<SwaraXtAudioProcessor>(); setup(*p, route, 0); p->prepareToPlay(48000, 64); auto& e = p->engineForTests();
         for (int i = 0; i < 40; ++i) Access::drive(e, 1);
-        bool tiny = false;
+        bool positive = false;
         for (int i = 0; i < 512; ++i) {
             Access::drive(e, 0); const float vca = e.experimentalSvfDualForTests().vcaControl();
-            if (vca > 0 && vca < 1.e-8f) {
-                // Isolate the VCA predicate; full processor FIFO drainage is
-                // checked independently by Trace and the indexed tag tests.
-                Access::delay(e).reset(); tiny = true; check(Access::tail(e), "positive sub-threshold VCA alone still prohibits dormancy");
+            if (vca > 0) {
+                // The v03 V2164 closes by the R53 offset, so the last open
+                // sample is a normal positive gain, not a 1e-8 tail.
+                // Isolate that predicate; FIFO drainage is checked separately.
+                Access::delay(e).reset(); positive = true; check(Access::tail(e), "strictly positive VCA gain alone still prohibits dormancy");
             }
         }
-        check(tiny && e.experimentalSvfDualForTests().vcaControl() == 0, "each routing reaches exact zero after a representable positive VCA interval");
+        check(positive && e.experimentalSvfDualForTests().vcaControl() == 0, "each routing reaches exact zero after a strictly positive VCA interval");
     }
 }
 struct WakeReplay {
@@ -246,7 +247,7 @@ struct WakeReplay {
     WakeReplay() { native.reserve(8192); }
     void configure(SwaraXtEngine& e) {
         engine = &e; const auto s = Access::installed(e); const auto& v = e.shruthiPart().voice();
-        fresh.prepare(nativeRate); fresh.setRouting(s.routing); fresh.setMode1(s.mode1); fresh.setMode2(s.mode2); fresh.setCalibration(s.calibration);
+        fresh.prepare(nativeRate); fresh.setRouting(s.routing); fresh.setMode1(s.mode1); fresh.setMode2(s.mode2);
         fresh.setSection2FollowsSection1(s.control2 == ShruthiSvfSection2Control::legacyFollow);
         fresh.setFirmwareCutoff(v.cutoff()); fresh.setFirmwareResonance(v.resonance());
         if (s.control2 != ShruthiSvfSection2Control::legacyFollow) { const auto cv = reconstructSvfSection2(e.shruthiPart().patch(), v, s.cutoff2, s.resonance2, s.control2 == ShruthiSvfSection2Control::relative); fresh.setFirmwareCutoff2(cv.cutoff); fresh.setFirmwareResonance2(cv.resonance); }

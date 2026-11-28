@@ -59,8 +59,10 @@ void testControlLaws()
     expect(std::abs(C::analogF0Hz() - expectedF0) < 1.0e-9, "f0 = 1/(2 pi R C) from Python R=33k C=220pF");
     expect(std::abs(C::passbandGain() - 1.0) < 1.0e-12, "G = Rg/Ri = 1");
     expect(std::abs(C::kRho - 5.0 / 27.0) < 1.0e-15, "rho = 5/27");
-    expect(std::abs(C::kRoOhms - 220000.0) < 1.0e-9, "R_O = 220k");
-    expect(std::abs(C::rqOverRo() - 15000.0 / 220000.0) < 1.0e-15, "R_Q/R_O");
+    expect(std::abs(C::kRoOhms - 330000.0) < 1.0e-9, "v03 R_O = 330k");
+    expect(std::abs(C::rqOverRo() - 15000.0 / 330000.0) < 1.0e-15, "R_Q/R_O");
+    expect(std::abs(C::kClampVolts - 4.3) < 1.0e-12, "anti-series clamp is 3.6 V + 0.7 V");
+    expect(std::abs(C::kCutoffCvTauSeconds - 10000.0 * 33.0e-9) < 1.0e-15, "cutoff pole is R10*C11");
 
     const double fMin = C::cutoffHzFromFirmwareByte(0);
     const double fMax = C::cutoffHzFromFirmwareByte(255);
@@ -85,8 +87,8 @@ void testControlLaws()
     }
 
     const double vCrit = C::selfOscillationThresholdPwmVolts();
-    expect(vCrit > 4.1 && vCrit < 4.3, "R_O singularity near 4.20 V PWM");
-    expect(C::selfOscillationThresholdByte() == 214, "singularity ~ PWM byte 214");
+    expect(vCrit > 4.8 && vCrit < 4.9, "330 kΩ singularity near 4.83 V PWM");
+    expect(C::selfOscillationThresholdByte() == 246, "singularity ~ PWM byte 246");
 
     const int resos[] = { 0, 8, 16, 24, 32, 40, 48, 56, 63 };
     double prevQ = 0.0;
@@ -111,8 +113,8 @@ void testControlLaws()
         }
     }
     expect(sawLossless, "panel 63 crosses self-oscillation");
-    expect(! C::isSelfOscillatingByte(panelResonanceByte(52)), "low-Q region still finite at panel 52");
-    expect(C::isSelfOscillatingByte(panelResonanceByte(54)), "steep landing by panel 54");
+    expect(! C::isSelfOscillatingByte(panelResonanceByte(61)), "panel 61 is still below the 330 kΩ threshold");
+    expect(C::isSelfOscillatingByte(panelResonanceByte(62)), "panel 62 crosses self-oscillation");
 }
 
 void testZener()
@@ -120,10 +122,10 @@ void testZener()
     using C = swaraxt::ShruthiSvf2pControl;
     expect(C::zenerLimit(0.0) == 0.0, "zener odd: zero");
     expect(std::abs(C::zenerLimit(1.0) - 1.0) < 1.0e-15, "zener linear at 1 V");
-    expect(std::abs(C::zenerLimit(4.0) - 4.0) < 1.0e-15, "zener linear through 4.0 V");
-    expect(C::zenerLimit(4.35) > 4.0 && C::zenerLimit(4.35) < 4.7, "zener knee below 4.7 V");
-    expect(C::zenerLimit(20.0) < 4.7 && C::zenerLimit(20.0) > 4.6, "zener asymptote 4.7 V");
-    expect(std::abs(C::zenerLimit(-4.35) + C::zenerLimit(4.35)) < 1.0e-15, "zener odd symmetry");
+    expect(std::abs(C::zenerLimit(3.6) - 3.6) < 1.0e-12, "linear through the 3.6 V zener rating");
+    expect(C::zenerLimit(4.0) > 3.6 && C::zenerLimit(4.0) < 4.3, "knee between Vz and Vz+Vf");
+    expect(C::zenerLimit(20.0) < 4.3 && C::zenerLimit(20.0) > 4.2, "asymptote is 4.3 V");
+    expect(std::abs(C::zenerLimit(-4.0) + C::zenerLimit(4.0)) < 1.0e-15, "zener odd symmetry");
 }
 
 void testModesAndSlope()
@@ -201,8 +203,9 @@ void testSelfOscillation()
         peak = std::max(peak, std::abs(static_cast<double>(y)));
     }
     expect(invalid == 0, "self-osc 2 s: no NaN/Inf");
-    expect(peak > 0.01 && peak < 8.0, "self-osc bounded and alive after impulse");
-    expect(std::abs(svf.lastBpVolts()) <= 4.7 + 1.0e-6, "BP capacitor within Zener");
+    expect(peak > 0.001 && peak < 8.0, "self-osc bounded and alive after impulse");
+    expect(std::abs(svf.lastBpVolts()) <= swaraxt::ShruthiSvf2pControl::kClampVolts + 1.0e-6,
+           "BP capacitor within the anti-series clamp");
 }
 
 std::uint64_t hashSamples(const std::vector<float>& samples)
@@ -258,13 +261,13 @@ void testSection1SonicReference()
 {
     struct Case { const char* name; std::uint64_t expected; std::vector<float> audio; };
     const Case cases[] = {
-        { "S1 LP low resonance", 0xb12a7b6fe14f50a3ull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 8, false, false, false) },
-        { "S1 LP high resonance", 0x44a4fe703707c9baull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 48, false, false, false) },
-        { "S1 LP self-oscillation", 0x5055b05892a50940ull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 80, 63, true, false, false) },
-        { "S1 BP", 0x1b1d6a0ca0fc7916ull, renderSection1(swaraxt::ShruthiSvf2pMode::bandPass, 64, 24, false, false, false) },
-        { "S1 HP", 0x0360ab996aa498ecull, renderSection1(swaraxt::ShruthiSvf2pMode::highPass, 64, 16, false, false, false) },
-        { "S1 cutoff automation", 0x006f74e9a52fae2full, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 16, false, true, false) },
-        { "S1 resonance automation", 0x351762b97a841514ull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 16, false, false, true) },
+        { "S1 LP low resonance", 0x0beac7d2e4f8d5faull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 8, false, false, false) },
+        { "S1 LP high resonance", 0x73c446eb5d9176f9ull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 48, false, false, false) },
+        { "S1 LP self-oscillation", 0x4db9926e35e68d3full, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 80, 63, true, false, false) },
+        { "S1 BP", 0x567c7e9c2efa316bull, renderSection1(swaraxt::ShruthiSvf2pMode::bandPass, 64, 24, false, false, false) },
+        { "S1 HP", 0x4639d29e43353d48ull, renderSection1(swaraxt::ShruthiSvf2pMode::highPass, 64, 16, false, false, false) },
+        { "S1 cutoff automation", 0x70e64b90521e3a25ull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 16, false, true, false) },
+        { "S1 resonance automation", 0x8134986deb2fe090ull, renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 16, false, false, true) },
     };
     for (const auto& c : cases)
     {
@@ -284,12 +287,10 @@ std::vector<float> renderDual(swaraxt::ShruthiSvfDualRouting routing,
                               swaraxt::ShruthiSvf2pMode mode1,
                               swaraxt::ShruthiSvf2pMode mode2,
                               int cutoffPanel, int resPanel,
-                              bool impulseThenSilence,
-                              swaraxt::ShruthiSvfCalibration calibration = swaraxt::ShruthiSvfCalibration::paperApproved)
+                              bool impulseThenSilence)
 {
     swaraxt::ShruthiSvfDual dual;
     dual.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
-    dual.setCalibration(calibration);
     dual.setRouting(routing);
     dual.setMode1(mode1);
     dual.setMode2(mode2);
@@ -316,23 +317,23 @@ void testDualSection1MatchesFrozenReference()
 {
     struct Case { const char* name; std::uint64_t expected; std::vector<float> audio; };
     const Case cases[] = {
-        { "Dual S1 LP low resonance", 0xb12a7b6fe14f50a3ull,
+        { "Dual S1 LP low resonance", 0x0beac7d2e4f8d5faull,
           renderDual(swaraxt::ShruthiSvfDualRouting::section1,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      64, 8, false) },
-        { "Dual S1 LP high resonance", 0x44a4fe703707c9baull,
+        { "Dual S1 LP high resonance", 0x73c446eb5d9176f9ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::section1,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      64, 48, false) },
-        { "Dual S1 LP self-oscillation", 0x5055b05892a50940ull,
+        { "Dual S1 LP self-oscillation", 0x4db9926e35e68d3full,
           renderDual(swaraxt::ShruthiSvfDualRouting::section1,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      80, 63, true) },
-        { "Dual S1 BP", 0x1b1d6a0ca0fc7916ull,
+        { "Dual S1 BP", 0x567c7e9c2efa316bull,
           renderDual(swaraxt::ShruthiSvfDualRouting::section1,
                      swaraxt::ShruthiSvf2pMode::bandPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      64, 24, false) },
-        { "Dual S1 HP", 0x0360ab996aa498ecull,
+        { "Dual S1 HP", 0x4639d29e43353d48ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::section1,
                      swaraxt::ShruthiSvf2pMode::highPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      64, 16, false) },
@@ -350,31 +351,31 @@ void testPrototype2DualSonicReference()
 {
     struct Case { const char* name; std::uint64_t expected; std::vector<float> audio; };
     const Case cases[] = {
-        { "P2 serial LP>LP", 0x60b76744f830cfe9ull,
+        { "P2 serial LP>LP", 0x3bce33d3b4f92cfeull,
           renderDual(swaraxt::ShruthiSvfDualRouting::serial,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      48, 16, false) },
-        { "P2 serial LP>BP", 0xbff625db74c9addfull,
+        { "P2 serial LP>BP", 0x5a45f49ac67bc1b7ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::serial,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::bandPass,
                      48, 16, false) },
-        { "P2 serial BP>LP", 0xbff625db74c9addfull,
+        { "P2 serial BP>LP", 0x5a45f49ac67bc1b7ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::serial,
                      swaraxt::ShruthiSvf2pMode::bandPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      48, 16, false) },
-        { "P2 serial HP>LP", 0x4b4f755e3ce99103ull,
+        { "P2 serial HP>LP", 0x76ec2525c5b0dc86ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::serial,
                      swaraxt::ShruthiSvf2pMode::highPass, swaraxt::ShruthiSvf2pMode::lowPass,
                      48, 16, false) },
-        { "P2 parallel LP+HP", 0xba004ae74418c201ull,
+        { "P2 parallel LP+HP", 0x32bfb838a7c6d107ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::parallel,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::highPass,
                      48, 16, false) },
-        { "P2 parallel LP+BP", 0xf82e913fbcde2d97ull,
+        { "P2 parallel LP+BP", 0xb13e3f67aa045d03ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::parallel,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::bandPass,
                      48, 16, false) },
-        { "P2 parallel BP+HP", 0x34e6c5e4c6a7e7d7ull,
+        { "P2 parallel BP+HP", 0x084195624b690131ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::parallel,
                      swaraxt::ShruthiSvf2pMode::bandPass, swaraxt::ShruthiSvf2pMode::highPass,
                      48, 16, false) },
@@ -504,80 +505,13 @@ void testRoutingSwitchSafety()
     expect(invalid == 0, "routing/mode switch torture stays finite");
 }
 
-void testHardwareResonanceLaw()
+void testV03SelfOscillation()
 {
-    using P = swaraxt::ShruthiSvf2pControl;
-    using H = swaraxt::ShruthiSvfHardwareControl;
-    expect(std::abs(H::kRoOhms - 330000.0) < 1.0e-9, "hardware R_O = 330k");
-    expect(std::abs(H::rqOverRo() - 15000.0 / 330000.0) < 1.0e-15, "hardware R_Q/R_O");
-    const double vHw = H::selfOscillationThresholdPwmVolts();
-    const double vPaper = P::selfOscillationThresholdPwmVolts();
-    expect(vHw > vPaper, "330k oscillates at a higher PWM than 220k");
-    expect(vHw > 4.8 && vHw < 4.9, "330k singularity near 4.83 V PWM");
-    expect(H::selfOscillationThresholdByte() == 246, "330k singularity ~ PWM byte 246");
-    expect(! H::isSelfOscillatingByte(panelResonanceByte(54)), "hardware still finite at panel 54");
-    expect(! H::isSelfOscillatingByte(panelResonanceByte(60)), "hardware still finite at panel 60");
-    expect(H::isSelfOscillatingByte(panelResonanceByte(63)), "hardware crosses lossless by panel 63");
-
-    std::printf("panel  paperQ     hwQ        paperOsc hwOsc\n");
-    for (int panel = 0; panel <= 63; ++panel)
-    {
-        const auto byte = panelResonanceByte(panel);
-        const double qp = P::qFromFirmwareByte(byte);
-        const double qh = H::qFromFirmwareByte(byte);
-        const bool oscP = P::isSelfOscillatingByte(byte);
-        const bool oscH = H::isSelfOscillatingByte(byte);
-        if (panel <= 50 || panel >= 52)
-            std::printf("%5d  %9.3f  %9.3f  %d        %d\n",
-                        panel, oscP ? 0.0 : qp, oscH ? 0.0 : qh,
-                        oscP ? 1 : 0, oscH ? 1 : 0);
-    }
-    const double qP50 = P::qFromFirmwareByte(panelResonanceByte(50));
-    const double qH50 = H::qFromFirmwareByte(panelResonanceByte(50));
-    const double qP53 = P::qFromFirmwareByte(panelResonanceByte(53));
-    const double qH60 = H::qFromFirmwareByte(panelResonanceByte(60));
-    expect(qH50 < qP50 * 0.5, "at panel 50, 330k Q is much lower than 220k");
-    expect(qP53 > qP50 * 5.0, "220k Q has a steep landing toward oscillation");
-    expect(qH50 < 20.0 && qH60 > 50.0, "330k stays milder through 0-50 then steepens near max");
-}
-
-void testHardwareZener()
-{
-    using H = swaraxt::ShruthiSvfHardwareControl;
-    expect(H::zenerLimit(0.0) == 0.0, "hw zener odd: zero");
-    expect(std::abs(H::zenerLimit(1.0) - 1.0) < 1.0e-15, "hw zener linear at 1 V");
-    expect(std::abs(H::zenerLimit(2.9) - 2.9) < 1.0e-15, "hw zener linear through 2.9 V");
-    expect(H::zenerLimit(3.2) > 2.9 && H::zenerLimit(3.2) < 3.6, "hw zener knee below 3.6 V");
-    expect(H::zenerLimit(20.0) < 3.6 && H::zenerLimit(20.0) > 3.5, "hw zener asymptote 3.6 V");
-    expect(std::abs(H::zenerLimit(-3.2) + H::zenerLimit(3.2)) < 1.0e-15, "hw zener odd symmetry");
-}
-
-void testCalibrationSwitchAndHardwareAudio()
-{
-    swaraxt::ShruthiSvfDual dual;
-    dual.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
-    dual.setFirmwareCutoff1(panelCutoffByte(64));
-    dual.setFirmwareResonance1(panelResonanceByte(48));
-    dual.setVcaTarget(1.0f);
-    dual.snapControlsForTests();
-    expect(dual.calibration() == swaraxt::ShruthiSvfCalibration::paperApproved,
-           "default calibration is Approved/Paper");
-
-    const auto paper = renderDual(swaraxt::ShruthiSvfDualRouting::section1,
-                                  swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
-                                  64, 48, false, swaraxt::ShruthiSvfCalibration::paperApproved);
-    const auto hardware = renderDual(swaraxt::ShruthiSvfDualRouting::section1,
-                                     swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
-                                     64, 48, false, swaraxt::ShruthiSvfCalibration::eagleHardware);
-    expect(hashSamples(paper) == 0x44a4fe703707c9baull, "paper high-res still matches S1 reference");
-    expect(hashSamples(hardware) != hashSamples(paper), "hardware calibration changes high-res LP");
-
     swaraxt::ShruthiSvf2p svf;
     svf.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
     svf.setFirmwareCutoff(panelCutoffByte(80));
     svf.setFirmwareResonance(panelResonanceByte(63));
     svf.setMode(swaraxt::ShruthiSvf2pMode::bandPass);
-    svf.setCalibration(swaraxt::ShruthiSvfCalibration::eagleHardware);
     svf.snapControlsForTests();
     double peak = 0.0, maxBp = 0.0;
     int invalid = 0;
@@ -590,16 +524,16 @@ void testCalibrationSwitchAndHardwareAudio()
         peak = std::max(peak, std::abs(static_cast<double>(y)));
         maxBp = std::max(maxBp, std::abs(svf.lastBpVolts()));
     }
-    expect(invalid == 0, "hardware self-osc 1 s finite");
-    expect(peak > 0.01 && peak < 8.0, "hardware self-osc bounded and alive");
-    expect(maxBp <= 3.6 + 1.0e-6, "hardware BP within 3.6 V limiter");
+    expect(invalid == 0, "v03 self-osc 1 s finite");
+    expect(peak > 0.001 && peak < 8.0, "v03 self-osc bounded and alive");
+    expect(maxBp <= swaraxt::ShruthiSvf2pControl::kClampVolts + 1.0e-6,
+           "BP stays inside the anti-series clamp");
 
+    swaraxt::ShruthiSvfDual dual;
+    dual.prepare(sr);
     int switchInvalid = 0;
     for (int i = 0; i < 2048; ++i)
     {
-        dual.setCalibration((i & 1) != 0
-            ? swaraxt::ShruthiSvfCalibration::eagleHardware
-            : swaraxt::ShruthiSvfCalibration::paperApproved);
         dual.setFirmwareCutoff1(static_cast<std::uint8_t>(i & 255));
         dual.setFirmwareResonance1(static_cast<std::uint8_t>((i * 7) & 255));
         const float x = static_cast<float>(0.25 * std::sin(2.0 * swaraxt::ShruthiSvf2pControl::kPi * 220.0 * i / sr));
@@ -607,7 +541,7 @@ void testCalibrationSwitchAndHardwareAudio()
         if (! std::isfinite(y) || std::abs(y) > 16.0f)
             ++switchInvalid;
     }
-    expect(switchInvalid == 0, "calibration switch torture stays finite without forced reset");
+    expect(switchInvalid == 0, "cutoff and resonance automation stays finite");
 }
 
 void reportStats(const char* name, const std::vector<float>& audio, double maxBp, double sampleRate)
@@ -679,39 +613,31 @@ void testApprovedVsHardwareMeasurements()
     };
     for (const auto& job : jobs)
     {
-        for (auto cal : { swaraxt::ShruthiSvfCalibration::paperApproved,
-                          swaraxt::ShruthiSvfCalibration::eagleHardware })
+        swaraxt::ShruthiSvfDual dual;
+        dual.prepare(sr);
+        dual.setRouting(job.routing);
+        dual.setMode1(job.m1);
+        dual.setMode2(job.m2);
+        dual.setFirmwareCutoff1(panelCutoffByte(job.cut));
+        dual.setFirmwareResonance1(panelResonanceByte(job.res));
+        dual.setVcaTarget(1.0f);
+        dual.snapControlsForTests();
+        std::vector<float> y;
+        y.reserve(4096);
+        double maxBp = 0.0;
+        for (int i = 0; i < 4096; ++i)
         {
-            swaraxt::ShruthiSvfDual dual;
-            dual.prepare(sr);
-            dual.setCalibration(cal);
-            dual.setRouting(job.routing);
-            dual.setMode1(job.m1);
-            dual.setMode2(job.m2);
-            dual.setFirmwareCutoff1(panelCutoffByte(job.cut));
-            dual.setFirmwareResonance1(panelResonanceByte(job.res));
-            dual.setVcaTarget(1.0f);
-            dual.snapControlsForTests();
-            std::vector<float> y;
-            y.reserve(4096);
-            double maxBp = 0.0;
-            for (int i = 0; i < 4096; ++i)
-            {
-                float x = 0.0f;
-                if (job.impulse)
-                    x = i == 0 ? 0.2f : 0.0f;
-                else
-                    x = static_cast<float>(0.1 * std::sin(2.0 * swaraxt::ShruthiSvf2pControl::kPi * 220.0 * i / sr));
-                y.push_back(dual.process(x, 1.0f));
-                maxBp = std::max(maxBp, std::abs(dual.section1().lastBpVolts()));
-                maxBp = std::max(maxBp, std::abs(dual.section2().lastBpVolts()));
-            }
-            char label[96];
-            std::snprintf(label, sizeof(label), "%s_%s",
-                          cal == swaraxt::ShruthiSvfCalibration::paperApproved ? "approved" : "hardware",
-                          job.name);
-            reportStats(label, y, maxBp, sr);
+            float x = 0.0f;
+            if (job.impulse)
+                x = i == 0 ? 0.2f : 0.0f;
+            else
+                x = static_cast<float>(0.1 * std::sin(2.0 * swaraxt::ShruthiSvf2pControl::kPi * 220.0 * i / sr));
+            y.push_back(dual.process(x, 1.0f));
+            maxBp = std::max(maxBp, std::abs(dual.section1().lastBpVolts()));
+            maxBp = std::max(maxBp, std::abs(dual.section2().lastBpVolts()));
         }
+        reportStats(job.name, y, maxBp, sr);
+        expect(maxBp <= swaraxt::ShruthiSvf2pControl::kClampVolts + 1.0e-4, job.name);
     }
 }
 
@@ -754,13 +680,14 @@ void testExperimentalSvfPublication()
     packed.routing = swaraxt::ShruthiSvfDualRouting::serial;
     packed.mode1 = swaraxt::ShruthiSvf2pMode::bandPass;
     packed.mode2 = swaraxt::ShruthiSvf2pMode::highPass;
-    packed.calibration = swaraxt::ShruthiSvfCalibration::eagleHardware;
-    const auto roundTrip = S::unpack(S::pack(packed));
+    const auto historical = S::pack(packed) | (1u << S::kRetiredCalibrationBit);
+    const auto roundTrip = S::unpack(historical);
     expect(roundTrip.enabled, "packed selection preserves enabled");
     expect(roundTrip.routing == packed.routing, "packed selection preserves routing");
     expect(roundTrip.mode1 == packed.mode1, "packed selection preserves mode1");
     expect(roundTrip.mode2 == packed.mode2, "packed selection preserves mode2");
-    expect(roundTrip.calibration == packed.calibration, "packed selection preserves calibration");
+    expect((S::pack(roundTrip) & (1u << S::kRetiredCalibrationBit)) == 0,
+           "retired calibration bit is not rewritten into new state");
 
     swaraxt::ExperimentalSvfControl control;
     swaraxt::ShruthiSvfDual dual;
@@ -772,19 +699,17 @@ void testExperimentalSvfPublication()
         s.mode1 = swaraxt::ShruthiSvf2pMode::highPass;
     });
     control.patch([](S& s) {
-        s.calibration = swaraxt::ShruthiSvfCalibration::eagleHardware;
+        s.mode2 = swaraxt::ShruthiSvf2pMode::bandPass;
     });
     const auto sel = control.selection();
     expect(sel.enabled && sel.routing == swaraxt::ShruthiSvfDualRouting::parallel
                && sel.mode1 == swaraxt::ShruthiSvf2pMode::highPass
-               && sel.calibration == swaraxt::ShruthiSvfCalibration::eagleHardware,
+               && sel.mode2 == swaraxt::ShruthiSvf2pMode::bandPass,
            "CAS patch preserves unrelated selector fields");
     control.applyOnAudioThread(dual, enabled);
     expect(enabled, "audio apply publishes enabled");
     expect(dual.routing() == swaraxt::ShruthiSvfDualRouting::parallel, "audio apply routing");
     expect(dual.mode1() == swaraxt::ShruthiSvf2pMode::highPass, "audio apply mode1");
-    expect(dual.calibration() == swaraxt::ShruthiSvfCalibration::eagleHardware,
-           "audio apply calibration");
 
     dual.setFirmwareCutoff1(panelCutoffByte(64));
     dual.setFirmwareResonance1(panelResonanceByte(48));
@@ -797,13 +722,13 @@ void testExperimentalSvfPublication()
         dual.process(x, 1.0f);
     }
     const double bpBefore = dual.section1().lastBpVolts();
-    expect(std::abs(bpBefore) > 1.0e-6, "pre-calibration switch has state");
+    expect(std::abs(bpBefore) > 1.0e-6, "rendered section has state");
     control.patch([](S& s) {
-        s.calibration = swaraxt::ShruthiSvfCalibration::paperApproved;
+        s.mode2 = swaraxt::ShruthiSvf2pMode::lowPass;
     });
     control.applyOnAudioThread(dual, enabled);
     expect(std::abs(dual.section1().lastBpVolts() - bpBefore) < 1.0e-15,
-           "calibration apply is state-continuous");
+           "a mode-2 update does not reset section 1");
 }
 
 void testPrototype3CalibrationSonicReference()
@@ -815,22 +740,14 @@ void testPrototype3CalibrationSonicReference()
         std::vector<float> audio;
     };
     const Case cases[] = {
-        { "P3 paper S1 LP high resonance", 0x44a4fe703707c9baull,
+        { "v03 S1 LP high resonance", 0x73c446eb5d9176f9ull,
           renderDual(swaraxt::ShruthiSvfDualRouting::section1,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
-                     64, 48, false, swaraxt::ShruthiSvfCalibration::paperApproved) },
-        { "P3 hardware S1 LP high resonance", 0x5f9802c78ca67b35ull,
-          renderDual(swaraxt::ShruthiSvfDualRouting::section1,
-                     swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
-                     64, 48, false, swaraxt::ShruthiSvfCalibration::eagleHardware) },
-        { "P3 paper serial LP>LP", 0x60b76744f830cfe9ull,
+                     64, 48, false) },
+        { "v03 serial LP>LP", 0x3bce33d3b4f92cfeull,
           renderDual(swaraxt::ShruthiSvfDualRouting::serial,
                      swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
-                     48, 16, false, swaraxt::ShruthiSvfCalibration::paperApproved) },
-        { "P3 hardware serial LP>LP", 0xe8f811fa4dbd553dull,
-          renderDual(swaraxt::ShruthiSvfDualRouting::serial,
-                     swaraxt::ShruthiSvf2pMode::lowPass, swaraxt::ShruthiSvf2pMode::lowPass,
-                     48, 16, false, swaraxt::ShruthiSvfCalibration::eagleHardware) },
+                     48, 16, false) },
     };
     for (const auto& c : cases)
     {
@@ -849,10 +766,89 @@ void testPrototype3CalibrationSonicReference()
     }
 }
 
+void testV2164ClosedLoop()
+{
+    using Board = swaraxt::DualSvfAnalogBoard;
+    const double sr = swaraxt::ShruthiSvf2pControl::kNativeRate;
+    // Independent of Board::steadyGain: KCL at the servo node with the cell
+    // output sinking Iref*g, R14=R9 so Vf = Vpwm/2, and R53 pulling toward VEE.
+    auto ratio = [](double pwmVolts, bool bleed) {
+        const double vf = 0.5 * std::clamp(pwmVolts, 0.0, 5.0);
+        const double g = vf / 5.0 - (bleed ? (100.0e3 / 2.2e6) : 0.0);
+        return g > 0.0 ? g : 0.0;
+    };
+    expect(std::abs(Board::steadyGain(5.0) - ratio(5.0, true)) < 1.0e-15,
+           "fitted full-scale gain matches the current ratio");
+    expect(Board::steadyGain(0.0) == 0.0, "fitted R53 closes the cell at zero PWM");
+    expect(std::abs(Board::steadyGainUnpopulated(5.0) - ratio(5.0, false)) < 1.0e-15,
+           "unpopulated bleed is the same ratio without the offset");
+    expect(Board::steadyGainUnpopulated(0.0) == 0.0, "unpopulated zero PWM is zero gain");
+    expect(ratio(5.0, false) > ratio(5.0, true), "omitting R53 raises the equilibrium gain");
+    expect(Board::steadyGain(5.0 * 23.0 / 255.0) == 0.0, "PWM bytes through 23 stay closed");
+    expect(Board::steadyGain(5.0 * 24.0 / 255.0) > 0.0, "PWM byte 24 is the first open gain");
+
+    Board board;
+    board.prepare(sr);
+    board.snapControl(5.0);
+    expect(std::abs(board.gain() - Board::steadyGain(5.0)) < 1.0e-15, "snap reaches equilibrium");
+    double dc = 0.0;
+    for (int i = 0; i < 400000; ++i)
+        dc = board.processOutput(1.0, 1.0, 5.0);
+    expect(std::abs(dc) < 1.0e-6, "both coupling branches reject a sustained DC input");
+
+    board.reset();
+    board.snapControl(5.0);
+    double inputDc = 1.0;
+    for (int i = 0; i < 400000; ++i)
+        inputDc = board.conditionInput(1.0);
+    expect(std::abs(inputDc) < 1.0e-6, "C34/R20 rejects a sustained mixer DC");
+
+    board.reset();
+    board.snapControl(5.0);
+    const double g = board.gain();
+    double inSq = 0.0, outSq = 0.0;
+    const double hz = 1000.0;
+    for (int i = 0; i < 80000; ++i)
+    {
+        const double x = std::sin(2.0 * swaraxt::ShruthiSvf2pControl::kPi * hz * i / sr);
+        const double y = board.conditionInput(x);
+        if (i >= 40000)
+        {
+            inSq += x * x;
+            outSq += y * y;
+        }
+    }
+    const double measured = std::sqrt(outSq / inSq);
+    expect(std::abs(measured - (Board::kR13 / Board::kR20)) < 0.01,
+           "digital input passband gain is R13/R20");
+    expect(outSq > 0.0, "input network passes 1 kHz");
+
+    board.reset();
+    board.snapControl(5.0);
+    inSq = outSq = 0.0;
+    double polarity = 0.0;
+    for (int i = 0; i < 80000; ++i)
+    {
+        const double x = std::sin(2.0 * swaraxt::ShruthiSvf2pControl::kPi * hz * i / sr);
+        const double y = board.processOutput(x, 0.0, 5.0);
+        if (i >= 40000)
+        {
+            inSq += x * x;
+            outSq += y * y;
+            polarity += x * y;
+        }
+    }
+    const double branch = std::sqrt(outSq / inSq);
+    expect(std::abs(branch - g) < 0.02, "one 33 k branch reproduces the current-ratio gain");
+    expect(polarity < 0.0, "output I/V inverts");
+    (void) g;
+}
+
 }  // namespace
 
 int main()
 {
+    testV2164ClosedLoop();
     testControlLaws();
     testZener();
     testModesAndSlope();
@@ -864,9 +860,7 @@ int main()
     testSection2IndependentAndIdentical();
     testSerialAndParallelTopology();
     testRoutingSwitchSafety();
-    testHardwareResonanceLaw();
-    testHardwareZener();
-    testCalibrationSwitchAndHardwareAudio();
+    testV03SelfOscillation();
     testApprovedVsHardwareMeasurements();
     testPrototype3CalibrationSonicReference();
     testExperimentalSvfPublication();

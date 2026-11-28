@@ -29,10 +29,11 @@ void headlessConfigured(SwaraXtAudioProcessor& p,
     swaraxt::ShruthiSvfSection2Control control, int cut, int res,
     int route, int calibration, int m1, int m2)
 {
+    (void) calibration;
     const auto selection=p.experimentalSvfSelection();
     headlessCheck(selection.enabled && selection.control2==control
         && int(selection.cutoff2)==cut && int(selection.resonance2)==res
-        && int(selection.routing)==route && int(selection.calibration)==calibration
+        && int(selection.routing)==route
         && int(selection.mode1)==m1 && int(selection.mode2)==m2,"selected mode/calibration/control mismatch");
     headlessSelection=swaraxt::ExperimentalSvfSelection::pack(selection);
     headlessParameters.clear();
@@ -114,9 +115,9 @@ int main(int argc,char** argv)
             headlessCheck(actualMode==c.mode,"wrong Section2 mode identity");
             headlessCheck(first.hash==second.hash,"non-deterministic Q20 render");
             expect(first.hash==expected,"unapproved Q20 audio fingerprint");
-            std::printf("DUAL_SVF_HEADLESS {\"case\":\"Dual%s_%s_%s\",\"mode\":\"%s\",\"calibration\":\"%s\",\"samples\":%d,\"hash\":\"%016llx\",\"finite\":true,\"deterministic\":true,\"parameters_unchanged\":true,\"repeats\":2}\n",
-                independent?"Independent":"Relative",calibration==0?"Paper":"Eagle",c.label,
-                independent?"Independent":"Relative",calibration==0?"Paper":"Eagle",headlessSamples,
+            std::printf("DUAL_SVF_HEADLESS {\"case\":\"Dual%s_v03_%s\",\"mode\":\"%s\",\"calibration\":\"v03\",\"samples\":%d,\"hash\":\"%016llx\",\"finite\":true,\"deterministic\":true,\"parameters_unchanged\":true,\"repeats\":2}\n",
+                independent?"Independent":"Relative",c.label,
+                independent?"Independent":"Relative",headlessSamples,
                 static_cast<unsigned long long>(first.hash));
             ++count;
         }

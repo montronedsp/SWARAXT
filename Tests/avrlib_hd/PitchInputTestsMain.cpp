@@ -211,7 +211,6 @@ void admittedAudio() {
             set(*p, swaraxt::IDs::osc1Range, -48); set(*p, swaraxt::IDs::osc2Range, 48);
             set(*p, swaraxt::IDs::perfGlide, 127); set(*p, swaraxt::IDs::perfLegato, 1);
             p->setExperimentalSvfEnabled(mode != 0);
-            p->setExperimentalSvfCalibration(static_cast<swaraxt::ShruthiSvfCalibration>(mode == 2));
         }
         set(malformed, swaraxt::IDs::osc1Range, -128); set(malformed, swaraxt::IDs::osc2Range, 127);
         juce::AudioBuffer<float> a(2, 256), b(2, 256); juce::MidiBuffer am, bm;

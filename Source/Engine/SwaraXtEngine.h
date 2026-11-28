@@ -262,12 +262,6 @@ class SwaraXtEngine {
     {
         experimentalSvfControl_.patch([routing](ExperimentalSvfSelection& s) { s.routing = routing; });
     }
-    void setExperimentalSvfCalibrationForTests(ShruthiSvfCalibration calibration) noexcept
-    {
-        experimentalSvfControl_.patch([calibration](ExperimentalSvfSelection& s) {
-            s.calibration = calibration;
-        });
-    }
     ExperimentalSvfSelection experimentalSvfSelection() const noexcept
     {
         return experimentalSvfControl_.selection();

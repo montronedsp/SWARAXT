@@ -168,14 +168,14 @@ void fifoAndRequests(){
         for(int i=0;i<669;++i){Access::sample(*e,0,0);check(Access::frame(*e).raw==0,"reactivation cannot replay retired FIFO data");}
     }
     auto e=engine(false);Sel first=selection(true);first.routing=ShruthiSvfDualRouting::serial;
-    first.mode1=ShruthiSvf2pMode::bandPass;first.mode2=ShruthiSvf2pMode::highPass;first.calibration=ShruthiSvfCalibration::eagleHardware;first.control2=ShruthiSvfSection2Control::independent;first.cutoff2=39;first.resonance2=51;
+    first.mode1=ShruthiSvf2pMode::bandPass;first.mode2=ShruthiSvf2pMode::highPass;first.control2=ShruthiSvfSection2Control::independent;first.cutoff2=39;first.resonance2=51;
     Access::boundary(*e,first);for(int i=0;i<160;++i)Access::sample(*e,input(i),.8f);
     Access::request(*e,first);const auto captured=e->experimentalSvfSelection();
-    Sel later=first;later.enabled=false;later.routing=ShruthiSvfDualRouting::parallel;later.mode1=ShruthiSvf2pMode::highPass;later.mode2=ShruthiSvf2pMode::lowPass;later.calibration=ShruthiSvfCalibration::paperApproved;later.control2=ShruthiSvfSection2Control::relative;later.cutoff2=83;later.resonance2=9;
+    Sel later=first;later.enabled=false;later.routing=ShruthiSvfDualRouting::parallel;later.mode1=ShruthiSvf2pMode::highPass;later.mode2=ShruthiSvf2pMode::lowPass;later.control2=ShruthiSvfSection2Control::relative;later.cutoff2=83;later.resonance2=9;
     Access::request(*e,later);Access::boundary(*e,captured);
     for(int i=0;i<669;++i){if(i%40==0)Access::boundary(*e,e->experimentalSvfSelection());Access::sample(*e,input(i),.8f);
         check(Sel::pack(Access::installed(*e))==Sel::pack(first),"all incoming settings remain frozen after captured muted-boundary application");
-        check(Access::core(*e).routing()==first.routing&&Access::core(*e).mode1()==first.mode1&&Access::core(*e).mode2()==first.mode2&&Access::core(*e).calibration()==first.calibration,"actual incoming DSP retains the captured topology and modes");
+        check(Access::core(*e).routing()==first.routing&&Access::core(*e).mode1()==first.mode1&&Access::core(*e).mode2()==first.mode2,"actual incoming DSP retains the captured topology and modes");
         check(Sel::pack(e->experimentalSvfSelection())==Sel::pack(later),"newer full request remains in the single atomic mailbox");
     }
     Access::boundary(*e,later);for(int i=0;i<829;++i){if(i%40==0)Access::boundary(*e,later);Access::sample(*e,input(i),.8f);}
@@ -208,7 +208,7 @@ struct Capture {
 #if !defined(SWARAXT_MANUAL_SWITCH_BASELINE)
         const auto& voice=t.engine->shruthiPart().voice();
         if(!t.configurationReady){
-            t.dual.setRouting(t.expected.routing);t.dual.setMode1(t.expected.mode1);t.dual.setMode2(t.expected.mode2);t.dual.setCalibration(t.expected.calibration);t.dual.setSection2FollowsSection1(t.expected.control2==ShruthiSvfSection2Control::legacyFollow);t.configurationReady=true;
+            t.dual.setRouting(t.expected.routing);t.dual.setMode1(t.expected.mode1);t.dual.setMode2(t.expected.mode2);t.dual.setSection2FollowsSection1(t.expected.control2==ShruthiSvfSection2Control::legacyFollow);t.configurationReady=true;
         }
         t.classic.setParams(t.engine->filter().paramsForTests());
         if(b.manualSwitch[0].phase==2&&b.manualSwitch[0].processed&&!t.replaying){
@@ -239,7 +239,7 @@ struct Capture {
         t.native.insert(t.native.end(),b.filterOutput,b.filterOutput+b.samples);
     }
 #if !defined(SWARAXT_MANUAL_SWITCH_BASELINE)
-    static void dualReset(Capture& t){t.dual.setRouting(t.expected.routing);t.dual.setMode1(t.expected.mode1);t.dual.setMode2(t.expected.mode2);t.dual.setCalibration(t.expected.calibration);t.dual.setSection2FollowsSection1(t.expected.control2==ShruthiSvfSection2Control::legacyFollow);t.dual.reset();t.delay.fill(0);t.cursor=0;}
+    static void dualReset(Capture& t){t.dual.setRouting(t.expected.routing);t.dual.setMode1(t.expected.mode1);t.dual.setMode2(t.expected.mode2);t.dual.setSection2FollowsSection1(t.expected.control2==ShruthiSvfSection2Control::legacyFollow);t.dual.reset();t.delay.fill(0);t.cursor=0;}
 #endif
 };
 std::vector<float> stale(bool change,const std::filesystem::path& out){

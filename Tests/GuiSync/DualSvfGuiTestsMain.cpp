@@ -19,7 +19,6 @@ namespace {
 using Selection = swaraxt::ExperimentalSvfSelection;
 using swaraxt::ShruthiSvf2pMode;
 using swaraxt::ShruthiSvfDualRouting;
-using swaraxt::ShruthiSvfCalibration;
 int failures = 0;
 
 void expect(bool ok, const char* message)
@@ -107,7 +106,7 @@ void checkApplied(SwaraXtAudioProcessor& processor, const Selection& wanted)
 {
     const auto& dual = processor.engineForTests().experimentalSvfDualForTests();
     expect(dual.routing() == wanted.routing && dual.mode1() == wanted.mode1
-        && dual.mode2() == wanted.mode2 && dual.calibration() == wanted.calibration,
+        && dual.mode2() == wanted.mode2,
         "requested configuration applied by audio processing");
 }
 
@@ -118,17 +117,11 @@ void selectionMatrix()
     SwaraXtAudioProcessorEditor editor(processor);
     auto& main = editor.mainPanelForTests();
     auto& panel = main.dualSvfPanelForTests();
-    auto calibrationPublications = std::make_shared<int>(0);
-    const auto publishCalibration = panel.calibrationForTests().onSelect;
-    panel.calibrationForTests().onSelect = [calibrationPublications, publishCalibration](int index) {
-        ++*calibrationPublications;
-        publishCalibration(index);
-    };
     expect(! processor.experimentalSvfSelection().enabled, "fresh processor uses Classic");
     expect(main.filterModelForTests().getSelectedId() == 1, "fresh visible selector uses Classic");
     click(main.dualSvfViewButtonForTests());
     expect(panel.isVisible(), "visible detail affordance opens panel");
-    expect(! panel.calibrationForTests().isEnabled(), "Classic subordinates Dual controls");
+    expect(! panel.routingForTests().isEnabled(), "Classic subordinates Dual controls");
     const char* ids[] = { swaraxt::IDs::filterCutoff, swaraxt::IDs::filterResonance,
         swaraxt::IDs::filterEnvDepth, swaraxt::IDs::filterKeyTracking, swaraxt::IDs::filterLfoDepth };
     std::array<float, 5> common {};
@@ -140,7 +133,6 @@ void selectionMatrix()
         for (int route = 0; route < 3; ++route)
             for (int m1 = 0; m1 < 3; ++m1)
                 for (int m2 = 0; m2 < 3; ++m2)
-                    for (int calibration = 0; calibration < 2; ++calibration)
                     {
                         main.filterModelForTests().setSelectedId(2, juce::sendNotificationSync);
                         expected.enabled = true;
@@ -154,11 +146,6 @@ void selectionMatrix()
                         click(panel.mode2ForTests().buttonForTests(m2));
                         expected.mode2 = static_cast<ShruthiSvf2pMode>(m2);
                         expect(equal(expected, processor.experimentalSvfSelection()), "mode2 changes one field");
-                        const int beforeClick = *calibrationPublications;
-                        click(panel.calibrationForTests().buttonForTests(calibration));
-                        expect(*calibrationPublications == beforeClick + 1, "one calibration publication per real radio-button click");
-                        expected.calibration = static_cast<ShruthiSvfCalibration>(calibration);
-                        expect(equal(expected, processor.experimentalSvfSelection()), "calibration changes one field");
                         main.filterModelForTests().setSelectedId(enabled + 1, juce::sendNotificationSync);
                         expected.enabled = enabled != 0;
                         const auto requested = processor.experimentalSvfSelection();
@@ -166,8 +153,7 @@ void selectionMatrix()
                         expect(equal(Selection::unpack(Selection::pack(requested)), requested), "pack/unpack roundtrip");
                         expect(panel.routingForTests().selectedIndex() == route
                             && panel.mode1ForTests().selectedIndex() == m1
-                            && panel.mode2ForTests().selectedIndex() == m2
-                            && panel.calibrationForTests().selectedIndex() == calibration,
+                            && panel.mode2ForTests().selectedIndex() == m2,
                             "actual GUI selected states match coherent request");
                         expect(panel.requestedTextForTests().contains(enabled ? "DUAL SVF" : "CLASSIC IR3109"),
                                "display identifies requested model");
@@ -182,7 +168,7 @@ void selectionMatrix()
                         checkApplied(processor, expected);
                         ++count;
                     }
-    expect(count == 108, "all 108 valid configurations exercised");
+    expect(count == 54, "all 54 valid configurations exercised");
     for (size_t i = 0; i < common.size(); ++i)
         expect(common[i] == processor.getApvts().getRawParameterValue(ids[i])->load(), "common filter values preserved");
     const auto menuAction = editor.contextMenuCallbackForTests();
@@ -210,19 +196,19 @@ void selectionMatrix()
     menuAction(originalQuality == swaraxt::FilterQuality::high ? 301
         : originalQuality == swaraxt::FilterQuality::normal ? 302 : 303);
     processor.setExperimentalSvfEnabled(true);
-    processor.setExperimentalSvfCalibration(ShruthiSvfCalibration::eagleHardware);
+    processor.setExperimentalSvfRouting(swaraxt::ShruthiSvfDualRouting::serial);
     // The editor's 4 Hz timer is asynchronous. Observe its actual publication;
     // one 300 ms dispatch interval can miss a delayed tick under instrumentation.
     const auto started = std::chrono::steady_clock::now();
     const bool synchronized = pumpUntil([&] {
         return main.filterModelForTests().getSelectedId() == 2
-            && panel.calibrationForTests().selectedIndex() == 1;
+            && panel.routingForTests().selectedIndex() == 1;
     }, 5000);
-    std::printf("External editor timer: synchronized=%d elapsed_ms=%lld model=%d calibration=%d\n",
+    std::printf("External editor timer: synchronized=%d elapsed_ms=%lld model=%d route=%d\n",
                 static_cast<int>(synchronized),
                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - started).count()),
-                main.filterModelForTests().getSelectedId(), panel.calibrationForTests().selectedIndex());
+                main.filterModelForTests().getSelectedId(), panel.routingForTests().selectedIndex());
     expect(synchronized, "existing editor timer reflects external processor request");
     std::printf("Selection matrix: %d configurations, real controls + processBlock\n", count);
 }
@@ -245,20 +231,20 @@ void calibrationAndSession()
     processor.processBlock(buffer, midi);
     midi.clear();
     for (int i = 0; i < 24; ++i) processor.processBlock(buffer, midi);
-    for (int calibration : { 1, 0, 1, 0 })
+    for (int mode : { 2, 0, 1, 0 })
     {
         const auto before = processor.experimentalSvfSelection();
         const auto& dual = processor.engineForTests().experimentalSvfDualForTests();
         const double bp = dual.section1().lastBpVolts();
-        expect(std::abs(bp) > 1.0e-9, "calibration switch has active filter state");
-        click(panel.calibrationForTests().buttonForTests(calibration));
+        expect(std::abs(bp) > 1.0e-9, "mode update has active filter state");
+        click(panel.mode2ForTests().buttonForTests(mode));
         auto expected = before;
-        expected.calibration = static_cast<ShruthiSvfCalibration>(calibration);
-        expect(equal(expected, processor.experimentalSvfSelection()), "both calibration directions preserve all other fields");
+        expected.mode2 = static_cast<swaraxt::ShruthiSvf2pMode>(mode);
+        expect(equal(expected, processor.experimentalSvfSelection()), "mode 2 changes no other field");
         expect(dual.section1().lastBpVolts() == bp, "GUI publication does not reset or mutate integrators");
         processor.processBlock(buffer, midi);
         checkApplied(processor, expected);
-        expect(finite(buffer), "calibration switch during sustained bass finite");
+        expect(finite(buffer), "mode change during sustained bass stays finite");
     }
     juce::MemoryBlock dualState;
     processor.getStateInformation(dualState);
@@ -305,7 +291,7 @@ void concurrentProcessing()
             if (! finite(buffer)) ++bad;
             const auto s = processor.experimentalSvfSelection();
             if (static_cast<int>(s.routing) > 2 || static_cast<int>(s.mode1) > 2
-                || static_cast<int>(s.mode2) > 2 || static_cast<int>(s.calibration) > 1) ++bad;
+                || static_cast<int>(s.mode2) > 2) ++bad;
             ++blocks;
         }
     });
@@ -314,7 +300,7 @@ void concurrentProcessing()
         for (int i = 0; i < 12000; ++i)
         {
             processor.setExperimentalSvfMode2(static_cast<ShruthiSvf2pMode>(i % 3));
-            processor.setExperimentalSvfCalibration(static_cast<ShruthiSvfCalibration>(i % 2));
+            processor.setExperimentalSvfRouting(static_cast<ShruthiSvfDualRouting>(i % 3));
         }
     });
     start.store(true, std::memory_order_release);
@@ -324,7 +310,7 @@ void concurrentProcessing()
         main.filterModelForTests().setSelectedId(2, juce::sendNotificationSync);
         click(panel.routingForTests().buttonForTests(i % 3));
         click(panel.mode1ForTests().buttonForTests(i % 3));
-        click(panel.calibrationForTests().buttonForTests(i % 2));
+        click(panel.mode2ForTests().buttonForTests(i % 3));
         main.filterModelForTests().setSelectedId((i % 2) + 1, juce::sendNotificationSync);
         if (i % 10 == 0)
         {
@@ -349,7 +335,6 @@ void coherentPublication()
     a.routing = ShruthiSvfDualRouting::serial;
     a.mode1 = ShruthiSvf2pMode::bandPass;
     a.mode2 = ShruthiSvf2pMode::highPass;
-    a.calibration = ShruthiSvfCalibration::eagleHardware;
     b.routing = ShruthiSvfDualRouting::parallel;
     b.mode1 = ShruthiSvf2pMode::highPass;
     b.mode2 = ShruthiSvf2pMode::bandPass;
@@ -376,14 +361,12 @@ void coherentPublication()
     });
     std::thread topology([&] {
         for (int i = 0; i < 10000; ++i)
-            control.patch([](Selection& s) { s.enabled = true; s.routing = ShruthiSvfDualRouting::parallel;
-                                           s.calibration = ShruthiSvfCalibration::eagleHardware; });
+            control.patch([](Selection& s) { s.enabled = true; s.routing = ShruthiSvfDualRouting::parallel; });
     });
     modes.join();
     topology.join();
     auto expected = b;
     expected.enabled = true;
-    expected.calibration = ShruthiSvfCalibration::eagleHardware;
     expect(equal(control.selection(), expected), "CAS patches from independent writers preserve all final fields");
     std::printf("Packed publication: 40000 correlated reads/applies + two CAS writers\n");
 }
@@ -425,7 +408,6 @@ void allocationAudit()
         click(panel.routingForTests().buttonForTests(i % 3));
         click(panel.mode1ForTests().buttonForTests((i / 3) % 3));
         click(panel.mode2ForTests().buttonForTests((i / 9) % 3));
-        click(panel.calibrationForTests().buttonForTests(i % 2));
         processor.getApvts().getParameter(swaraxt::IDs::filterCutoff)->setValueNotifyingHost(static_cast<float>(i % 101) / 100.0f);
         processor.getApvts().getParameter(swaraxt::IDs::filterEnvDepth)->setValueNotifyingHost(static_cast<float>((i * 3) % 101) / 100.0f);
         swaraxtBeginAllocationAudit();
@@ -520,10 +502,10 @@ void layoutAndLifetime()
         auto editor = std::make_unique<SwaraXtAudioProcessorEditor>(*processor);
         auto& main = editor->mainPanelForTests();
         click(main.dualSvfViewButtonForTests());
-        click(main.dualSvfPanelForTests().calibrationForTests().buttonForTests(cycle % 2));
+        click(main.dualSvfPanelForTests().routingForTests().buttonForTests(cycle % 3));
         expect(main.filterModelForTests().getSelectedId() == 2, "editor reopening reflects processor selection");
         pending = editor->contextMenuCallbackForTests();
-        main.dualSvfPanelForTests().calibrationForTests().buttonForTests(0).triggerClick();
+        main.dualSvfPanelForTests().mode1ForTests().buttonForTests(0).triggerClick();
         if (cycle <= 4)
         {
             editor->addToDesktop(juce::ComponentPeer::windowIsTemporary);
@@ -590,7 +572,6 @@ void layoutAndLifetime()
     displayProcessor.setExperimentalSvfEnabled(true);
     displayProcessor.setExperimentalSvfRouting(ShruthiSvfDualRouting::parallel);
     displayProcessor.setExperimentalSvfMode2(ShruthiSvf2pMode::bandPass);
-    displayProcessor.setExperimentalSvfCalibration(ShruthiSvfCalibration::eagleHardware);
     SwaraXtAudioProcessorEditor editor(displayProcessor);
     auto& main = editor.mainPanelForTests();
     main.setDualSvfView(true);
@@ -640,10 +621,9 @@ void layoutAndLifetime()
     main.filterModelForTests().setSelectedId(2, juce::sendNotificationSync);
     main.setDualSvfView(true);
     click(main.dualSvfPanelForTests().routingForTests().buttonForTests(0));
-    saveStateImage("section1-eagle.png");
+    saveStateImage("section1-v03.png");
     click(main.dualSvfPanelForTests().routingForTests().buttonForTests(1));
-    click(main.dualSvfPanelForTests().calibrationForTests().buttonForTests(0));
-    saveStateImage("serial-paper.png");
+    saveStateImage("serial-v03.png");
     expect(main.dualSvfPanelForTests().keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)), "Escape closes detail surface");
     expect(! main.dualSvfPanelForTests().isVisible(), "Escape leaves detail surface hidden");
 }
