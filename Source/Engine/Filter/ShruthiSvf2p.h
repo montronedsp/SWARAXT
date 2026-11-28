@@ -178,7 +178,6 @@ class ShruthiSvf2p
             : ShruthiSvf2pControl::kNativeRate;
         cutoffAlpha_ = 1.0 - std::exp(-1.0 / (sampleRate_ * ShruthiSvf2pControl::kCutoffCvTauSeconds));
         resonanceAlpha_ = 1.0 - std::exp(-1.0 / (sampleRate_ * ShruthiSvf2pControl::kResonanceCvTauSeconds));
-        board_.prepare(sampleRate_);
         reset();
         updateCoefficients();
     }
@@ -190,10 +189,8 @@ class ShruthiSvf2p
         lastLp_ = 0.0;
         lastBp_ = 0.0;
         lastHp_ = 0.0;
-        lastOutput_ = 0.0;
         cutoffCv_ = cutoffTarget_;
         resonanceCv_ = resonanceTarget_;
-        board_.reset();
         updateCoefficients();
     }
 
@@ -210,21 +207,14 @@ class ShruthiSvf2p
     void setMode(ShruthiSvf2pMode mode) noexcept { mode_ = mode; }
     ShruthiSvf2pMode mode() const noexcept { return mode_; }
 
-    void setVcaTarget(float vca01) noexcept
+    void advanceControls() noexcept
     {
-        const double v = static_cast<double>(vca01);
-        vcaTarget_ = v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
-    }
-
-    void advanceControls(float vcaTarget) noexcept
-    {
-        setVcaTarget(vcaTarget);
         cutoffCv_ += cutoffAlpha_ * (cutoffTarget_ - cutoffCv_);
         resonanceCv_ += resonanceAlpha_ * (resonanceTarget_ - resonanceCv_);
         updateCoefficients();
     }
 
-    // Core tick without the prototype VCA. Dual routing uses this so VCA is applied once.
+    // Selected LP, BP or HP tap. The shared analog board applies input and VCA.
     double processSelectedVolts(double inVolts) noexcept
     {
         processVolts(inVolts);
@@ -237,19 +227,12 @@ class ShruthiSvf2p
     {
         cutoffCv_ = cutoffTarget_;
         resonanceCv_ = resonanceTarget_;
-        board_.snapControl(vcaTarget_ * ShruthiSvf2pControl::kPwmFullScaleVolts);
         updateCoefficients();
     }
 
-    float vcaControl() const noexcept { return static_cast<float>(board_.gain()); }
-
     bool tailActive() const noexcept
     {
-        return std::abs(lastOutput_) > 1.0e-8
-            || std::abs(ic1_) > 1.0e-8
-            || std::abs(ic2_) > 1.0e-8
-            || board_.gain() > 0.0
-            || (board_.gain() > 0.0 && board_.audioMemory());
+        return std::abs(ic1_) > 1.0e-8 || std::abs(ic2_) > 1.0e-8;
     }
 
     double cutoffHz() const noexcept { return cutoffHz_; }
@@ -257,25 +240,6 @@ class ShruthiSvf2p
     double lastLpVolts() const noexcept { return lastLp_; }
     double lastBpVolts() const noexcept { return lastBp_; }
     double lastHpVolts() const noexcept { return lastHp_; }
-
-    // mixerUnit is the native mixer float (same domain as Classic filter in).
-    // Returns plugin-domain audio after the v03 input mixer and V2164 I/V.
-    float process(float mixerUnit, float vcaTarget) noexcept
-    {
-        advanceControls(vcaTarget);
-        const double source = static_cast<double>(mixerUnit) * ShruthiSvf2pControl::kSourceVoltsPerUnit;
-        const double selected = processSelectedVolts(board_.conditionInput(source));
-        const double pwm = vcaTarget_ * ShruthiSvf2pControl::kPwmFullScaleVolts;
-        const double outUnit = board_.processOutput(selected, 0.0, pwm)
-            / ShruthiSvf2pControl::kSourceVoltsPerUnit;
-        lastOutput_ = std::isfinite(outUnit) ? outUnit : 0.0;
-        if (! std::isfinite(lastOutput_))
-        {
-            reset();
-            return 0.0f;
-        }
-        return static_cast<float>(lastOutput_);
-    }
 
  private:
     void updateCoefficients() noexcept
@@ -326,10 +290,8 @@ class ShruthiSvf2p
     double resonanceAlpha_ = 1.0;
     double cutoffTarget_ = 0.0;
     double resonanceTarget_ = 0.0;
-    double vcaTarget_ = 0.0;
     double cutoffCv_ = 0.0;
     double resonanceCv_ = 0.0;
-    DualSvfAnalogBoard board_;
     double cutoffHz_ = 1.0;
     double q_ = 0.5;
     double g_ = 1.0e-6;
@@ -339,7 +301,6 @@ class ShruthiSvf2p
     double lastLp_ = 0.0;
     double lastBp_ = 0.0;
     double lastHp_ = 0.0;
-    double lastOutput_ = 0.0;
     ShruthiSvf2pMode mode_ = ShruthiSvf2pMode::lowPass;
 };
 
@@ -428,8 +389,6 @@ class ShruthiSvfDual
 
     void setVcaTarget(float vca01) noexcept
     {
-        s1_.setVcaTarget(vca01);
-        s2_.setVcaTarget(vca01);
         const double v = static_cast<double>(vca01);
         vcaTarget_ = v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
     }
@@ -461,9 +420,9 @@ class ShruthiSvfDual
 #endif
         const double v = static_cast<double>(vcaTarget);
         vcaTarget_ = v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
-        s1_.advanceControls(vcaTarget);
+        s1_.advanceControls();
         if (routing_ != ShruthiSvfDualRouting::section1)
-            s2_.advanceControls(vcaTarget);
+            s2_.advanceControls();
 
         const double source = static_cast<double>(mixerUnit) * ShruthiSvf2pControl::kSourceVoltsPerUnit;
         const double inVolts = board_.conditionInput(source);

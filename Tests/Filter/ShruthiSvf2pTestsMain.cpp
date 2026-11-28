@@ -52,6 +52,64 @@ double goertzelPower(const std::vector<float>& x, double hz, double sampleRate)
     return s1 * s1 + s2 * s2 - coeff * s1 * s2;
 }
 
+// Standalone section renders own one core and one board. Production Dual does not.
+struct ShruthiSvfSectionFixture
+{
+    swaraxt::ShruthiSvf2p core;
+    swaraxt::DualSvfAnalogBoard board;
+    double vcaTarget = 0.0;
+
+    void prepare(double rate)
+    {
+        core.prepare(rate);
+        board.prepare(rate);
+    }
+
+    void reset()
+    {
+        core.reset();
+        board.reset();
+    }
+
+    void setFirmwareCutoff(std::uint8_t value) { core.setFirmwareCutoff(value); }
+    void setFirmwareResonance(std::uint8_t value) { core.setFirmwareResonance(value); }
+    void setMode(swaraxt::ShruthiSvf2pMode mode) { core.setMode(mode); }
+
+    void setVcaTarget(float vca01)
+    {
+        const double v = static_cast<double>(vca01);
+        vcaTarget = v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+    }
+
+    void snapControlsForTests()
+    {
+        core.snapControlsForTests();
+        board.snapControl(vcaTarget * swaraxt::ShruthiSvf2pControl::kPwmFullScaleVolts);
+    }
+
+    double cutoffHz() const { return core.cutoffHz(); }
+    double q() const { return core.q(); }
+    double lastBpVolts() const { return core.lastBpVolts(); }
+
+    float process(float mixerUnit, float vcaIn)
+    {
+        setVcaTarget(vcaIn);
+        core.advanceControls();
+        const double source = static_cast<double>(mixerUnit) * swaraxt::ShruthiSvf2pControl::kSourceVoltsPerUnit;
+        const double selected = core.processSelectedVolts(board.conditionInput(source));
+        const double pwm = vcaTarget * swaraxt::ShruthiSvf2pControl::kPwmFullScaleVolts;
+        const double outUnit = board.processOutput(selected, 0.0, pwm)
+            / swaraxt::ShruthiSvf2pControl::kSourceVoltsPerUnit;
+        const double last = std::isfinite(outUnit) ? outUnit : 0.0;
+        if (! std::isfinite(last))
+        {
+            reset();
+            return 0.0f;
+        }
+        return static_cast<float>(last);
+    }
+};
+
 void testControlLaws()
 {
     using C = swaraxt::ShruthiSvf2pControl;
@@ -130,7 +188,7 @@ void testZener()
 
 void testModesAndSlope()
 {
-    swaraxt::ShruthiSvf2p svf;
+    ShruthiSvfSectionFixture svf;
     svf.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
     const auto cutoff = panelCutoffByte(64);
     svf.setFirmwareCutoff(cutoff);
@@ -182,7 +240,7 @@ void testModesAndSlope()
 
 void testSelfOscillation()
 {
-    swaraxt::ShruthiSvf2p svf;
+    ShruthiSvfSectionFixture svf;
     svf.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
     svf.setFirmwareCutoff(panelCutoffByte(80));
     svf.setFirmwareResonance(panelResonanceByte(63));
@@ -230,7 +288,7 @@ std::uint64_t hashSamples(const std::vector<float>& samples)
 std::vector<float> renderSection1(swaraxt::ShruthiSvf2pMode mode, int cutoffPanel, int resPanel,
                                   bool impulseThenSilence, bool automateCutoff, bool automateRes)
 {
-    swaraxt::ShruthiSvf2p svf;
+    ShruthiSvfSectionFixture svf;
     svf.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
     svf.setMode(mode);
     svf.setFirmwareCutoff(panelCutoffByte(cutoffPanel));
@@ -397,7 +455,7 @@ void testPrototype2DualSonicReference()
 void testSection2IndependentAndIdentical()
 {
     const auto s1 = renderSection1(swaraxt::ShruthiSvf2pMode::lowPass, 64, 16, false, false, false);
-    swaraxt::ShruthiSvf2p s2;
+    ShruthiSvfSectionFixture s2;
     s2.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
     s2.setMode(swaraxt::ShruthiSvf2pMode::lowPass);
     s2.setFirmwareCutoff(panelCutoffByte(64));
@@ -507,7 +565,7 @@ void testRoutingSwitchSafety()
 
 void testV03SelfOscillation()
 {
-    swaraxt::ShruthiSvf2p svf;
+    ShruthiSvfSectionFixture svf;
     svf.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
     svf.setFirmwareCutoff(panelCutoffByte(80));
     svf.setFirmwareResonance(panelResonanceByte(63));
@@ -643,7 +701,7 @@ void testApprovedVsHardwareMeasurements()
 
 void testSilenceAndAutomation()
 {
-    swaraxt::ShruthiSvf2p svf;
+    ShruthiSvfSectionFixture svf;
     svf.prepare(swaraxt::ShruthiSvf2pControl::kNativeRate);
     svf.setFirmwareCutoff(panelCutoffByte(64));
     svf.setFirmwareResonance(panelResonanceByte(8));
