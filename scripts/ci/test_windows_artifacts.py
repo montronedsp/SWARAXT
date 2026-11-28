@@ -41,15 +41,15 @@ def synthetic_profile(root, identity):
         proof['executables'][name] = dict(sha256=binary_hash, machine='x86_64', file=name + '.exe')
         lines = []
         for case, (count, value) in entry['cases'].items():
-            if entry['grammar'] != 'headless-dual-v1':
+            if entry['grammar'] != 'headless-dual-v03':
                 lines.append(f"GOLDEN {entry['grammar']} {case} samples={count} hash={value}")
             else:
                 lines.append('DUAL_SVF_HEADLESS ' + json.dumps(dict(case=case, samples=count, hash=value,
                     mode='Independent' if case.startswith('DualIndependent') else 'Relative',
-                    calibration=case.split('_')[1], finite=True, deterministic=True,
+                    finite=True, deterministic=True,
                     parameters_unchanged=True, repeats=2)))
-        if entry['grammar'] == 'headless-dual-v1':
-            lines.append('DUAL_SVF_HEADLESS_PASS cases=12 samples=25600 repeats=2 gui=excluded')
+        if entry['grammar'] == 'headless-dual-v03':
+            lines.append('DUAL_SVF_HEADLESS_PASS cases=6 samples=25600 repeats=2 gui=excluded')
         c = ET.SubElement(suite, 'testcase', name=name, status='run')
         ET.SubElement(c, 'system-out').text = '\n'.join(lines)
     for i in range(86):
@@ -110,7 +110,7 @@ class ArtifactControls(unittest.TestCase):
     @classmethod
     def identity(cls, profile='msvc-Release'):
         return dict(candidate_sha=cls.sha, candidate_tree_sha256=cls.tree, run_id='SYNTHETIC-RUN',
-                    profile=profile, scope='full-native-72', architecture='x86_64')
+                    profile=profile, scope='full-native-66', architecture='x86_64')
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

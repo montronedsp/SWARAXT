@@ -319,7 +319,7 @@ def admit_matrix(evidence, source, candidate_sha, run_id, job_results):
         root = Path(evidence) / folder
         require(root.is_dir() and not root.is_symlink(), 'Untrusted profile directory')
         identity = dict(candidate_sha=candidate_sha, candidate_tree_sha256=tree, profile=profile,
-                        run_id=run_id, scope='full-native-72', architecture='x86_64')
+                        run_id=run_id, scope='full-native-66', architecture='x86_64')
         admit_profile(root, source, identity)
         result[profile] = 'PASS'
     return dict(source_sha=candidate_sha, run_id=run_id, platform='Windows',

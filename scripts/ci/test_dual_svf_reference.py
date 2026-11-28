@@ -19,7 +19,7 @@ class DualAdmissionControls(unittest.TestCase):
         self.rows = []
         for name, (samples, fingerprint) in dual.authority(SOURCE).items():
             self.rows.append(dict(case=name, mode='Independent' if name.startswith('DualIndependent_') else 'Relative',
-                                  calibration=name.split('_')[1], samples=samples, hash=fingerprint,
+                                  samples=samples, hash=fingerprint,
                                   finite=True, deterministic=True, parameters_unchanged=True, repeats=2))
         self.terminal = dual.TERMINAL
 
@@ -30,8 +30,8 @@ class DualAdmissionControls(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, reason):
             dual.validate_output(self.text() if text is None else text, code, SOURCE)
 
-    def test_01_exact_approved_twelve(self):
-        self.assertEqual(len(dual.validate_output(self.text(), 0, SOURCE)['records']), 12)
+    def test_01_exact_approved_six(self):
+        self.assertEqual(len(dual.validate_output(self.text(), 0, SOURCE)['records']), 6)
 
     def test_02_changed_hash(self):
         self.rows[0]['hash'] = '0' * 16
@@ -50,12 +50,12 @@ class DualAdmissionControls(unittest.TestCase):
         self.reject('Unexpected Dual case')
 
     def test_06_wrong_case_count(self):
-        self.terminal = self.terminal.replace('cases=12', 'cases=11')
+        self.terminal = self.terminal.replace('cases=6', 'cases=5')
         self.reject('incorrect terminal case/sample count')
 
     def test_07_wrong_calibration(self):
-        self.rows[0]['calibration'] = 'wrong'
-        self.reject('Wrong Dual calibration')
+        self.rows[0]['case'] = self.rows[0]['case'].replace('_v03_', '_paper_')
+        self.reject('Unexpected Dual case')
 
     def test_08_wrong_mode(self):
         self.rows[0]['mode'] = 'wrong'
@@ -117,10 +117,10 @@ class DualAdmissionControls(unittest.TestCase):
                 dual.admit(SOURCE, binary, fingerprint, identity, self.text(), 0)
 
     def test_versioned_full_scope_identity_is_explicit(self):
-        self.assertIn(dual.TEST_NAME, current.SCOPES['full-native-72'])
-        self.assertNotIn('SwaraXTDualSvfSection2Tests', current.SCOPES['full-native-72'])
+        self.assertIn(dual.TEST_NAME, current.SCOPES['full-native-66'])
+        self.assertNotIn('SwaraXTDualSvfSection2Tests', current.SCOPES['full-native-66'])
         self.assertEqual(len(current.load_package(SOURCE)['tests']), 4)
-        self.assertEqual(sum(x['case_count'] for x in current.load_package(SOURCE)['tests'].values()), 72)
+        self.assertEqual(sum(x['case_count'] for x in current.load_package(SOURCE)['tests'].values()), 66)
 
     def test_historical_mixer_fingerprints_rejected(self):
         provenance = json.loads((SOURCE / 'Tests/References/DualSvfCurrentLinuxProvenance.json').read_text())
