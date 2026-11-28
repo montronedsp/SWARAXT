@@ -3,6 +3,7 @@
 **Branch:** `investigation/fx-off-dc-blocker`  
 **Baseline SHA:** `bd8811323640627babeec5d8bc256b2bf2b35110`  
 **Phase I (superseded methodology):** `cb6198c`  
+**Phase II engine bypass:** `82cda90`  
 **Measurement validation:** [`FX_OFF_DC_MEASUREMENT_VALIDATION.md`](FX_OFF_DC_MEASUREMENT_VALIDATION.md)
 
 ## Final engineering decision
