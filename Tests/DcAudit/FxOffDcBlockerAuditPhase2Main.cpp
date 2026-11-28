@@ -176,7 +176,7 @@ double estimatePeriod(const std::vector<float>& x, size_t end, double rate, doub
         int count = 0;
         for (size_t i = start; i + static_cast<size_t>(lag) < start + n; ++i)
         {
-            acc += static_cast<double>(x[i]) * static_cast<double>(x[i + static_cast<size_t>(lag)]);
+            acc += static_cast<long double>(x[i]) * static_cast<long double>(x[i + static_cast<size_t>(lag)]);
             ++count;
         }
         const double score = count > 0 ? static_cast<double>(acc / count) : -1.0e300;

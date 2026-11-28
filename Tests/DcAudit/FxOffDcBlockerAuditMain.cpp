@@ -127,7 +127,7 @@ Metrics analyse(const std::vector<float>& x, size_t start, size_t count)
         }
         const double yd = static_cast<double>(y);
         sum += yd;
-        sumSq += yd * yd;
+        sumSq += static_cast<long double>(yd) * yd;
         m.peak = std::max(m.peak, std::abs(yd));
         m.maxJump = std::max(m.maxJump, static_cast<double>(std::abs(y - prev)));
         prev = y;
