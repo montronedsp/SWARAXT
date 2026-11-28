@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "role": "Current Analog-SVF-v03 acceptance provenance. Windows MSVC only. Not a Linux or macOS qualification.",
+  "source_sha": "f36cb5eb4e76aad8d8c662cdf352c5a7d860d696",
+  "compiler": "MSVC 19.38.33145, cl 14.38.33130, Release /O2",
+  "platform": "Windows x64",
+  "juce": "9.0.1 e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8",
+  "native_rate_hz": "20000000/510",
+  "header": "Tests/Filter/DualSvfV03Goldens.h",
+  "historical_paper_eagle": "Tests/References/DualSvfCurrentLinuxProvenance.json",
+  "stimulus": "factory preset 0, no transport, 48 kHz host blocks of 256, 100 blocks, note 48 velocity 110 at block 0 and note 60 velocity 96 at block 40",
+  "circuit": "one shared v03 board, V2164 audio cell before the C14/R12 output low-pass, R53 fitted",
+  "quantization": "clamp[-32,32], llround(x*1048576), FNV-1a offset basis 14695981039346656037, prime 1099511628211",
+  "raw_pcm_sha256": "not archived; the acceptance artifact is the Q20 FNV-1a hash",
+  "determinism": "SwaraXTDualSvfSection2Tests and SwaraXTDualSvfIntegrationAudit both matched these hashes on the candidate Release build after the values were recorded",
+  "independent_check": "constant-gain one-pole commutation to about 1e-17; servo open/close order error 1.08e-5, which is why the physical order replaced low-pass-then-gain",
+  "host_relative": ["bd4e06d48bdcc7a7", "d8fc5d027f7545ba", "faef65e0848a57f9"],
+  "host_independent": ["f05998c615ece4b8", "845385b69781e2e1", "7855e3b751013230"],
+  "native_relative": ["d78ac26743b95df6", "d3c2f4024d87f122", "32944d553d77c469"],
+  "native_independent": ["6894ea74cd2a9129", "0110a97c2c023905", "114b6a490489fee5"],
+  "native_timing_follow_independent_relative": [
+    ["e5ce3185d0af17ef", "e5ce3185d0af17ef", "e5ce3185d0af17ef"],
+    ["b48e894963b1934a", "6894ea74cd2a9129", "48b750def6d63c6d"],
+    ["69e8d374827ada2b", "03100f6567ab5a8f", "41779449086f77d9"]
+  ]
+}

@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <string>
@@ -201,6 +202,7 @@ struct CaseResult
     double assumeFundHz = 0;
     double measuredPeriod = 0;
     double cmean1 = 0, cmean2 = 0, cmean5 = 0, cmean10 = 0, cmeanEnd = 0;
+    double onsetPre = 0, onsetPost = 0, releasePre = 0, releasePost = 0;
     double periodMean = 0;
     double trailing1 = 0, trailing2 = 0;
     double quietMean = 0;
@@ -221,7 +223,11 @@ CaseResult renderCase(const std::string& name,
                       float mixSub,
                       double sustainSeconds,
                       double releaseSeconds,
-                      const std::filesystem::path& outDir)
+                      const std::filesystem::path& outDir,
+                      ShruthiSvfDualRouting routing = ShruthiSvfDualRouting::section1,
+                      ShruthiSvf2pMode mode1 = ShruthiSvf2pMode::lowPass,
+                      ShruthiSvf2pMode mode2 = ShruthiSvf2pMode::lowPass,
+                      std::function<void(SwaraXtAudioProcessor&)> tailor = {})
 {
     CaseResult r;
     r.name = name;
@@ -242,15 +248,17 @@ CaseResult renderCase(const std::string& name,
     if (dual)
     {
         processor->setExperimentalSvfEnabled(true);
-        processor->setExperimentalSvfRouting(ShruthiSvfDualRouting::section1);
-        processor->setExperimentalSvfMode1(ShruthiSvf2pMode::lowPass);
-        processor->setExperimentalSvfMode2(ShruthiSvf2pMode::lowPass);
+        processor->setExperimentalSvfRouting(routing);
+        processor->setExperimentalSvfMode1(mode1);
+        processor->setExperimentalSvfMode2(mode2);
         processor->setExperimentalSvfControl2(ShruthiSvfSection2Control::legacyFollow);
     }
     else
     {
         processor->setExperimentalSvfEnabled(false);
     }
+    if (tailor)
+        tailor(*processor);
 
     Transport transport;
     transport.rate = rate;
@@ -362,6 +370,20 @@ CaseResult renderCase(const std::string& name,
     }
     const double postCmeanEnd = cumulativeMeanAt(sustainPost, sustainPost.size());
     const double prePostAbsDiff = std::abs(r.cmeanEnd - postCmeanEnd);
+    const size_t onsetN = static_cast<size_t>(rate * 0.2);
+    r.onsetPre = cumulativeMeanAt(sustainPre, onsetN);
+    r.onsetPost = cumulativeMeanAt(sustainPost, onsetN);
+    std::vector<float> releasePre;
+    std::vector<float> releasePost;
+    for (size_t i = sustainEnd; i < capture.pre.size() && i < capture.post.size(); ++i)
+    {
+        if (capture.flags[i] & 1)
+            continue;
+        releasePre.push_back(capture.pre[i]);
+        releasePost.push_back(capture.post[i]);
+    }
+    r.releasePre = cumulativeMeanAt(releasePre, releasePre.size());
+    r.releasePost = cumulativeMeanAt(releasePost, releasePost.size());
 
     // Persist compact summary row and optional pre waveform head/tail.
     std::ofstream csv(outDir / "phase2_cases.csv", std::ios::app);
@@ -371,15 +393,17 @@ CaseResult renderCase(const std::string& name,
         << r.cmean1 << ',' << r.cmean2 << ',' << r.cmean5 << ',' << r.cmean10 << ',' << r.cmeanEnd << ','
         << r.periodMean << ',' << r.trailing1 << ',' << r.trailing2 << ','
         << r.quietMean << ',' << r.quietN << ',' << r.hostSamples << ',' << r.srcSamples << ','
-        << r.dormantSamples << ',' << postCmeanEnd << ',' << prePostAbsDiff << '\n';
+        << r.dormantSamples << ',' << postCmeanEnd << ',' << prePostAbsDiff << ','
+        << r.onsetPre << ',' << r.onsetPost << ',' << r.releasePre << ',' << r.releasePost << '\n';
 
     std::printf(
         "CASE %s dual=%d fx=%d fund=%.3fHz period=%.2f cmean[1/2/5/end]=%.3e/%.3e/%.3e/%.3e "
-        "(%.1f/%.1f/%.1f/%.1f dBFS) periodMean=%.3e (%.1f dBFS) postCmean=%.3e (%.1f dBFS) "
-        "|pre-post|=%.3e quiet_n=%zu\n",
+        "(%.1f/%.1f/%.1f/%.1f dBFS) onsetPre=%.1f onsetPost=%.1f releasePre=%.1f releasePost=%.1f "
+        "periodMean=%.3e (%.1f dBFS) postCmean=%.3e (%.1f dBFS) |pre-post|=%.3e quiet_n=%zu\n",
         name.c_str(), dual ? 1 : 0, fx, r.assumeFundHz, r.measuredPeriod,
         r.cmean1, r.cmean2, r.cmean5, r.cmeanEnd,
         dbfs(r.cmean1), dbfs(r.cmean2), dbfs(r.cmean5), dbfs(r.cmeanEnd),
+        dbfs(r.onsetPre), dbfs(r.onsetPost), dbfs(r.releasePre), dbfs(r.releasePost),
         r.periodMean, dbfs(r.periodMean), postCmeanEnd, dbfs(postCmeanEnd),
         prePostAbsDiff, r.quietN);
 
@@ -492,6 +516,73 @@ void syntheticValidation(const std::filesystem::path& outDir)
 
 }  // namespace
 
+void runV03Matrix(const std::filesystem::path& outDir, std::vector<CaseResult>& results)
+{
+    const ShruthiSvfDualRouting routes[] = {
+        ShruthiSvfDualRouting::section1, ShruthiSvfDualRouting::serial, ShruthiSvfDualRouting::parallel
+    };
+    const char* routeName[] = { "s1", "ser", "par" };
+    const ShruthiSvf2pMode modes[] = {
+        ShruthiSvf2pMode::lowPass, ShruthiSvf2pMode::bandPass, ShruthiSvf2pMode::highPass
+    };
+    const char* modeName[] = { "lp", "bp", "hp" };
+    for (int route = 0; route < 3; ++route)
+        for (int m1 = 0; m1 < 3; ++m1)
+            for (int m2 = 0; m2 < 3; ++m2)
+            {
+                if (route == 0 && m2 != 0)
+                    continue;
+                char name[64];
+                std::snprintf(name, sizeof(name), "dual_v03_%s_%s_%s", routeName[route], modeName[m1], modeName[m2]);
+                results.push_back(renderCase(name, true, 0, 48000, 64, 48, 8000.f, 0.35f, 1, 0.f, 0.f,
+                                             8.0, 4.0, outDir, routes[route], modes[m1], modes[m2]));
+            }
+    results.push_back(renderCase("dual_v03_s1_maxres", true, 0, 48000, 64, 24, 200.f, 1.f, 1, 0.f, 0.f, 8.0, 4.0, outDir));
+    results.push_back(renderCase("dual_v03_ser_maxres", true, 0, 48000, 64, 24, 200.f, 1.f, 1, 0.f, 0.f, 8.0, 4.0, outDir,
+                                 ShruthiSvfDualRouting::serial));
+    results.push_back(renderCase("dual_v03_par_maxres", true, 0, 48000, 64, 24, 200.f, 1.f, 1, 0.f, 0.f, 8.0, 4.0, outDir,
+                                 ShruthiSvfDualRouting::parallel));
+    results.push_back(renderCase("dual_v03_lownote", true, 0, 48000, 64, 12, 4000.f, 0.2f, 1, 0.f, 0.f, 8.0, 4.0, outDir));
+    results.push_back(renderCase("dual_v03_sub", true, 0, 48000, 64, 24, 4000.f, 0.3f, 1, 0.f, 127.f, 8.0, 4.0, outDir));
+    results.push_back(renderCase("dual_v03_noise", true, 0, 48000, 64, 48, 12000.f, 0.f, 1, 127.f, 0.f, 8.0, 4.0, outDir));
+    results.push_back(renderCase("dual_v03_vca_attack", true, 0, 48000, 64, 48, 8000.f, 0.2f, 1, 0.f, 0.f, 8.0, 4.0, outDir,
+                                 ShruthiSvfDualRouting::section1, ShruthiSvf2pMode::lowPass, ShruthiSvf2pMode::lowPass,
+                                 [](SwaraXtAudioProcessor& p) { setParam(p, IDs::env2Attack, 80.f); }));
+    results.push_back(renderCase("dual_v03_vca_release", true, 0, 48000, 64, 48, 8000.f, 0.2f, 1, 0.f, 0.f, 4.0, 6.0, outDir,
+                                 ShruthiSvfDualRouting::section1, ShruthiSvf2pMode::lowPass, ShruthiSvf2pMode::lowPass,
+                                 [](SwaraXtAudioProcessor& p) { setParam(p, IDs::env2Release, 100.f); }));
+    results.push_back(renderCase("dual_v03_mod_env", true, 0, 48000, 64, 48, 4000.f, 0.4f, 1, 0.f, 0.f, 8.0, 4.0, outDir,
+                                 ShruthiSvfDualRouting::section1, ShruthiSvf2pMode::lowPass, ShruthiSvf2pMode::lowPass,
+                                 [](SwaraXtAudioProcessor& p) {
+                                     setParam(p, IDs::filterEnvDepth, 40.f);
+                                     setParam(p, IDs::env1Attack, 20.f);
+                                     setParam(p, IDs::env1Decay, 60.f);
+                                     setParam(p, IDs::env1Sustain, 40.f);
+                                 }));
+    results.push_back(renderCase("dual_v03_mod_lfo", true, 0, 48000, 64, 48, 6000.f, 0.3f, 1, 0.f, 0.f, 8.0, 4.0, outDir,
+                                 ShruthiSvfDualRouting::section1, ShruthiSvf2pMode::lowPass, ShruthiSvf2pMode::lowPass,
+                                 [](SwaraXtAudioProcessor& p) {
+                                     setParam(p, IDs::lfo1Rate, 40.f);
+                                     setParam(p, IDs::filterLfoDepth, 40.f);
+                                 }));
+    for (int program : { 0, 4, 8 })
+    {
+        char name[64];
+        std::snprintf(name, sizeof(name), "dual_v03_preset_%d", program);
+        results.push_back(renderCase(name, true, 0, 48000, 64, 48, 8000.f, 0.2f, 1, 0.f, 0.f, 8.0, 4.0, outDir,
+                                     ShruthiSvfDualRouting::section1, ShruthiSvf2pMode::lowPass, ShruthiSvf2pMode::lowPass,
+                                     [program](SwaraXtAudioProcessor& p) {
+                                         if (program < p.getNumPrograms())
+                                             p.setCurrentProgram(program);
+                                         p.setExperimentalSvfEnabled(true);
+                                         p.setExperimentalSvfRouting(ShruthiSvfDualRouting::section1);
+                                         p.setExperimentalSvfMode1(ShruthiSvf2pMode::lowPass);
+                                         p.setExperimentalSvfMode2(ShruthiSvf2pMode::lowPass);
+                                     }));
+    }
+    results.push_back(renderCase("dual_v03_fx_dist", true, 1, 48000, 64, 48, 8000.f, 0.2f, 1, 0.f, 0.f, 8.0, 4.0, outDir));
+}
+
 int main(int argc, char** argv)
 {
     std::printf("SWARA XT FX-Off DC blocker audit — Phase II\n");
@@ -504,12 +595,17 @@ int main(int argc, char** argv)
         csv << "name,dual,fx,rate,note,assume_fund_hz,measured_period,"
                "cmean1,cmean2,cmean5,cmean10,cmean_end,period_mean,trailing1,trailing2,"
                "quiet_mean,quiet_n,host_samples,src_samples,dormant_samples,"
-               "post_cmean_end,pre_post_abs_diff\n";
+               "post_cmean_end,pre_post_abs_diff,onset_pre,onset_post,release_pre,release_post\n";
     }
 
     syntheticValidation(outDir);
 
     std::vector<CaseResult> results;
+    const bool v03 = argc > 2 && std::string(argv[2]) == "v03";
+    if (v03)
+        runV03Matrix(outDir, results);
+    else
+    {
     // Long-duration decisive cases (30 s sustain, 8 s release).
     results.push_back(renderCase("classic_fxoff_sub_30s", false, 0, 48000, 64, 24,
                                  4000.f, 0.3f, 1, 0.f, 127.f, 30.0, 8.0, outDir));
@@ -531,7 +627,9 @@ int main(int argc, char** argv)
     results.push_back(renderCase("classic_fxoff_96k_10s", false, 0, 96000, 64, 36,
                                  8000.f, 0.2f, 1, 0.f, 0.f, 10.0, 4.0, outDir));
     results.push_back(renderCase("dual_fxoff_serial_10s", true, 0, 48000, 64, 36,
-                                 8000.f, 0.3f, 1, 0.f, 0.f, 10.0, 4.0, outDir));
+                                 8000.f, 0.3f, 1, 0.f, 0.f, 10.0, 4.0, outDir,
+                                 ShruthiSvfDualRouting::serial));
+    }
 
     double worstClassic = -std::numeric_limits<double>::infinity();
     double worstDual = -std::numeric_limits<double>::infinity();
@@ -563,8 +661,10 @@ int main(int argc, char** argv)
             worstDualAbs = std::max(worstDualAbs, std::abs(r.cmeanEnd));
     }
 
-    const bool classicOk = dbfs(worstClassicAbs) < -80.0;
-    const bool dualOk = dbfs(worstDualAbs) < -80.0;
+    const bool classicExercised = !worstClassicName.empty();
+    const bool dualExercised = !worstDualName.empty();
+    const bool classicOk = classicExercised && dbfs(worstClassicAbs) < -80.0;
+    const bool dualOk = dualExercised && dbfs(worstDualAbs) < -80.0;
 
     std::ofstream summary(outDir / "phase2_summary.json");
     summary << std::setprecision(17);
@@ -573,18 +673,27 @@ int main(int argc, char** argv)
     summary << "  \"worst_classic_case\": \"" << worstClassicName << "\",\n";
     summary << "  \"worst_dual_fxoff_cmean_end_dbfs\": " << dbfs(worstDualAbs) << ",\n";
     summary << "  \"worst_dual_case\": \"" << worstDualName << "\",\n";
+    summary << "  \"matrix\": \"" << (v03 ? "v03" : "phase2") << "\",\n";
+    summary << "  \"host_dc_policy\": \"retained\",\n";
     summary << "  \"classic_fxoff_qualifies\": " << (classicOk ? "true" : "false") << ",\n";
     summary << "  \"dual_fxoff_qualifies\": " << (dualOk ? "true" : "false") << ",\n";
     summary << "  \"failures\": " << failures << "\n";
     summary << "}\n";
 
     std::printf("\nPhase II decision metric = |signed cumulative mean| at end of sustain\n");
-    std::printf("WORST Classic FX-Off: %.2f dBFS (%s) -> %s\n",
-                dbfs(worstClassicAbs), worstClassicName.c_str(),
-                classicOk ? "QUALIFIED" : "NOT QUALIFIED");
-    std::printf("WORST Dual FX-Off: %.2f dBFS (%s) -> %s\n",
-                dbfs(worstDualAbs), worstDualName.c_str(),
-                dualOk ? "QUALIFIED" : "NOT QUALIFIED");
+    if (classicExercised)
+        std::printf("WORST Classic FX-Off: %.2f dBFS (%s) -> %s\n",
+                    dbfs(worstClassicAbs), worstClassicName.c_str(),
+                    classicOk ? "QUALIFIED" : "NOT QUALIFIED");
+    else
+        std::printf("Classic FX-Off: not in this matrix\n");
+    if (dualExercised)
+        std::printf("WORST Dual FX-Off: %.2f dBFS (%s) -> %s\n",
+                    dbfs(worstDualAbs), worstDualName.c_str(),
+                    dualOk ? "QUALIFIED" : "NOT QUALIFIED");
+    else
+        std::printf("Dual FX-Off: not in this matrix\n");
+    std::printf("Host DC protection policy: retained\n");
     std::printf("failures=%d\n", failures);
     return failures == 0 ? 0 : 1;
 }

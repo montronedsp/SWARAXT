@@ -25,7 +25,7 @@ MODE pins IC7E and IC9E are single-pin nets `N$68` and `N$71`. Nothing else is a
 
 ## What the software implements
 
-`DualSvfAnalogBoard` is the one VCA used by `ShruthiSvfDual` for section 1, serial and parallel. The SVF integrators are unchanged. The obsolete `10000 * 33 nF` VCA smoother is gone.
+`ShruthiSvfDual` owns the only `DualSvfAnalogBoard`. The two SVF cores keep cutoff and resonance reconstruction, TPT coefficients, integrator state and the LP/BP/HP taps. They do not own a board or a VCA target. The SVF integrators are unchanged. The obsolete `10000 * 33 nF` VCA smoother is gone.
 
 - C34/R20 into the inverting mixer, feedback R13 with C13.
 - C20/R31 and C21/R32 as independent coupling branches. A mux branch that is not selected is driven from 0 V so its capacitor discharges.
@@ -151,8 +151,14 @@ g = \max\left(0,\ \frac{V_f}{5\ \mathrm{V}} - \frac{R_{24}}{R_{53}}\right)
 V_{\mathrm{out}} = -g \left(v_{C20} + v_{C21}\right)
 \]
 
+That identity is the matched-cell equilibrium with C14 ignored. The discrete model multiplies by `g` and then applies the C14/R12 one-pole, which is the schematic order. Constant gain commutes with a linear one-pole. A servo-limited gain step does not: an independent one-pole, using the same 340 µs control coefficient, differed from the previous low-pass-then-gain order by 1.08e-5 at the closing sample, about eleven Q20 counts. The physical order is the production model. C14's corner is about 48.2 kHz, above the native Nyquist frequency, so the pole is a short memory rather than an audible cutoff. After `g` reaches 0 the state is flushed at 1e-20, within eight native samples for a memory inside +/-10 V.
+
 `R24/R53` = 1/22. At zero PWM the formula is negative, so the gain is the closed cell, which is what the bleed is for. Without R53 the offset term is zero and `g = Vf / 5`. Full-scale PWM (5 V) gives `g = 0.5 - 1/22` with R53 fitted, and `g = 0.5` without it. Bytes 0 through 23 stay closed; byte 24 is the first positive gain.
 
 The digital input, into a virtual ground, is an inverting high-pass at `1/(2π R20 C34)` ≈ 0.339 Hz with passband gain `-R13/R20` = −0.33, then the C13/R13 pole near 48 kHz. Each coupling branch is a high-pass at `1/(2π · 33 kΩ · 1 µF)` ≈ 4.82 Hz. C14/R12 is the matching pole on the I/V. No capacitor follows IC2B.
 
 The host 0.7 Hz blocker stays on Dual. Coupling before a time-varying gain does not by itself remove a mean.
+
+## What this model does not claim
+
+The servo is treated as matched and settled except for the C9 reconstruction pole. C10 is compensation around the control op-amp, not an audio high-pass, and it is not given its own state. The 470 Ω / 560 pF gain-cell stabilizers and any amplifier pole at or above the native Nyquist frequency, other than C13 and C14, are omitted. The 4.3 V limiter is a straight line through 3.6 V and then the zener-plus-0.7 V asymptote, not a diode equation. The resonance singularity stays lossless. None of these reductions is a second production calibration.
