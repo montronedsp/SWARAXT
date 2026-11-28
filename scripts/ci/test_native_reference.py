@@ -715,7 +715,7 @@ class ReviewedSourceCompatibilityTests(unittest.TestCase):
     def test_load_package_reaches_positive_admission(self):
         package = current.load_package(self.source)
         self.assertEqual(package['policy'], current.POLICY)
-        self.assertEqual(len(package['source_fixtures']), 9)
+        self.assertEqual(len(package['source_fixtures']), 12)
 
 
 @unittest.skipUnless(sys.platform.startswith('linux'), 'Fixture admission tests require Linux')

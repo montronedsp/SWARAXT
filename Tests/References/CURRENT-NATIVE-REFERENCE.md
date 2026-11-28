@@ -3,7 +3,7 @@
 ## Linux
 
 The authenticated package is
-`native-current-5f96980660fffedd672bb69b51fe60ef4745a619cbec34d8f5a8e5765c40ed78.json`.
+`native-current-831dc460748a9ac35e2b6d709c476c79ae1d748b594da2c2c7b64071a560a731.json`.
 Its SHA-256 and policy `linux-current-phase3-v2` are pinned independently in
 `scripts/ci/current_reference.py`. Acquisition copies approved data; it never
 executes a candidate to generate expected audio. Checksums alone cannot approve

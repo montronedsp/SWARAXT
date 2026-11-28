@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Branch | `investigation/fx-off-dc-blocker` |
-| Source SHA | `3458b62fa1e977e55933dabd3245434cb64dc8ca` |
+| Source SHA | *(update after next push — Linux package migration-key fix)* |
 | PR | https://github.com/montronedsp/SWARAXT/pull/50 |
 | Status | Draft until hosted Windows + Linux qualification are green |
 | Author identity | MontroneDSP `<152441454+montronedsp@users.noreply.github.com>` |
@@ -31,7 +31,7 @@
 | Platform | Package | Scope |
 | --- | --- | --- |
 | Windows | `windows-current-2b82a6f6abb197636dec3c748ae378bf5a2f6781f2cfcb0f51e76b1fe19e71f1.json` | `full-native-66` |
-| Linux | `native-current-5f96980660fffedd672bb69b51fe60ef4745a619cbec34d8f5a8e5765c40ed78.json` | `full-native-66` |
+| Linux | `native-current-831dc460748a9ac35e2b6d709c476c79ae1d748b594da2c2c7b64071a560a731.json` | `full-native-66` |
 
 Inventory: 8 Classic + 22 integrated + 30 Host SRC + 6 Dual v03 = 66.
 

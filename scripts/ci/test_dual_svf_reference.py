@@ -96,9 +96,15 @@ class DualAdmissionControls(unittest.TestCase):
             with self.subTest(name=name), patch.object(current, 'safe_bytes', changed):
                 self.reject('checksum mismatch|Unapproved Dual headless driver')
 
-    def test_byte_exact_guard_reversal(self):
-        path = SOURCE / 'Tests/Filter/DualSvfSection2TestsMain.cpp'
-        self.assertEqual(current.digest(current.original_dual_driver(path.read_bytes())), current.DUAL_ORIGINAL_SHA256)
+    def test_section2_matches_sealed_fixture(self):
+        # v03 consolidation pins the current Section2 driver directly; the
+        # historical Paper/Eagle adapter reverse remains for older packages only.
+        package = current.load_package(SOURCE)
+        entry = next(e for e in package['source_fixtures']
+                     if e['path'] == 'Tests/Filter/DualSvfSection2TestsMain.cpp')
+        current.checked_file(SOURCE, entry['path'], entry['sha256'])
+        self.assertEqual(entry['sha256'],
+                         current.digest((SOURCE / entry['path']).read_bytes()))
 
     def test_executable_and_source_identity(self):
         with tempfile.TemporaryDirectory() as directory:
