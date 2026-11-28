@@ -5,9 +5,10 @@
 | Item | Value |
 | --- | --- |
 | Branch | `investigation/fx-off-dc-blocker` |
-| Source SHA | `6897a4153ca5e22ef9641e68a091617a0c22e981` |
+| Qualification SHA | `6897a4153ca5e22ef9641e68a091617a0c22e981` |
+| Docs tip | `2f05cd98813c1e686895acc3bdd0288cb47681dc` (HANDOFF only) |
 | PR | https://github.com/montronedsp/SWARAXT/pull/50 |
-| Status | Draft until hosted Windows + Linux qualification are green |
+| Status | Draft — both prefights green; native qualification in progress |
 | Author identity | MontroneDSP `<152441454+montronedsp@users.noreply.github.com>` |
 
 ## Completed analog circuit work (frozen)
@@ -50,23 +51,23 @@ python -m unittest test_common test_native_reference test_windows_artifacts
 
 Also: `test_windows_current_reference` → Ran 33 tests, OK (skipped=24).
 
-Linux suite must be run on genuine Linux with `core.autocrlf=false`:
+Hosted Linux preflight (ubuntu-24.04, genuine Linux, `autocrlf=false`) on `6897a41`:
 
-```bash
-cd scripts/ci
+```text
 python -m unittest test_common test_native_reference test_dual_svf_reference test_windows_reference_policy
+→ success (job preflight on run 46186910444)
 ```
 
 ## Hosted qualification
 
-Dispatch only against `6897a4153ca5e22ef9641e68a091617a0c22e981`:
+Against `6897a4153ca5e22ef9641e68a091617a0c22e981`:
 
-- Windows: https://github.com/montronedsp/SWARAXT/actions/runs/46186907765
-- Linux: https://github.com/montronedsp/SWARAXT/actions/runs/46186910444
+- Windows: https://github.com/montronedsp/SWARAXT/actions/runs/46186907765 — preflight success; native in progress
+- Linux: https://github.com/montronedsp/SWARAXT/actions/runs/46186910444 — preflight success; native in progress
 
 Do not rerun obsolete failures on `8a7b458` / `3458b62`.
 
-Results: *pending — fill after Actions complete.*
+Results: *native profiles still running — update when complete; mark PR ready only then.*
 
 ## Exact build commands (reuse existing trees when inputs unchanged)
 
