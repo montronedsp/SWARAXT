@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Branch | `investigation/fx-off-dc-blocker` |
-| Source SHA | *(update after next push — Linux package migration-key fix)* |
+| Source SHA | `6897a4153ca5e22ef9641e68a091617a0c22e981` |
 | PR | https://github.com/montronedsp/SWARAXT/pull/50 |
 | Status | Draft until hosted Windows + Linux qualification are green |
 | Author identity | MontroneDSP `<152441454+montronedsp@users.noreply.github.com>` |
@@ -59,12 +59,12 @@ python -m unittest test_common test_native_reference test_dual_svf_reference tes
 
 ## Hosted qualification
 
-Dispatch only against `3458b62fa1e977e55933dabd3245434cb64dc8ca`:
+Dispatch only against `6897a4153ca5e22ef9641e68a091617a0c22e981`:
 
-- Windows VST3 qualification
-- Linux VST3 qualification
+- Windows: https://github.com/montronedsp/SWARAXT/actions/runs/46186907765
+- Linux: https://github.com/montronedsp/SWARAXT/actions/runs/46186910444
 
-Do not rerun obsolete failures `46183351287` / `46183390091` (SHA `8a7b458`).
+Do not rerun obsolete failures on `8a7b458` / `3458b62`.
 
 Results: *pending — fill after Actions complete.*
 
